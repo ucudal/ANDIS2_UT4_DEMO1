@@ -1,0 +1,19 @@
+# Inicia Docker si no está iniciado
+docker desktop start
+
+md UsersService/pgdata
+md ProductsService/mongodbdata
+
+
+docker-compose up -d
+
+curl "http://localhost:8000/orders/"
+curl "http://localhost:8001/products/"
+curl "http://localhost:8002/users/"
+
+docker compose down
+
+rm -rf ./orders-service/mysqldata
+rm -rf ./products-service/mongodbdata
+rm -rf ./users-service/pgdata
+
