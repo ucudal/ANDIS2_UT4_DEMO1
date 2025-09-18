@@ -1,10 +1,16 @@
-// UsersService/Models/User.cs
+using System.ComponentModel.DataAnnotations.Schema;
 
-namespace UsersService.Models
+namespace UsersService.Models;
+
+[Table("users")]
+public class User
 {
-    public class User
-    {
-        public string Username { get; set; }
-        public string Email { get; set; }
-    }
+    [Column("id")]
+    public int Id { get; set; }
+
+    [Column("name")]
+    public string Name { get; set; }
+
+    [Column("email")]
+    public string Email { get; set; }
 }

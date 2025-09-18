@@ -1,6 +1,19 @@
-@OrdersService_HostAddress = http://localhost:5080
+@OrdersService_HostAddress = http://localhost
 
-GET {{OrdersService_HostAddress}}/weatherforecast/
-Accept: application/json
+### Create an order
+POST {{OrdersService_HostAddress}}/orders/
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "productId": "6508e2f2c2a1b2a3d4e5f6a7",
+  "quantity": 2
+}
+
+### List all orders
+GET {{OrdersService_HostAddress}}/orders/
+
+### Get all orders for a user (with details)
+GET {{OrdersService_HostAddress}}/orders/user/1/details
 
 ###

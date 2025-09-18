@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UsersService", "UsersServic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProductsService", "ProductsService\ProductsService.csproj", "{CAD30221-4AFC-4A97-BEAE-861AF65E66E1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "Common\Common.csproj", "{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{CAD30221-4AFC-4A97-BEAE-861AF65E66E1}.Release|x64.Build.0 = Release|Any CPU
 		{CAD30221-4AFC-4A97-BEAE-861AF65E66E1}.Release|x86.ActiveCfg = Release|Any CPU
 		{CAD30221-4AFC-4A97-BEAE-861AF65E66E1}.Release|x86.Build.0 = Release|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Debug|x64.Build.0 = Debug|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Debug|x86.Build.0 = Debug|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Release|x64.ActiveCfg = Release|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Release|x64.Build.0 = Release|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Release|x86.ActiveCfg = Release|Any CPU
+		{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

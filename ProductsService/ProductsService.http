@@ -1,6 +1,18 @@
-@ProductsService_HostAddress = http://localhost:5149
+@ProductsService_HostAddress = http://localhost
 
-GET {{ProductsService_HostAddress}}/weatherforecast/
-Accept: application/json
+### Create a product
+POST {{ProductsService_HostAddress}}/products/
+Content-Type: application/json
+
+{
+  "name": "Buzo",
+  "price": 2300.00
+}
+
+### List all products
+GET {{ProductsService_HostAddress}}/products/
+
+### Get product by ID
+GET {{ProductsService_HostAddress}}/products/60f7c2b5e1d3c2a1b8e4d123
 
 ###

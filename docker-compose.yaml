@@ -1,6 +1,8 @@
 services:
   api-gateway:
-    build: ./ApiGateway
+    build:
+      context: .
+      dockerfile: ./ApiGateway/Dockerfile
     image: nginx:1.25-alpine
     ports:
       - "80:80"
@@ -12,7 +14,6 @@ services:
       - orders-service
 
   orders-db:
-    # build: ./orders-service
     image: mysql:9.3
     environment:
       MYSQL_ROOT_PASSWORD: "Pa55w0rd"
@@ -28,14 +29,15 @@ services:
       - ./OrdersService/mysqlinit:/docker-entrypoint-initdb.d
 
   orders-service:
-    build: ./OrdersService
+    build:
+      context: .
+      dockerfile: ./OrdersService/Dockerfile
     image: orders-service:latest
     environment:
-      MYSQL_HOST: "orders-db"
-      MYSQL_PORT: "3306"
-      MYSQL_DATABASE: "ordersdb"
-      MYSQL_USER: "ordersusr"
-      MYSQL_PASSWORD: "Pa55w0rd"
+      ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      UsersService__BaseUrl: "http://users-service:8000/users/"
+      ProductsService__BaseUrl: "http://products-service:8000/products/"
+
     ports:
       - "8000:8000"
     depends_on:
@@ -58,7 +60,9 @@ services:
       - MONGO_PASSWORD=Pa55w0rd
 
   products-service:
-    build: ./ProductsService
+    build:
+      context: .
+      dockerfile: ./ProductsService/Dockerfile
     image: products-service:latest
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
@@ -74,7 +78,6 @@ services:
       - products-db
 
   users-db:
-    # build: ./users-service
     image: postgres:17
     environment:
       POSTGRES_HOST: "users-db"
@@ -89,14 +92,12 @@ services:
       - ./UsersService/pginit:/docker-entrypoint-initdb.d
 
   users-service:
-    build: ./UsersService
+    build:
+      context: .
+      dockerfile: ./UsersService/Dockerfile
     image: users-service:latest
     environment:
-      POSTGRES_HOST: "users-db"
-      POSTGRES_PORT: "5432"
-      POSTGRES_NAME: "usersdb"
-      POSTGRES_USER: "usersusr"
-      POSTGRES_PASSWORD: "Pa55w0rd"
+      ConnectionStrings__UsersDb: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
     ports:
       - "8002:8000"
     depends_on:

@@ -1,9 +1,6 @@
-// Controllers/ProductsController.cs
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using ProductsService.Models;
-using System.Collections.Generic;
-using Microsoft.Extensions.Configuration;
 
 [ApiController]
 [Route("products")]

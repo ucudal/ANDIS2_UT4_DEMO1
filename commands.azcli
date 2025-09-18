@@ -1,19 +1,69 @@
 # Inicia Docker si no está iniciado
 docker desktop start
 
+# Crear las carpetas que serán montadas como volúmenes para contener las bases
+# de datos
 md UsersService/pgdata
 md ProductsService/mongodbdata
+md OrdersService/mysqldata
 
+# Levantar todos los contenedores
+docker compose build
+docker compose up -d
 
-docker-compose up -d
+# Probar los servicios a través del API Gateway
 
-curl "http://localhost:8000/orders/"
-curl "http://localhost:8001/products/"
-curl "http://localhost:8002/users/"
+# Obtener todos los usuarios
+curl http://localhost/users/
 
-docker compose down
+# Agregar un nuevo usuario
+curl -X POST http://localhost/users/ \
+  -H "Content-Type: application/json" \
+  -d '{"name": "julia", "email": "julia@example.com"}'
 
-rm -rf ./orders-service/mysqldata
-rm -rf ./products-service/mongodbdata
-rm -rf ./users-service/pgdata
+# Buscar un usuario
+curl http://localhost/users/1
+
+# Obtener todos los productos
+curl http://localhost/products/
+
+# Agregar un producto
+curl -X POST http://localhost/products/ \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Buzo", "price": 2300.00}'
+
+# Buscar un producto
+curl http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+
+# Obtener todas las órdenes
+curl http://localhost/orders/
+
+# Crear una nueva orden
+curl -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 1, "productId": "6508e2f2c2a1b2a3d4e5f6a7", "quantity": 2}'
+
+# Obtener las órdenes de un usuario y sus detalles
+curl http://localhost/orders/user/1/details
+
+# Para probar los endpoints sin pasar por el API Gateway, agrega los puertos
+# donde están escuchando los servicios, por ejemplo:
+# - http://localhost:8000/orders/
+# - http://localhost:8001/products/
+# - http://localhost:8002/users
+
+# Tear down
+
+docker compose down -v
+
+docker rmi orders-service:latest users-service:latest products-service:latest
+docker rmi mysql:9.3 mongo:7 postgres:17 nginx:1.25-alpine
+docker image prune -f
+docker volume prune -f
+docker builder prune -f
+
+rm -rf ./OrdersService/mysqldata
+rm -rf ./ProductsService/mongodbdata
+rm -rf ./UsersService/pgdata
+
 
