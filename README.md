@@ -12,7 +12,8 @@ Esta demo es la aplicación base de la UT4, una pequeña aplicación de comercio
 electrónico, con los patrones de resiliencia y disponibilidad de la Demo 1
 implementados.
 
-También es la demo de la arquitectura de microservicios en la UT5.
+También es la demo de la [arquitectura de microservicios](ARCHITECTURE.md) en la
+UT5.
 
 El panorama de las cinco demos y la explicación de cada patrón de esta demo
 están en [PATTERNS.md](PATTERNS.md).

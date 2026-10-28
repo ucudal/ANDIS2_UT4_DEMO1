@@ -39,7 +39,7 @@ builder.Services.AddHttpClient("ProductsService", client =>
 //
 // Se usa el middleware de rate limiting de ASP.NET Core. Como nginx, ASP.NET
 // Core lo llama "rate limiting", pero en el catálogo de patrones de Azure esto
-// es Throttling: lo aplica el servicio sobre lo que recibe -ver overview.md-.
+// es Throttling: lo aplica el servicio sobre lo que recibe -ver PATTERNS.md-.
 //
 // La política "throttling" es un ConcurrencyLimiter, el mismo tipo de limitador
 // del Bulkhead -ver Resilience.cs-, pero en la dirección opuesta: el Bulkhead
