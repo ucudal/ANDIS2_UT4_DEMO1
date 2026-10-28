@@ -8,18 +8,9 @@ public class ProductsController : ControllerBase
 {
     private readonly IMongoCollection<Product> _productsCollection;
 
-    public ProductsController(IConfiguration config)
+    public ProductsController(IMongoCollection<Product> productsCollection)
     {
-        var host = config["MONGO_HOST"] ?? "localhost";
-        var port = config["MONGO_PORT"] ?? "27017";
-        var db = config["MONGO_DB"] ?? "productsdb";
-        var user = config["MONGO_USER"] ?? "productsusr";
-        var password = config["MONGO_PASSWORD"] ?? "Pa55w0rd";
-
-        var mongoUrl = $"mongodb://{user}:{password}@{host}:{port}/{db}";
-        var client = new MongoClient(mongoUrl);
-        var database = client.GetDatabase(db);
-        _productsCollection = database.GetCollection<Product>("products");
+        _productsCollection = productsCollection;
     }
 
     [HttpPost]

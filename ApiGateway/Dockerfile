@@ -1,2 +1,2 @@
 FROM nginx:1.25-alpine
-COPY ApiGateway/ngixconf/ngix.conf /etc/nginx/conf.d/custom.conf
+COPY ApiGateway/nginxconf/nginx.conf /etc/nginx/nginx.conf

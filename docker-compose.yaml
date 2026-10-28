@@ -3,22 +3,33 @@ services:
     build:
       context: .
       dockerfile: ./ApiGateway/Dockerfile
-    image: nginx:1.25-alpine
+    image: api-gateway:latest
     ports:
       - "80:80"
-    volumes:
-      - ./ApiGateway/ngixconf/ngix.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - users-service
-      - products-service
-      - orders-service
+      users-service:
+        condition: service_healthy
+      products-service:
+        condition: service_healthy
+      orders-service:
+        condition: service_healthy
+
+  rabbitmq:
+    image: rabbitmq:4.4-management
+    ports:
+      - "5672:5672"
+      # Consola de administración: http://localhost:15672 (guest / guest)
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   orders-db:
-    image: mysql:9.3
+    image: mysql:26
     environment:
       MYSQL_ROOT_PASSWORD: "Pa55w0rd"
-      MYSQL_HOST: "orders-db"
-      MYSQL_PORT: "3306"
       MYSQL_DATABASE: "ordersdb"
       MYSQL_USER: "ordersusr"
       MYSQL_PASSWORD: "Pa55w0rd"
@@ -27,6 +38,13 @@ services:
     volumes:
       - ./OrdersService/mysqldata:/var/lib/mysql
       - ./OrdersService/mysqlinit:/docker-entrypoint-initdb.d
+    healthcheck:
+      # Se consulta la base con el usuario de la aplicación: durante la
+      # inicialización ese usuario todavía no existe y el chequeo falla.
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-u", "ordersusr", "-pPa55w0rd", "-e", "SELECT 1 FROM ordersdb.order_events LIMIT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   orders-service:
     build:
@@ -34,30 +52,77 @@ services:
       dockerfile: ./OrdersService/Dockerfile
     image: orders-service:latest
     environment:
+      SERVICE_NAME: "orders-service"
       ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
       UsersService__BaseUrl: "http://users-service:8000/users/"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
-
+      RabbitMq__Host: "rabbitmq"
     ports:
       - "8000:8000"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
     depends_on:
-      - orders-db
+      orders-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      users-service:
+        condition: service_healthy
+      products-service:
+        condition: service_healthy
+
+  # Competing Consumers: la misma imagen que orders-service, con el worker
+  # habilitado. Las réplicas consumen de la misma cola de RabbitMQ.
+  orders-worker:
+    build:
+      context: .
+      dockerfile: ./OrdersService/Dockerfile
+    image: orders-service:latest
+    environment:
+      SERVICE_NAME: "orders-worker"
+      ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      UsersService__BaseUrl: "http://users-service:8000/users/"
+      ProductsService__BaseUrl: "http://products-service:8000/products/"
+      RabbitMq__Host: "rabbitmq"
+      Worker__Enabled: "true"
+      Worker__ProcessingDelayMs: "2000"
+    deploy:
+      replicas: 3
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      orders-service:
+        condition: service_healthy
 
   products-db:
-    image: mongo:7
+    image: mongo:9
     ports:
       - "27017:27017"
     volumes:
       - ./ProductsService/mongodbdata:/data/db
       - ./ProductsService/mongoinit:/docker-entrypoint-initdb.d
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=Pa55w0rd
-      - MONGO_HOST=products-db
-      - MONGO_PORT=27017
-      - MONGO_DB=productsdb
-      - MONGO_USER=productsusr
-      - MONGO_PASSWORD=Pa55w0rd
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "Pa55w0rd"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "productsusr", "-p", "Pa55w0rd", "--authenticationDatabase", "productsdb", "productsdb", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   products-service:
     build:
@@ -65,31 +130,43 @@ services:
       dockerfile: ./ProductsService/Dockerfile
     image: products-service:latest
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=Pa55w0rd
-      - MONGO_HOST=products-db
-      - MONGO_PORT=27017
-      - MONGO_DB=productsdb
-      - MONGO_USER=productsusr
-      - MONGO_PASSWORD=Pa55w0rd
+      SERVICE_NAME: "products-service"
+      MONGO_HOST: "products-db"
+      MONGO_PORT: "27017"
+      MONGO_DB: "productsdb"
+      MONGO_USER: "productsusr"
+      MONGO_PASSWORD: "Pa55w0rd"
     ports:
       - "8001:8000"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
     depends_on:
-      - products-db
+      products-db:
+        condition: service_healthy
 
   users-db:
-    image: postgres:17
+    image: postgres:18
     environment:
-      POSTGRES_HOST: "users-db"
-      POSTGRES_PORT: "5432"
-      POSTGRES_NAME: "usersdb"
+      POSTGRES_DB: "usersdb"
       POSTGRES_USER: "usersusr"
       POSTGRES_PASSWORD: "Pa55w0rd"
     ports:
       - "5432:5432"
     volumes:
-      - ./UsersService/pgdata:/var/lib/postgresql/data
+      - ./UsersService/pgdata:/var/lib/postgresql
       - ./UsersService/pginit:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "usersusr", "-d", "usersdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   users-service:
     build:
@@ -97,8 +174,68 @@ services:
       dockerfile: ./UsersService/Dockerfile
     image: users-service:latest
     environment:
+      SERVICE_NAME: "users-service"
       ConnectionStrings__UsersDb: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
     ports:
       - "8002:8000"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
     depends_on:
-      - users-db
+      users-db:
+        condition: service_healthy
+
+  # Observabilidad -opcional-: se levanta con
+  #   docker compose --profile observability up -d
+  # Prometheus: http://localhost:9090 · Grafana: http://localhost:3000
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: ["observability"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      # Permite que k6 le envíe sus métricas con remote write.
+      - "--web.enable-remote-write-receiver"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    profiles: ["observability"]
+    environment:
+      # Sin login: es un entorno de demo.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/andis-demo.json"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  # Pruebas de carga: no queda corriendo, se ejecuta un escenario por vez con
+  #   docker compose run --rm k6 run /scripts/bulkhead.js
+  # Los resultados se ven en la terminal y, si está levantado el perfil
+  # observability, también en Grafana.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: ["k6"]
+    environment:
+      BASE_URL: "http://api-gateway"
+      ORDERS_DIRECT: "http://orders-service:8000"
+      K6_OUT: "experimental-prometheus-rw"
+      K6_PROMETHEUS_RW_SERVER_URL: "http://prometheus:9090/api/v1/write"
+      K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(95),p(99),max"
+      K6_PROMETHEUS_RW_PUSH_INTERVAL: "2s"
+    volumes:
+      - ./k6:/scripts:ro

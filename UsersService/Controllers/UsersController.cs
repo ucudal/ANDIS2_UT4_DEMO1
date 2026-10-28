@@ -19,6 +19,11 @@ public class UsersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateUser([FromBody] User user)
     {
+        // El email es único en la base: si ya existe, se responde 409 con el
+        // motivo en lugar de un 500 sin cuerpo.
+        if (await _db.Users.AnyAsync(u => u.Email == user.Email))
+            return Conflict(new { detail = $"Ya existe un User con el email {user.Email}" });
+
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
         return Ok(new { msg = "User created", id = user.Id });

@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "command": "dotnet",
+      "type": "process",
+      "args": ["build", "${workspaceFolder}/ANDIS2_UT4_DEMO1.sln"],
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

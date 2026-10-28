@@ -1,0 +1,34 @@
+# Prometheus consulta el endpoint /metrics de cada servicio cada 5 segundos.
+# Las métricas de k6 no se consultan: k6 las envía con remote write.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: users-service
+    static_configs:
+      - targets: ["users-service:8000"]
+
+  - job_name: products-service
+    static_configs:
+      - targets: ["products-service:8000"]
+
+  - job_name: orders-service
+    static_configs:
+      - targets: ["orders-service:8000"]
+
+  # El DNS de Docker devuelve una IP por cada réplica de orders-worker: así
+  # Prometheus consulta a todas, y deja de consultar a las que se detienen.
+  - job_name: orders-worker
+    dns_sd_configs:
+      - names: ["orders-worker"]
+        type: A
+        port: 8000
+        refresh_interval: 5s
+
+  # Plugin rabbitmq_prometheus: largo de la cola y cantidad de consumidores.
+  - job_name: rabbitmq
+    metrics_path: /metrics/detailed
+    params:
+      family: ["queue_coarse_metrics", "queue_consumer_count"]
+    static_configs:
+      - targets: ["rabbitmq:15692"]
