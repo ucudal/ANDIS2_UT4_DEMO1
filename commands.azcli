@@ -36,18 +36,54 @@ table() {
   | column -t -s $'\t'
 }
 
+# Users expone SOAP en lugar de REST. Comparado con Products:
+# - Hay un único endpoint, /users/UserService.svc, y todas las operaciones son
+#   POST, incluso las que solo leen. La operación no está en la URL ni en el
+#   método HTTP: va en el encabezado SOAPAction y en el elemento del sobre.
+# - El cuerpo es un sobre XML con namespaces, que hay que escribir completo.
+# - El contrato se publica como WSDL.
+# - Los errores son SOAP Faults, que viajan siempre como HTTP 500.
+
+# Ver el contrato de Users
+curl -s "http://localhost/users/UserService.svc?wsdl" | xmllint --format -
+
 # Obtener todos los usuarios
-curl -s http://localhost/users/ | table
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/ListUsers"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <ListUsers xmlns="http://ucu.edu.uy/andis/users" />
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
 
 # Agregar un nuevo usuario. El email es único: si el comando se ejecuta dos
-# veces, la segunda responde 409 con el motivo; para crear otro usuario, cambiar
-# el email.
-curl -s -X POST http://localhost/users/ \
-  -H "Content-Type: application/json" \
-  -d '{"name": "julia", "email": "julia@example.com"}' | jq
+# veces, la segunda responde HTTP 500 con un SOAP Fault que explica el motivo;
+# para crear otro usuario, cambiar el email.
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/CreateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <CreateUser xmlns="http://ucu.edu.uy/andis/users">
+            <name>julia</name>
+            <email>julia@example.com</email>
+          </CreateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
 
-# Buscar un usuario
-curl -s http://localhost/users/1 | jq
+# Buscar un usuario. Si no existe, la respuesta llega con HTTP 200 y sin
+# GetUserResult, no con un Fault.
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <GetUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>1</id>
+          </GetUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
 
 # Obtener todos los productos
 curl -s http://localhost/products/ | table
@@ -530,7 +566,7 @@ docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
 # donde están escuchando los servicios, por ejemplo:
 # - http://localhost:8000/orders/
 # - http://localhost:8001/products/
-# - http://localhost:8002/users
+# - http://localhost:8002/users/UserService.svc?wsdl
 
 # Tear down
 

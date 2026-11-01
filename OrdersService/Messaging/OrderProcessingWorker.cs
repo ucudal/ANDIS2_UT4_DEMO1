@@ -102,7 +102,7 @@ public class OrderProcessingWorker : BackgroundService
         _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} procesando la orden {OrderId}", _workerName, orderId);
         await Task.Delay(_processingDelay, cancellationToken);
 
-        var user = await Dependencies.GetAsync<UserDto>(httpClientFactory.CreateClient("UsersService"), $"{order.UserId}", cancellationToken);
+        var user = await Dependencies.GetUserAsync(httpClientFactory.CreateClient("UsersService"), order.UserId, cancellationToken);
         var product = await Dependencies.GetAsync<ProductDto>(httpClientFactory.CreateClient("ProductsService"), $"{order.ProductId}", cancellationToken);
 
         if (!user.Available || !product.Available)

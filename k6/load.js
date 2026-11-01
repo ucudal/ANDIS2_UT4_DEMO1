@@ -41,5 +41,18 @@ export default function () {
     else if (r < 0.8)
         checkStatus(http.get(`${GATEWAY}/products/`, { tags: { name: 'list products' } }), 200);
     else
-        checkStatus(http.get(`${GATEWAY}/users/`, { tags: { name: 'list users' } }), 200);
+        checkStatus(listUsers(), 200);
+}
+
+// Users expone SOAP: listar es un POST con el sobre de ListUsers.
+function listUsers() {
+    const envelope = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
+        + '<soap:Body><ListUsers xmlns="http://ucu.edu.uy/andis/users"/></soap:Body></soap:Envelope>';
+    return http.post(`${GATEWAY}/users/UserService.svc`, envelope, {
+        headers: {
+            'Content-Type': 'text/xml; charset=utf-8',
+            SOAPAction: '"http://ucu.edu.uy/andis/users/IUserService/ListUsers"',
+        },
+        tags: { name: 'list users' },
+    });
 }

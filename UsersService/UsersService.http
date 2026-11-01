@@ -1,18 +1,44 @@
 @UsersService_HostAddress = http://localhost
 
-### Create a user
-POST {{UsersService_HostAddress}}/users/
-Content-Type: application/json
+### Get the WSDL
+GET {{UsersService_HostAddress}}/users/UserService.svc?wsdl
 
-{
-  "name": "julia",
-  "email": "julia@example.com"
-}
+### Create a user
+POST {{UsersService_HostAddress}}/users/UserService.svc
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/CreateUser"
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <CreateUser xmlns="http://ucu.edu.uy/andis/users">
+      <name>julia</name>
+      <email>julia@example.com</email>
+    </CreateUser>
+  </soap:Body>
+</soap:Envelope>
 
 ### List all users
-GET {{UsersService_HostAddress}}/users/
+POST {{UsersService_HostAddress}}/users/UserService.svc
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/ListUsers"
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <ListUsers xmlns="http://ucu.edu.uy/andis/users" />
+  </soap:Body>
+</soap:Envelope>
 
 ### Get user by ID
-GET {{UsersService_HostAddress}}/users/1
+POST {{UsersService_HostAddress}}/users/UserService.svc
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://ucu.edu.uy/andis/users">
+      <id>1</id>
+    </GetUser>
+  </soap:Body>
+</soap:Envelope>
 
 ###

@@ -97,7 +97,7 @@ sequenceDiagram
     GW->>O: GET /orders/user/1/details
     O->>ODB: Orders del User 1
     ODB-->>O: 2 Orders
-    O->>U: GET /users/1
+    O->>U: POST /users/UserService.svc, GetUser 1
     U-->>O: nombre del cliente
     loop por cada Order
         O->>P: GET /products/{id}
@@ -169,8 +169,8 @@ sequenceDiagram
     GW-->>C: 200, Order Pending
 
     MQ->>W: entrega el id de la Order
-    W->>U: GET /users/{id}
-    U-->>W: User o 404
+    W->>U: POST /users/UserService.svc, GetUser
+    U-->>W: User o respuesta vacía
     W->>P: GET /products/{id}
     P-->>W: Product o 404
     alt existen los dos
@@ -284,6 +284,17 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   JSON con el nombre. Si `Products` lo renombra, `Orders` deja de mostrar el
   nombre del producto, y nada lo detecta hasta que se ejecuta. No hay versiones
   en las rutas.
+- **El contrato SOAP de `Users`.** `Users` no es REST: expone SOAP y publica su
+  contrato como WSDL en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
+  sobre de `GetUser` y lee el XML de la respuesta -ver
+  [Dependencies.cs](OrdersService/Dependencies.cs)-, así que depende del
+  namespace, del nombre de la operación y de los nombres de los elementos. El
+  WSDL documenta el contrato, pero `Orders` no lo usa para generar el cliente:
+  un cliente WCF generado tendría su propio canal HTTP y dejaría afuera el
+  pipeline de resiliencia. Un detalle de SOAP 1.1 afecta a los patrones: todo
+  SOAP Fault viaja como HTTP 500, que el Retry y el Circuit Breaker tratan como
+  falla transitoria. Por eso `GetUser` responde sin resultado, y no con un
+  Fault, cuando el `User` no existe.
 - **El orden de arranque.** En [docker-compose.yaml](docker-compose.yaml),
   `orders-service` no arranca hasta que `users-service` y `products-service`
   están sanos, aunque puede funcionar sin ellos.

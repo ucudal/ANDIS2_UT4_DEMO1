@@ -150,7 +150,7 @@ public class OrdersController : ControllerBase
             return NotFound();
 
         var usersClient = _httpClientFactory.CreateClient("UsersService");
-        var user = await Dependencies.GetAsync<UserDto>(usersClient, $"{userId}", HttpContext.RequestAborted);
+        var user = await Dependencies.GetUserAsync(usersClient, userId, HttpContext.RequestAborted);
 
         if (user.NotFound)
             return NotFound("User not found");

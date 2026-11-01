@@ -54,7 +54,7 @@ services:
     environment:
       SERVICE_NAME: "orders-service"
       ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
-      UsersService__BaseUrl: "http://users-service:8000/users/"
+      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
       RabbitMq__Host: "rabbitmq"
     ports:
@@ -88,7 +88,7 @@ services:
     environment:
       SERVICE_NAME: "orders-worker"
       ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
-      UsersService__BaseUrl: "http://users-service:8000/users/"
+      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
       RabbitMq__Host: "rabbitmq"
       Worker__Enabled: "true"

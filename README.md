@@ -27,7 +27,7 @@ varias réplicas de un *worker* que consumen una cola de RabbitMQ.
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
 | `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/` | nginx 1.25 | 80 |
-| `users-service` | Alta y consulta de [`Users`](UsersService/Models/Users.cs) | ASP.NET Core 10 + EF Core | 8002 |
+| `users-service` | Alta y consulta de [`Users`](UsersService/Models/Users.cs) por SOAP, con el contrato publicado como WSDL | ASP.NET Core 10 + SoapCore + EF Core | 8002 |
 | `products-service` | Catálogo de [`Products`](ProductsService/Models/Product.cs) | ASP.NET Core 10 + MongoDB Driver | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP; publica las `Orders` nuevas en la cola | ASP.NET Core 10 + EF Core | 8000 |
 | `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
@@ -40,9 +40,8 @@ Endpoints disponibles a través del gateway, en `http://localhost`:
 
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
-| `GET` | `/users/` | Lista los `Users` |
-| `GET` | `/users/{id}` | Obtiene un [`User`](UsersService/Models/Users.cs) |
-| `POST` | `/users/` | Crea un `User` |
+| `GET` | `/users/UserService.svc?wsdl` | Contrato SOAP de `Users` |
+| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un [`User`](UsersService/Models/Users.cs) y `CreateUser` crea uno; ver [UsersService.http](UsersService/UsersService.http) |
 | `GET` | `/products/` | Lista los `Products` |
 | `GET` | `/products/{id}` | Obtiene un [`Product`](ProductsService/Models/Product.cs) |
 | `POST` | `/products/` | Crea un `Product` |
@@ -67,6 +66,7 @@ cada `Order`. Esas llamadas son las que protegen los patrones de resiliencia.
 | `bash` y `curl` | Los comandos de [commands.azcli](commands.azcli) y los scripts de [demos/](demos/) | Incluidos | Git Bash[^gitbash] o WSL[^wsl]; PowerShell y `cmd` no sirven, porque los comandos usan sintaxis de `bash` |
 | `jq`[^jq] | Formatear las respuestas JSON y convertirlas en tablas con la función `table` de `commands.azcli` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
 | `column` | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
+| `xmllint` | Indentar las respuestas SOAP de `Users` en `commands.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir [commands.azcli](commands.azcli) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
 
 [^docker]: Docker Desktop: <https://www.docker.com/products/docker-desktop/>
