@@ -8,6 +8,17 @@ tienen costos. Cada sección termina con preguntas para el análisis.
 Cómo ejecutar la aplicación está en el [README.md](README.md), y los patrones
 que implementa están en [PATTERNS.md](PATTERNS.md).
 
+- [Servicios y datos](#servicios-y-datos)
+- [Comunicación entre servicios](#comunicación-entre-servicios)
+  - [Consulta de detalle: síncrona](#consulta-de-detalle-síncrona)
+  - [Creación de una Order: asíncrona](#creación-de-una-order-asíncrona)
+  - [Consulta de detalle desde la vista: eventos](#consulta-de-detalle-desde-la-vista-eventos)
+  - [Comparación](#comparación)
+- [Disponibilidad compuesta](#disponibilidad-compuesta)
+- [Consistencia de los datos](#consistencia-de-los-datos)
+- [Acoplamiento](#acoplamiento)
+- [Decisiones abiertas a discusión](#decisiones-abiertas-a-discusión)
+
 ## Servicios y datos
 
 Cada servicio es dueño de sus datos: tiene su propia base, y ningún otro

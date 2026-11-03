@@ -1,5 +1,33 @@
 # Demos de la UT4: patrones de arquitectura sobre una misma aplicación
 
+- [Aplicación base](#aplicación-base)
+- [Demos de disponibilidad](#demos-de-disponibilidad)
+  - [Qué agrega a la aplicación base](#qué-agrega-a-la-aplicación-base)
+  - [Patrones de disponibilidad](#patrones-de-disponibilidad)
+    - [Retry](#retry)
+    - [Circuit Breaker](#circuit-breaker)
+    - [Bulkhead](#bulkhead)
+    - [Throttling](#throttling)
+    - [Rate Limiting](#rate-limiting)
+    - [Health Endpoint Monitoring](#health-endpoint-monitoring)
+    - [Competing Consumers](#competing-consumers)
+    - [Event Sourcing](#event-sourcing)
+    - [Transactional Outbox](#transactional-outbox)
+- [Demos de rendimiento y procesamiento asíncrono](#demos-de-rendimiento-y-procesamiento-asíncrono)
+  - [Qué agrega a las demos de disponibilidad](#qué-agrega-a-las-demos-de-disponibilidad)
+  - [Patrones de rendimiento](#patrones-de-rendimiento)
+    - [Cache-Aside](#cache-aside)
+    - [Queue-Based Load Leveling](#queue-based-load-leveling)
+    - [Competing Consumers](#competing-consumers-1)
+    - [Publisher/Subscriber](#publishersubscriber)
+    - [Asynchronous Request-Reply](#asynchronous-request-reply)
+    - [CQRS](#cqrs)
+    - [Materialized View](#materialized-view)
+- [Demos de seguridad](#demos-de-seguridad)
+- [Demos de facilidad de modificación](#demos-de-facilidad-de-modificación)
+- [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
+- [Cobertura](#cobertura)
+
 ## Aplicación base
 
 Todas las demos parten de la misma aplicación de microservicios, que es la de

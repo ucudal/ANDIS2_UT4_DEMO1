@@ -6,5 +6,8 @@
         "cmd": "plantuml -tsvg \"${file}\""
       }
     ]
-  }
+  },
+  "markdown.extension.toc.levels": "2..4",
+  "markdown.extension.toc.updateOnSave": true,
+  "markdown.extension.toc.slugifyMode": "github"
 }
