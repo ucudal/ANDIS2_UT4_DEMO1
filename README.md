@@ -293,6 +293,7 @@ código a mano:
 | `products_cache_total` | [ProductCache.cs](ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
 | `chaos_failure_rate`, `chaos_delay_seconds` | [Common/Chaos.cs](Common/Chaos.cs) | Las fallas inyectadas, para ver en qué momento empezaron y terminaron |
 | `orders_patterns_enabled` | [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
+| `service_health` | [Common/HealthMetrics.cs](Common/HealthMetrics.cs) | Salud de cada servicio y de cada uno de sus chequeos, la misma que responde `/health`: 0 Unhealthy, 1 Degraded, 2 Healthy |
 | `orders_circuit_state` | [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
 | `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
 

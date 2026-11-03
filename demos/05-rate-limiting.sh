@@ -43,8 +43,8 @@ while [ -n "$pending" ]; do
 done
 report
 
-step "Se esperan 6 segundos a que el gateway vuelva a admitir una ráfaga"
-sleep 6
+note "Se esperan 10 segundos, para que el gateway vuelva a admitir una ráfaga y en Grafana se distingan las dos tandas..."
+sleep 10
 
 step "Con Rate Limiting: se envían $ORDERS Orders, una ráfaga de 5 y después 1 por segundo"
 rows=""

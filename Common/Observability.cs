@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 
@@ -23,12 +24,22 @@ public static class ObservabilityExtensions
         // Eventos de los pipelines de resiliencia: reintentos, aperturas del
         // circuito, rechazos del bulkhead y timeouts.
         "Polly",
-        ChaosExtensions.MeterName
+        ChaosExtensions.MeterName,
+        HealthMetricsPublisher.MeterName
     ];
 
     public static WebApplicationBuilder AddObservability(this WebApplicationBuilder builder, params string[] meters)
     {
         var serviceName = Environment.GetEnvironmentVariable("SERVICE_NAME") ?? builder.Environment.ApplicationName;
+
+        // La salud del servicio también como métrica -ver HealthMetrics.cs-,
+        // actualizada cada 5 segundos, igual que Prometheus lee /metrics.
+        builder.Services.AddSingleton<IHealthCheckPublisher, HealthMetricsPublisher>();
+        builder.Services.Configure<HealthCheckPublisherOptions>(options =>
+        {
+            options.Delay = TimeSpan.FromSeconds(2);
+            options.Period = TimeSpan.FromSeconds(5);
+        });
 
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(serviceName))

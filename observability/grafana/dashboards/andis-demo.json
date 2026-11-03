@@ -882,6 +882,105 @@
       "panels": []
     },
     {
+      "type": "state-timeline",
+      "id": 26,
+      "title": "Salud de los servicios [Demos 6, 9, 16]",
+      "description": "Resultado de /health de cada servicio: verde Healthy, naranja Degraded, rojo Unhealthy, gris si el servicio no responde. Con varias réplicas, la peor. El detalle de cada chequeo está en /health.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8e8e8e",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "no responde",
+                  "index": 0
+                },
+                "0": {
+                  "text": "Unhealthy",
+                  "index": 1
+                },
+                "1": {
+                  "text": "Degraded",
+                  "index": 2
+                },
+                "2": {
+                  "text": "Healthy",
+                  "index": 3
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "alignValue": "left",
+        "rowHeight": 0.8,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min by (job) (service_health{check=\"total\"}) or (max by (job) (up{job!=\"rabbitmq\"}) - 1)",
+          "legendFormat": "{{job}}",
+          "range": true
+        }
+      ]
+    },
+    {
       "type": "timeseries",
       "id": 13,
       "title": "Solicitudes por segundo, por servicio y código HTTP [Demos 5, 16]",
@@ -892,7 +991,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 32,
         "w": 8,
         "h": 8
       },
@@ -943,7 +1042,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 26,
+        "y": 32,
         "w": 8,
         "h": 8
       },
@@ -994,7 +1093,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 26,
+        "y": 32,
         "w": 8,
         "h": 8
       },
@@ -1109,7 +1208,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 40,
         "w": 24,
         "h": 1
       },
@@ -1126,7 +1225,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 41,
         "w": 12,
         "h": 8
       },
@@ -1243,7 +1342,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 35,
+        "y": 41,
         "w": 12,
         "h": 8
       },
@@ -1294,7 +1393,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 49,
         "w": 24,
         "h": 1
       },
@@ -1311,7 +1410,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 50,
         "w": 6,
         "h": 8
       },
@@ -1423,7 +1522,7 @@
       },
       "gridPos": {
         "x": 6,
-        "y": 44,
+        "y": 50,
         "w": 6,
         "h": 8
       },
@@ -1474,7 +1573,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 44,
+        "y": 50,
         "w": 6,
         "h": 8
       },
@@ -1566,7 +1665,7 @@
       },
       "gridPos": {
         "x": 18,
-        "y": 44,
+        "y": 50,
         "w": 6,
         "h": 8
       },

@@ -642,8 +642,8 @@ docker compose run --rm k6 run /scripts/throttling.js
 #
 # El siguiente script crea las 15 Orders de dos formas. Primero sin Rate
 # Limiting: las envía todas de golpe y reintenta las rechazadas cada 1 segundo.
-# Después con Rate Limiting: respeta el límite del gateway, con una ráfaga de 5
-# y después 1 por segundo.
+# Después de esperar 10 segundos, con Rate Limiting: respeta el límite del
+# gateway, con una ráfaga de 5 y después 1 por segundo. Tarda unos 30 segundos.
 
 ./demos/05-rate-limiting.sh
 
@@ -665,6 +665,16 @@ docker compose run --rm k6 run /scripts/throttling.js
 # orders-service.
 
 docker compose logs api-gateway | grep '" 429 '
+
+# Grafana:
+# - "Solicitudes por segundo, por servicio y código HTTP": "orders-service ·
+#   202" en cerca de 1 por segundo en las dos tandas, sin diferencias: Orders
+#   recibe lo mismo con y sin Rate Limiting, porque los rechazos se quedan en el
+#   gateway. Las series "users-service · 200" y "products-service · 200" son
+#   los workers procesando las Orders.
+# - Los 429 no se ven: Prometheus no lee métricas del gateway, solo de los
+#   servicios. Para verlos en Grafana está el escenario de k6, que registra sus
+#   propias respuestas.
 
 # Bajo carga: durante 30 segundos el cliente envía 5 POST por segundo, sin Rate
 # Limiting; después de una pausa de 5 segundos, durante otros 30 envía 1 por
@@ -691,12 +701,13 @@ docker compose run --rm k6 run /scripts/rate-limiting.js
 # -------------------------------------
 # Cada servicio expone /health, que verifica sus propias dependencias y devuelve
 # el resultado de cada chequeo: 200 si está sano y 503 si no. Users chequea su
-# base PostgreSQL; Products, su base MongoDB; y Orders, su base MySQL y
-# RabbitMQ -si RabbitMQ no está, Orders queda Degraded y responde 200, porque
-# sigue aceptando Orders: ver Transactional Outbox-. Orders no chequea a Users
-# ni a Products: como se vio en la demo de Retry, si una de esas dependencias
-# falla, Orders sigue funcionando degradado y no debe figurar como caído. Docker consulta /health cada 5 segundos para saber
-# si cada contenedor está sano. El gateway publica el /health de cada servicio:
+# base PostgreSQL; Products, su base MongoDB; y Orders, su base MySQL y RabbitMQ
+# -si RabbitMQ no está, Orders queda Degraded y responde 200, porque sigue
+# aceptando Orders: ver Transactional Outbox-. Orders no chequea a Users ni a
+# Products: como se vio en la demo de Retry, si una de esas dependencias falla,
+# Orders sigue funcionando degradado y no debe figurar como caído. Docker
+# consulta /health cada 5 segundos para saber si cada contenedor está sano. El
+# gateway publica el /health de cada servicio:
 
 curl -s http://localhost/health/products | jq
 curl -s http://localhost/health/orders | jq
@@ -719,8 +730,11 @@ curl -s http://localhost/health/users | jq
 
 docker compose logs products-service --since 2m
 
-# Grafana: no hay un panel propio; este patrón se observa en la consola y en
-# ./demos/monitor-health.sh.
+# Grafana:
+# - "Salud de los servicios": products-service en rojo, Unhealthy, mientras la
+#   base de Products está detenida, y otra vez en verde al levantarla. Los demás
+#   servicios siguen en verde: ninguno depende de esa base. Es lo mismo que
+#   muestra ./demos/monitor-health.sh, pero a lo largo del tiempo.
 
 # ------------------------------
 # --- 07 Competing Consumers ---
@@ -741,23 +755,29 @@ docker compose logs products-service --since 2m
 
 ./demos/07-competing-consumers.sh
 
-# Resultado: cada réplica demora 2 segundos en procesar una Order. Las primeras
-# 9 se procesan en unos 6 segundos, y cada réplica toma unas 3; una sola réplica
-# habría demorado unos 18 segundos. En la segunda tanda, las 2 réplicas
-# restantes procesan todo, incluida la Order que estaba procesando la réplica
-# detenida: como no había confirmado ese mensaje, RabbitMQ se lo entregó a otra
-# réplica.
+# Resultado en la consola: cada réplica demora 2 segundos en procesar una Order.
+# Las primeras 9 se procesan en unos 6 segundos, y cada réplica toma unas 3; una
+# sola réplica habría demorado unos 18 segundos. En la segunda tanda, las 2
+# réplicas restantes procesan todo, incluida la Order que estaba procesando la
+# réplica detenida: como no había confirmado ese mensaje, RabbitMQ se lo entregó
+# a otra réplica.
+#
 # Logs de Docker: qué réplica tomó cada Order.
 
 docker compose logs orders-worker | grep '\[COMPETING CONSUMERS\]'
 
 # Bajo carga: crea 60 Orders de golpe, sin pasar por el gateway.
+
 docker compose run --rm k6 run /scripts/competing-consumers.js
+
 # Para ver la tolerancia a fallas, durante la prueba se puede detener una réplica
 # y después volver a levantarla:
+
 docker stop $(docker compose ps -q orders-worker | head -1)
+
 docker compose up -d orders-worker
-# Grafana:
+
+# Resultado en Grafana:
 # - "Cola orders.process": "esperando" salta a unas 50 y baja de forma pareja
 #   en unos 40 s; "en proceso" queda en 3, una por réplica; "consumidores" baja
 #   a 2 si se detiene una réplica.
@@ -828,6 +848,10 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 # - "Cola orders.process" y "Cola orders.details-view": las líneas se cortan
 #   mientras RabbitMQ está detenido, porque Prometheus no puede leer sus
 #   métricas.
+# - "Salud de los servicios": mientras RabbitMQ está detenido, orders-service en
+#   naranja, Degraded, porque sigue aceptando Orders gracias al outbox; y
+#   orders-worker y orders-projector en rojo, Unhealthy, porque sin RabbitMQ no
+#   pueden consumir.
 
 # ---------------------------------------------------------------------------
 # Patrones de rendimiento
@@ -1030,6 +1054,8 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 #   1 y a 0.
 # - "Patrones de resiliencia prendidos en Orders": los cuatro bajan a 0 mientras
 #   Products falla, y vuelven a 1 al terminar la demo.
+# - "Salud de los servicios": orders-projector en gris, no responde, durante los
+#   15 segundos en que está detenido.
 
 # ---------------------------------------------------------------------------
 # Prueba de carga base, para las demos de rendimiento
