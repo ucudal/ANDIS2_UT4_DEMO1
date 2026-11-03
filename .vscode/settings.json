@@ -1,0 +1,10 @@
+{
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "/assets/.*\\.puml$",
+        "cmd": "plantuml -tsvg \"${file}\""
+      }
+    ]
+  }
+}

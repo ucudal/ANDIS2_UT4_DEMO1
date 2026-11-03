@@ -1,0 +1,19 @@
+@startuml
+!include PlantUML.style
+hide footbox
+actor Cliente as C
+participant "Orders\nOrdersController" as O
+participant "Worker\norders-worker" as W
+
+C ->> O : POST /orders/\nCreateOrder
+O -->> C : 202 Accepted\nLocation: /orders/{id}/status, Retry-After: 2
+loop mientras la Order está Pending, cada Retry-After
+  C ->> O : GET /orders/{id}/status\nGetOrderStatus
+  O -->> C : 200, Pending, Retry-After: 2
+end
+note right W : confirma o rechaza la Order
+C ->> O : GET /orders/{id}/status
+O -->> C : 303 See Other\nLocation: /orders/{id}
+C ->> O : GET /orders/{id}\nGetOrder
+O -->> C : 200, la Order Confirmed
+@enduml

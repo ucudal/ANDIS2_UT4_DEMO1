@@ -1,0 +1,24 @@
+@startuml
+!include PlantUML.style
+rectangle "Consultan /health" as CON {
+  rectangle "Docker\nhealthcheck cada 5 s" as D
+  rectangle "API Gateway\n/health/{servicio}" as GW
+}
+rectangle "Cada servicio chequea sus dependencias" as SV {
+  rectangle "Users" as US
+  rectangle "Products" as PS
+  rectangle "Orders" as OS
+  database "Base de Users\nusers-db" as UDB
+  database "Base de Products\nproducts-db" as PDB
+  database "Base de Orders\norders-db" as ODB
+  queue "RabbitMQ\nrabbitmq" as MQ
+}
+rectangle "Grafana, a través de Prometheus" as G
+
+CON --> SV
+US --> UDB
+PS --> PDB
+OS --> ODB
+OS ..> MQ : si no responde:\nDegraded
+SV --> G : el mismo resultado, como métrica\nservice_health
+@enduml

@@ -1,0 +1,23 @@
+@startuml
+!include PlantUML.style
+hide footbox
+actor Cliente as C
+participant "Orders\nOrdersController" as O
+database "Base de Orders\norders-db" as DB
+participant "Relay del outbox\nOutboxRelay" as R
+queue "RabbitMQ\nandis.events" as MQ
+
+C ->> O : POST /orders/
+O ->> DB : una sola transacción\norders, order_events y outbox_messages
+O -->> C : 202 Accepted
+loop cada 1 segundo
+  R ->> DB : hasta 50 mensajes pendientes\nFOR UPDATE SKIP LOCKED
+  alt RabbitMQ responde
+    R ->> MQ : publica order.created\nPublishEventAsync
+    MQ -->> R : confirma que lo recibió
+    R ->> DB : marca el mensaje como publicado\npublished_at
+  else RabbitMQ no está
+    note over R, DB : los mensajes quedan pendientes\npara la vuelta siguiente
+  end
+end
+@enduml

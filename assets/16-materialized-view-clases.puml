@@ -1,0 +1,29 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+abstract class BackgroundService <<abstract>> {
+  #ExecuteAsync(stoppingToken)
+}
+class OrderDetailsProjector {
+  {static} +DetailsQueue : string
+  #ExecuteAsync(stoppingToken)
+  -ApplyAsync(routingKey, body) : bool
+  -AddOrderAsync(db, httpClientFactory, created) : bool
+  -SetStatusAsync(db, orderId, status)
+}
+class Dependencies <<static>> {
+  {static} +GetUserAsync(client, userId) : CallResult
+  {static} +GetAsync<T>(client, path) : CallResult
+}
+class RabbitMq
+class OrderDetails
+class OrdersQueriesController
+
+OrderDetailsProjector --|> BackgroundService
+OrderDetailsProjector --> RabbitMq : consume orders.details-view
+OrderDetailsProjector --> Dependencies : busca los nombres\nal crearse la Order
+OrderDetailsProjector --> OrderDetails : escribe
+OrdersQueriesController --> OrderDetails : lee
+@enduml

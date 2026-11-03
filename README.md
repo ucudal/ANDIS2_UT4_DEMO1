@@ -44,7 +44,7 @@ Endpoints disponibles a través del gateway, en `http://localhost`:
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
 | `GET` | `/users/UserService.svc?wsdl` | Contrato SOAP de `Users` |
-| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un [`User`](UsersService/Models/Users.cs), `CreateUser` crea uno y `UpdateUser` lo cambia y publica `user.updated`; ver [UsersService.http](UsersService/UsersService.http) |
+| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un [`User`](UsersService/Models/Users.cs), `CreateUser` crea uno y `UpdateUser` lo cambia y publica `user.updated`; ver [UsersService/UsersService.http](UsersService/UsersService.http) |
 | `GET` | `/products/` | Lista los `Products` |
 | `GET` | `/products/{id}` | Obtiene un [`Product`](ProductsService/Models/Product.cs) |
 | `POST` | `/products/` | Crea un `Product` |
@@ -209,21 +209,21 @@ para probarlos sin pasar por el gateway. Las réplicas de `orders-worker` y
 
 | Patrón | Dónde |
 | ------ | ----- |
-| Retry | [OrdersService/Resilience.cs](OrdersService/Resilience.cs): `AddRetry` en el pipeline de los `HttpClient` hacia `Users` y `Products` |
-| Circuit Breaker | [OrdersService/Resilience.cs](OrdersService/Resilience.cs): `AddCircuitBreaker`; la degradación está en `GetOrdersForUser`, en [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) |
-| Bulkhead | [OrdersService/Resilience.cs](OrdersService/Resilience.cs): `AddRateLimiter` con un `ConcurrencyLimiter` por dependencia |
-| Throttling | [OrdersService/Program.cs](OrdersService/Program.cs): `AddRateLimiter`, política `throttling`, aplicada en `GetOrdersForUser`; por cliente, en [ApiGateway/nginxconf/nginx.conf](ApiGateway/nginxconf/nginx.conf): `limit_req_zone` y `limit_req` para `POST /orders/` |
+| Retry | `AddRetry` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](OrdersService/Resilience.cs), para los `HttpClient` hacia `Users` y `Products` |
+| Circuit Breaker | `AddCircuitBreaker` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](OrdersService/Resilience.cs); la degradación está en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs) |
+| Bulkhead | `AddRateLimiter` con un `ConcurrencyLimiter` por dependencia, en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](OrdersService/Resilience.cs) |
+| Throttling | `AddRateLimiter`, política `throttling`, en [OrdersService/Program.cs](OrdersService/Program.cs), aplicada en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs); por cliente, en [ApiGateway/nginxconf/nginx.conf](ApiGateway/nginxconf/nginx.conf): `limit_req_zone` y `limit_req` para `POST /orders/` |
 | Rate Limiting | Del lado del cliente: [demos/05-rate-limiting.sh](demos/05-rate-limiting.sh) y [k6/rate-limiting.js](k6/rate-limiting.js) crean `Orders` sin superar el límite del gateway |
 | Health Endpoint Monitoring | `AddHealthChecks` y `MapHealthChecks` en el `Program.cs` de cada servicio; `healthcheck` en [docker-compose.yaml](docker-compose.yaml); rutas `/health/*` en `nginx.conf` |
-| Competing Consumers | [OrdersService/Messaging/](OrdersService/Messaging/): `RabbitMq.cs` publica, `OrderProcessingWorker.cs` consume; servicio `orders-worker` con 3 réplicas en `docker-compose.yaml` |
-| Event Sourcing | [OrdersService/Models/OrderEvent.cs](OrdersService/Models/OrderEvent.cs) y [OrderProjection.cs](OrdersService/Models/OrderProjection.cs); tabla `order_events` en [mysqlinit.sql](OrdersService/mysqlinit/mysqlinit.sql) |
-| Transactional Outbox | [OutboxMessage.cs](OrdersService/Models/OutboxMessage.cs), escrito en `CreateOrder` de [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) y en el *worker*; [OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs) lo publica |
-| Cache-Aside | [ProductsService/ProductCache.cs](ProductsService/ProductCache.cs), usado en [ProductsController.cs](ProductsService/Controllers/ProductsController.cs) |
+| Competing Consumers | Los métodos `ExecuteAsync` y `ProcessAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs), consumen la cola `orders.process`; servicio `orders-worker` con 3 réplicas en [docker-compose.yaml](docker-compose.yaml) |
+| Event Sourcing | La clase `OrderEvent`, en [OrdersService/Models/OrderEvent.cs](OrdersService/Models/OrderEvent.cs), y el método `Replay` de la clase `OrderProjection`, en [OrdersService/Models/OrderProjection.cs](OrdersService/Models/OrderProjection.cs); tabla `order_events` en [OrdersService/mysqlinit/mysqlinit.sql](OrdersService/mysqlinit/mysqlinit.sql) |
+| Transactional Outbox | La clase `OutboxMessage`, en [OrdersService/Models/OutboxMessage.cs](OrdersService/Models/OutboxMessage.cs), escrita en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs), y en el método `ProcessAsync` del *worker*; la publica el método `PublishPendingAsync` de la clase `OutboxRelay`, en [OrdersService/Messaging/OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs) |
+| Cache-Aside | Los métodos `GetOrLoadAsync` e `InvalidateAsync` de la clase `ProductCache`, en [ProductsService/ProductCache.cs](ProductsService/ProductCache.cs), usados en los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](ProductsService/Controllers/ProductsController.cs) |
 | Queue-Based Load Leveling | `POST /orders/` responde sin procesar la `Order`; la cola `orders.process` absorbe los picos |
-| Publisher/Subscriber | [Common/RabbitMq.cs](Common/RabbitMq.cs) y los contratos de [Common/Events.cs](Common/Events.cs); publican `Orders`, `Users` y `Products`; se suscriben `orders-worker` y `orders-projector` |
-| Asynchronous Request-Reply | `CreateOrder` y `GetOrderStatus` en [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) |
-| CQRS | Comandos en [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) y [OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs); consultas en [OrdersQueriesController.cs](OrdersService/Controllers/OrdersQueriesController.cs) |
-| Materialized View | Tabla `order_details`, mantenida por [OrderDetailsProjector.cs](OrdersService/Messaging/OrderDetailsProjector.cs) en `orders-projector` |
+| Publisher/Subscriber | Los métodos `PublishEventAsync` y `DeclareSubscriberQueueAsync` de la clase `RabbitMq`, en [Common/RabbitMq.cs](Common/RabbitMq.cs), y los contratos de la clase `Events` y sus registros, en [Common/Events.cs](Common/Events.cs); publican `Orders`, `Users` y `Products`; se suscriben `orders-worker` y `orders-projector` |
+| Asynchronous Request-Reply | Los métodos `CreateOrder` y `GetOrderStatus` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs) |
+| CQRS | Comandos en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs), y en el método `ProcessAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs); consultas en el método `GetOrdersForUser` de la clase `OrdersQueriesController`, en [OrdersService/Controllers/OrdersQueriesController.cs](OrdersService/Controllers/OrdersQueriesController.cs) |
+| Materialized View | Tabla `order_details`, mantenida por el método `ApplyAsync` de la clase `OrderDetailsProjector`, en [OrdersService/Messaging/OrderDetailsProjector.cs](OrdersService/Messaging/OrderDetailsProjector.cs), en `orders-projector` |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
 está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad)
@@ -276,8 +276,8 @@ resultados se ven únicamente en la terminal.
 ### Métricas
 
 Los servicios exponen sus métricas en `GET /metrics`, con OpenTelemetry y el
-exporter de Prometheus, configurado en
-[Common/Observability.cs](Common/Observability.cs). Casi todas las métricas ya
+exporter de Prometheus, configurado en el método `AddObservability` de la clase
+`ObservabilityExtensions`, en [Common/Observability.cs](Common/Observability.cs). Casi todas las métricas ya
 las publican las bibliotecas que usa la aplicación; no hubo que instrumentar el
 código a mano:
 
@@ -288,14 +288,22 @@ código a mano:
 | `resilience_polly_strategy_events_total` | Polly | Retry, Circuit Breaker, Bulkhead y timeouts: cada evento, por dependencia |
 | `resilience_polly_pipeline_duration_milliseconds` | Polly | Duración de cada llamada a `Users` y `Products`, con los reintentos incluidos |
 | `rabbitmq_detailed_queue_*` | RabbitMQ | Mensajes esperando y en proceso en la cola, y consumidores conectados |
-| `orders_processed_total` | [OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
-| `outbox_pending`, `outbox_published_total` | [OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs) | Mensajes del *outbox* que esperan ser publicados, y los publicados |
-| `products_cache_total` | [ProductCache.cs](ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
-| `chaos_failure_rate`, `chaos_delay_seconds` | [Common/Chaos.cs](Common/Chaos.cs) | Las fallas inyectadas, para ver en qué momento empezaron y terminaron |
-| `orders_patterns_enabled` | [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
-| `service_health` | [Common/HealthMetrics.cs](Common/HealthMetrics.cs) | Salud de cada servicio y de cada uno de sus chequeos, la misma que responde `/health`: 0 Unhealthy, 1 Degraded, 2 Healthy |
-| `orders_circuit_state` | [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
+| `orders_processed_total` | La clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
+| `outbox_pending`, `outbox_published_total` | La clase `OutboxRelay`, en [OrdersService/Messaging/OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs) | Mensajes del *outbox* que esperan ser publicados, y los publicados |
+| `products_cache_total` | La clase `ProductCache`, en [ProductsService/ProductCache.cs](ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
+| `chaos_failure_rate`, `chaos_delay_seconds` | El método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](Common/Chaos.cs) | Las fallas inyectadas, para ver en qué momento empezaron y terminaron |
+| `orders_patterns_enabled` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
+| `service_health` | La clase `HealthMetricsPublisher`, en [Common/HealthMetrics.cs](Common/HealthMetrics.cs) | Salud de cada servicio y de cada uno de sus chequeos, la misma que responde `/health`: 0 Unhealthy, 1 Degraded, 2 Healthy |
+| `orders_circuit_state` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
 | `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
+
+> [!TIP]
+>
+> Consulta [.NET Observability with OpenTelemetry](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/observability-with-otel)
+> para tener más información sobre cómo `AddObservability` configura las
+> métricas, y [Creating Metrics](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/metrics-instrumentation)
+> sobre los contadores y los *gauges* propios de la aplicación, como
+> `service_health` y `orders_patterns_enabled`.
 
 ### Escenarios de carga
 

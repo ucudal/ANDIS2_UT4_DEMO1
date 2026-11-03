@@ -1,0 +1,18 @@
+@startuml
+!include PlantUML.style
+' !pragma layout smetana
+
+
+hide empty description
+
+state "Cerrado\nClosed" as Closed
+state "Abierto\nOpen" as Open
+state "Semiabierto\nHalfOpen" as HalfOpen
+
+[*] --> Closed
+Closed -right-> Open : falla la mitad en 10 s,\ncon 5 llamadas o más\n//CircuitFailureRatio//\n//CircuitSamplingDuration//\n//OnOpened//
+Open -down-> HalfOpen : pasan 15 s\n//CircuitBreakDuration//\n//OnHalfOpened//
+HalfOpen -up-> Open : llamada de prueba falla\n//OnOpened//
+HalfOpen -left-> Closed : llamada de prueba funciona\n//OnClosed//
+note bottom of Open : las llamadas fallan de inmediato,\nsin llegar a Products
+@enduml

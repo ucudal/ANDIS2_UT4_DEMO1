@@ -1,0 +1,28 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+abstract class BackgroundService <<abstract>> {
+  #ExecuteAsync(stoppingToken)
+}
+class OrderProcessingWorker {
+  {static} +OrdersQueue : string
+  #ExecuteAsync(stoppingToken)
+  -ProcessAsync(orderId) : bool
+}
+class RabbitMq {
+  +GetConnectionAsync() : IConnection
+  {static} +DeclareSubscriberQueueAsync(channel, queue, routingKeys)
+}
+class Dependencies <<static>> {
+  {static} +GetUserAsync(client, userId) : CallResult
+  {static} +GetAsync<T>(client, path) : CallResult
+}
+class OrdersDbContext
+
+OrderProcessingWorker --|> BackgroundService
+OrderProcessingWorker --> RabbitMq : consume orders.process
+OrderProcessingWorker --> Dependencies : pide el User y el Product
+OrderProcessingWorker --> OrdersDbContext : guarda el resultado
+@enduml

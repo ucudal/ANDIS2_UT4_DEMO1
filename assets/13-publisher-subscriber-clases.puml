@@ -1,0 +1,34 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+package Common {
+  class Events <<static>> {
+    {static} +Exchange : string
+    {static} +OrderCreated : string
+    {static} +UserUpdated : string
+    {static} +ProductUpdated : string
+  }
+  class RabbitMq {
+    +PublishEventAsync<T>(routingKey, payload)
+    {static} +DeclareEventsExchangeAsync(channel)
+    {static} +DeclareSubscriberQueueAsync(channel, queue, routingKeys)
+  }
+  class OrderCreated <<record>>
+  class UserUpdated <<record>>
+  class ProductUpdated <<record>>
+}
+class OutboxRelay
+class UserService
+class ProductsController
+class OrderProcessingWorker
+class OrderDetailsProjector
+
+OutboxRelay --> RabbitMq : publica
+UserService --> RabbitMq : publica UserUpdated
+ProductsController --> RabbitMq : publica ProductUpdated
+OrderProcessingWorker --> RabbitMq : se suscribe
+OrderDetailsProjector --> RabbitMq : se suscribe
+RabbitMq ..> Events
+@enduml

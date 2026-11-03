@@ -1,0 +1,17 @@
+@startuml
+!include PlantUML.style
+hide footbox
+
+participant "Proceso por lotes\n05-rate-limiting.sh" as L
+participant "API Gateway\nlimit_req" as GW
+participant "Orders\norders-service" as O
+
+L ->> GW : 15 POST /orders/ de golpe
+GW ->> O : unos 6: la ráfaga de 5 y 1 más
+GW -->> L : el resto, 429 Too Many Requests
+loop cada 1 segundo, mientras queden pendientes
+  L ->> GW : reenvía todas las pendientes
+  GW ->> O : pasa 1
+  GW -->> L : el resto, 429
+end
+@enduml

@@ -1,0 +1,18 @@
+@startuml
+!include PlantUML.style
+hide footbox
+queue "Cola\norders.details-view" as Q
+participant "Proyector\nOrderDetailsProjector" as PR
+participant "Users y Products\nusers-service, products-service" as U
+database "Vista\norder_details" as V
+
+Q ->> PR : order.created
+PR ->> U : nombre del cliente y del producto, una sola vez
+U -->> PR : los nombres
+PR ->> V : agrega la fila, con los nombres\nAddOrderAsync
+Q ->> PR : order.confirmed
+PR ->> V : actualiza el estado\nSetStatusAsync
+Q ->> PR : product.updated
+PR ->> V : cambia el nombre en todas las filas del Product\nExecuteUpdateAsync
+note right V : la consulta lee solo esta tabla,\nsin llamar a Users ni a Products
+@enduml

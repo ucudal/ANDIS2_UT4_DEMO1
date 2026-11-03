@@ -1,0 +1,48 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class OrderEvent {
+  +Id : long
+  +OrderId : int
+  +Type : string
+  +Data : string
+  +OccurredAt : DateTime
+  {static} +Create(orderId, type, data) : OrderEvent
+}
+class OrderEventTypes <<static>> {
+  {static} +OrderCreated
+  {static} +OrderConfirmed
+  {static} +OrderRejected
+}
+class OrderCreatedData <<record>> {
+  UserId
+  ProductId
+  Quantity
+}
+class OrderConfirmedData <<record>> {
+  ProcessedBy
+}
+class OrderRejectedData <<record>> {
+  Reason
+  ProcessedBy
+}
+class OrderProjection <<static>> {
+  {static} +Replay(events) : Order
+}
+class Order {
+  +Id : int
+  +UserId : int
+  +ProductId : string
+  +Quantity : int
+  +Status : string
+}
+
+OrderProjection ..> OrderEvent : lee
+OrderProjection ..> Order : calcula
+OrderEvent ..> OrderEventTypes : Type
+OrderEvent ..> OrderCreatedData : Data, en JSON
+OrderEvent ..> OrderConfirmedData : Data, en JSON
+OrderEvent ..> OrderRejectedData : Data, en JSON
+@enduml

@@ -1,0 +1,15 @@
+@startuml
+!include PlantUML.style
+start
+:Consulta de detalle
+GET /orders/user/{userId}/details;
+if (¿Hay lugar entre los 20?\npolítica throttling) then (sí)
+  :Se atiende
+  GetOrdersForUser;
+  :Libera el lugar al terminar la respuesta;
+else (no, y no hay fila\nQueueLimit = 0)
+  :503 con Retry-After: 2
+  sin llegar al controlador;
+endif
+stop
+@enduml

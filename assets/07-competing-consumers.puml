@@ -1,0 +1,16 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Orders\norders-service" as O
+hexagon "Exchange de eventos\nandis.events" as X
+queue "Cola\norders.process" as Q
+rectangle "Réplica 1\norders-worker" as W1
+rectangle "Réplica 2\norders-worker" as W2
+rectangle "Réplica 3\norders-worker" as W3
+
+O --> X : order.created,\npor el outbox
+X --> Q
+Q --> W1 : un mensaje por vez\na cada réplica\nprefetchCount: 1
+Q --> W2
+Q --> W3
+@enduml

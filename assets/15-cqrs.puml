@@ -1,0 +1,20 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Comandos" {
+  rectangle "Crear una Order\nOrdersController.CreateOrder" as C1
+  rectangle "Procesar una Order\nOrderProcessingWorker" as C2
+}
+rectangle "Consultas" {
+  rectangle "Detalle desde la vista\nOrdersQueriesController" as Q1
+}
+database "Modelo de escritura\norders, order_events,\noutbox_messages" as T1
+rectangle "Proyector\nOrderDetailsProjector" as PR
+database "Modelo de lectura\norder_details" as T2
+
+C1 --> T1
+C2 --> T1
+T1 --> PR : eventos por el outbox\nandis.events
+PR --> T2
+Q1 --> T2
+@enduml

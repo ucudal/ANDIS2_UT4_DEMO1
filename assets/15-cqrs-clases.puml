@@ -1,0 +1,38 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class OrdersController {
+  +CreateOrder(order)
+  +GetOrdersForUser(userId)
+}
+class OrdersQueriesController {
+  +GetOrdersForUser(userId)
+}
+class Order {
+  +Id : int
+  +UserId : int
+  +ProductId : string
+  +Quantity : int
+  +Status : string
+}
+class OrderDetails {
+  +OrderId : int
+  +UserId : int
+  +CustomerName : string
+  +ProductId : string
+  +ProductName : string
+  +Quantity : int
+  +Status : string
+  +UpdatedAt : DateTime
+}
+class OrderDetailsProjector
+
+OrdersController --> Order : escribe
+OrderDetailsProjector --> OrderDetails : escribe
+OrdersQueriesController --> OrderDetails : solo lee
+
+note top of OrdersController : GetOrdersForUser es la\nconsulta síncrona, para comparar
+note bottom of OrderDetails : ya tiene la forma de la\nrespuesta: con los nombres
+@enduml

@@ -1,0 +1,14 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Eventos de una Order\ntabla order_events" as E {
+  rectangle "1 · Se creó\nOrderCreated" as E1
+  rectangle "2 · Se confirmó\nOrderConfirmed" as E2
+}
+database "Estado actual: Confirmed\ntabla orders" as S
+rectangle "Reconstruir la proyección\nPOST /orders/projections/rebuild" as R
+
+E1 --> E2
+E --> S : se reproducen en orden\nOrderProjection.Replay
+R ..> S : borra orders\ny la vuelve a calcular
+@enduml

@@ -1,0 +1,53 @@
+name: Render PlantUML
+on:
+  push:
+    branches: [main]
+    paths: ['assets/**/*.puml', 'assets/**/*.style']
+permissions:
+  contents: write
+env:
+  # Debe coincidir con la versión local
+  PLANTUML_VERSION: 1.2026.6
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # El historial completo, para comparar las fechas de los commits.
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install PlantUML
+        run: |
+          sudo apt-get update && sudo apt-get install -y graphviz
+          curl -sSfL -o plantuml.jar \
+            "https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_VERSION}/plantuml-${PLANTUML_VERSION}.jar"
+      # Al guardar un .puml en VS Code se genera su .svg, y se commitean juntos.
+      # Acá solo se genera el .svg que falta o que quedó viejo: el que no existe,
+      # o cuyo último commit es anterior al último del .puml o del estilo
+      # compartido, PlantUML.style.
+      - name: Render SVGs
+        run: |
+          commit_time() { git log -1 --format=%ct -- "$@" | grep . || echo 0; }
+          includes=$(commit_time 'assets/*.style')
+          find assets -name '*.puml' | while read -r puml; do
+            svg="${puml%.puml}.svg"
+            source=$(commit_time "$puml")
+            [ "$includes" -gt "$source" ] && source=$includes
+            if [ ! -f "$svg" ] || [ "$source" -gt "$(commit_time "$svg")" ]; then
+              echo "Se genera $svg"
+              java -jar plantuml.jar -tsvg "$puml"
+            fi
+          done
+      - name: Commit
+        run: |
+          rm plantuml.jar
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A 'assets/*.svg'
+          git diff --cached --quiet || git commit -m "Render PlantUML diagrams"
+          git pull --rebase
+          git push

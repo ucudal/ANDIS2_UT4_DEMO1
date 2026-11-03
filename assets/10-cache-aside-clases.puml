@@ -1,0 +1,31 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class ProductsController {
+  {static} -AllProductsKey : string
+  {static} -ProductKey(id) : string
+  +GetProduct(productId)
+  +UpdateProduct(productId, product)
+}
+class ProductCache {
+  +Settings : CacheSettings
+  +GetOrLoadAsync<T>(key, load) : T
+  +InvalidateAsync(keys)
+  -LoadFromDbAsync<T>(load) : T
+}
+class CacheSettings {
+  +Enabled : bool
+  +DbDelayMs : int
+}
+interface IMongoCollection <<interface>>
+interface IConnectionMultiplexer <<interface>>
+
+ProductsController --> ProductCache : lee e invalida
+ProductsController --> IMongoCollection : guarda los cambios
+ProductCache --> IConnectionMultiplexer : Redis
+ProductCache --> CacheSettings
+
+note bottom of ProductCache : load es la lectura de MongoDB:\nsolo se ejecuta en un miss
+@enduml

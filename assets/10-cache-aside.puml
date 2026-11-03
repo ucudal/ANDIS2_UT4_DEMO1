@@ -1,0 +1,25 @@
+@startuml
+!include PlantUML.style
+hide footbox
+actor Cliente as C
+participant "Products\nProductsController" as P
+database "Caché\nredis" as R
+database "Base de Products\nproducts-db" as M
+
+C ->> P : GET /products/{productId}
+P ->> R : busca product:{productId}\nGetOrLoadAsync
+alt miss: no está
+  R -->> P : nada
+  P ->> M : lee el Product
+  M -->> P : el Product
+  P ->> R : lo guarda por 60 segundos\nTtl
+else hit: está
+  R -->> P : el Product
+end
+P -->> C : 200, el Product
+
+C ->> P : PUT /products/{productId}
+P ->> M : guarda el cambio
+P ->> R : borra product:{productId} y products:all\nInvalidateAsync
+P -->> C : 200
+@enduml

@@ -378,10 +378,12 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
 - **La biblioteca [Common](Common/).** Los tres servicios la referencian. Tiene
   código transversal -inyección de fallas, métricas, la respuesta de salud- y
   también los contratos que `Orders` usa para leer las respuestas de `Users` y
-  `Products`: [UserDto](Common/UserDto.cs) y [ProductDto](Common/ProductDto.cs).
+  `Products`: los registros `UserDto`, en [Common/UserDto.cs](Common/UserDto.cs),
+  y `ProductDto`, en [Common/ProductDto.cs](Common/ProductDto.cs).
   `Products` no usa `ProductDto`: tiene su propio modelo. También tiene la
-  conexión con RabbitMQ y los contratos de los eventos, en
-  [Events.cs](Common/Events.cs). Un cambio en `Common` obliga a recompilar y
+  conexión con RabbitMQ, en la clase `RabbitMq`, y los contratos de los
+  eventos, en la clase `Events` y sus registros, en
+  [Common/Events.cs](Common/Events.cs). Un cambio en `Common` obliga a recompilar y
   redesplegar los tres servicios.
 - **Los contratos de los eventos.** El proyector espera que `product.updated`
   traiga el identificador y el nombre del `Product`. Publisher/Subscriber
@@ -395,8 +397,9 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   en las rutas.
 - **El contrato SOAP de `Users`.** `Users` no es REST: expone SOAP y publica su
   contrato como WSDL en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
-  sobre de `GetUser` y lee el XML de la respuesta -ver
-  [Dependencies.cs](OrdersService/Dependencies.cs)-, así que depende del
+  sobre de `GetUser` y lee el XML de la respuesta -ver el método `GetUserAsync`
+  de la clase `Dependencies`, en
+  [OrdersService/Dependencies.cs](OrdersService/Dependencies.cs)-, así que depende del
   namespace, del nombre de la operación y de los nombres de los elementos. El
   WSDL documenta el contrato, pero `Orders` no lo usa para generar el cliente:
   un cliente WCF generado tendría su propio canal HTTP y dejaría afuera el
@@ -429,14 +432,14 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 
 | Decisión | Qué se gana | Qué cuesta | Dónde se aborda |
 | -------- | ----------- | ---------- | --------------- |
-| Sin autenticación ni TLS | Simplicidad | Cualquiera puede crear `Orders` o `Users` | Demo 3: Gatekeeper, Federated Identity, Gateway Offloading |
-| Los endpoints de inyección de fallas son accesibles a través del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | Demo 3 |
+| Sin autenticación ni TLS | Simplicidad | Cualquiera puede crear `Orders` o `Users` | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, Federated Identity, Gateway Offloading |
+| Los endpoints de inyección de fallas son accesibles a través del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad) |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
 | `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; MongoDB sin réplicas no tiene transacciones | Si RabbitMQ no está, el evento se pierde y la vista queda con el nombre anterior | — |
 | El proyector tiene una sola réplica | Los eventos de cada `Order` se aplican en orden | Si se cae, la vista se atrasa hasta que vuelva | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
-| Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | Demo 4: External Configuration Store |
-| Contraseñas en texto plano en `docker-compose.yaml` | Se levanta con un solo comando | Las credenciales quedan en el repositorio | Demo 3 |
+| Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
+| Contraseñas en texto plano en `docker-compose.yaml` | Se levanta con un solo comando | Las credenciales quedan en el repositorio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad) |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de Docker, sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 

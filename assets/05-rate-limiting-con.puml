@@ -1,0 +1,15 @@
+@startuml
+!include PlantUML.style
+hide footbox
+
+participant "Proceso por lotes\n05-rate-limiting.sh" as L
+participant "API Gateway\nlimit_req" as GW
+participant "Orders\norders-service" as O
+
+L ->> GW : 5 POST /orders/, la ráfaga
+GW ->> O : los 5
+loop 10 veces, cada 1 segundo
+  L ->> GW : 1 POST /orders/
+  GW ->> O : pasa
+end
+@enduml

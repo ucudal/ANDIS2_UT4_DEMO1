@@ -1,0 +1,37 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class OrdersController {
+  +CreateOrder(order)
+}
+class OrderProcessingWorker {
+  -ProcessAsync(orderId) : bool
+}
+class OutboxRelay {
+  #ExecuteAsync(stoppingToken)
+  -PublishPendingAsync()
+}
+class OrdersDbContext
+class OutboxMessage {
+  +Id : long
+  +RoutingKey : string
+  +Payload : string
+  +CreatedAt : DateTime
+  +PublishedAt : DateTime?
+  {static} +Create<T>(routingKey, payload) : OutboxMessage
+}
+class RabbitMq {
+  +PublishEventAsync(routingKey, json)
+}
+
+OrdersController --> OrdersDbContext : Order, OrderEvent\ny OutboxMessage
+OrderProcessingWorker --> OrdersDbContext : OrderEvent\ny OutboxMessage
+OutboxRelay --> OrdersDbContext : lee y marca\nlos pendientes
+OutboxRelay --> RabbitMq : publica
+OrdersDbContext --> OutboxMessage : OutboxMessages
+
+note top of OrdersController : no conoce a RabbitMq
+note bottom of OutboxRelay : el único que publica\nlos eventos de Orders
+@enduml

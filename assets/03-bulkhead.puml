@@ -1,0 +1,19 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Consulta de detalle\nGetOrdersForUser" as O
+rectangle "Compartimento de Users" {
+  rectangle "20 en curso y 5 en espera\nbulkheadPermitLimit: 20" as UL
+}
+rectangle "Compartimento de Products" {
+  rectangle "5 en curso y 5 en espera\nDefaultBulkheadPermitLimit" as PL
+}
+rectangle "Users\nusers-service" as U
+rectangle "Products, lento\nproducts-service" as P
+
+O -->> UL
+UL -->> U
+O -->> PL
+PL -->> P
+PL ..>> O : lleno: se rechaza\nno disponible [bulkhead lleno]
+@enduml
