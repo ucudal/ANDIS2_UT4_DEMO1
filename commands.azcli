@@ -748,6 +748,99 @@ docker compose logs products-service --since 2m
 # rechaza, y recién entonces le confirma el mensaje a RabbitMQ -ack-. Si una
 # réplica se cae antes, RabbitMQ entrega el mensaje a otra.
 #
+# Ver las tres réplicas de orders-worker y la cola orders.process: en la
+# columna consumers, la cola tiene 3, una por réplica, y en messages no tiene
+# mensajes esperando. La cola orders.details-view es la del proyector de la
+# vista -ver CQRS- y no participa en esta demo.
+
+docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' orders-worker
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Detener las tres réplicas. La cola orders.process se queda sin consumidores.
+
+docker compose stop orders-worker
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Crear una Order y guardar su id en una variable, para usarlo en los comandos
+# siguientes. Orders la acepta igual -202-: la guarda como Pending y publica el
+# evento order.created, sin esperar a que nadie la procese.
+
+id=$(curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq .id)
+echo "$id"
+
+# Esperar unos segundos y consultar la Order: sigue Pending, porque no hay
+# ningún worker. El mensaje espera en la cola: orders.process tiene 1 en
+# messages y 0 en consumers.
+
+curl -s http://localhost/orders/$id | table
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Levantar una sola réplica y guardar su nombre en una variable. Al conectarse,
+# RabbitMQ le entrega el mensaje que estaba esperando.
+
+worker=$(docker compose ps -a --format '{{.Name}}' orders-worker | head -1)
+docker start $worker
+
+# Esperar unos segundos -lo que tarda en arrancar más lo que demora en procesar-
+# y consultar la Order: ya está Confirmed. La cola quedó vacía y con 1
+# consumidor.
+
+curl -s http://localhost/orders/$id | table
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# En los logs de la réplica: se conectó a la cola, procesó la Order y la
+# confirmó. Ningún mensaje se perdió mientras no había workers.
+
+docker logs --since 1m $worker 2>&1 | grep '\[COMPETING CONSUMERS\]'
+
+# Crear 6 Orders de golpe con una sola réplica. Se crean directamente en
+# orders-service, en el puerto 8000, sin pasar por el gateway, para no chocar
+# con su límite de POST /orders/ -ver Throttling-.
+
+for i in $(seq 6); do
+  curl -s -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq -c
+done
+
+# Consultar la cola varias veces seguidas: los mensajes bajan de a uno cada 2
+# segundos, porque una sola réplica procesa una Order por vez. Las 6 tardan
+# unos 12 segundos.
+
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# En los logs, todas las Orders las procesó la misma réplica, una detrás de
+# otra:
+
+docker compose logs --since 30s orders-worker | grep '\[COMPETING CONSUMERS\]'
+
+# Levantar las otras dos réplicas -docker compose start levanta las que estén
+# detenidas, después de comprobar que los servicios de los que dependen están
+# sanos- y ver que la cola vuelve a tener 3 consumidores.
+
+docker compose start orders-worker
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Esperar unos segundos a que arranquen y crear otras 6 Orders de golpe:
+
+for i in $(seq 6); do
+  curl -s -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq -c
+done
+
+# Ahora las tres réplicas compiten por los mensajes de la misma cola: cada una
+# toma una Order, y RabbitMQ le entrega la siguiente recién cuando confirma la
+# anterior. En los logs, las Orders se reparten entre orders-worker-1, -2 y -3,
+# unas 2 cada una, y las 6 se procesan en unos 4 segundos en lugar de 12. Los
+# logs se muestran agrupados por réplica, y si pasaron menos de 30 segundos
+# desde la tanda anterior, orders-worker-1 también muestra sus últimas Orders:
+# hay que fijarse en los números de Order.
+
+docker compose logs --since 30s orders-worker | grep '\[COMPETING CONSUMERS\]'
+
 # El siguiente script crea 9 Orders y muestra qué réplica procesó cada una.
 # Después crea 9 más, detiene una réplica mientras procesa y al final la vuelve
 # a levantar. Tarda unos 30 segundos. La cola y sus consumidores se ven en la
