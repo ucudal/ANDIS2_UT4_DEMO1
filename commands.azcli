@@ -1099,10 +1099,92 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 # Products busca primero en Redis. Si no está -miss-, lee MongoDB y lo guarda en
 # Redis por 60 segundos; la próxima lectura sale de Redis -hit-. Al cambiar un
 # Product, borra su clave de Redis. Para que la diferencia se note, se puede
-# simular una base más lenta y apagar la caché, sin reiniciar:
+# simular una base más lenta y apagar la caché, sin reiniciar.
+#
+# Apagar la caché y simular que cada lectura de MongoDB demora 200 ms. Luego
+# leer el mismo Product 3 veces, mostrando solo el tiempo de respuesta: todas
+# demoran algo más de 0.2 segundos, porque todas van a MongoDB.
+
+curl -s -X PUT http://localhost/products/cache \
+  -H "Content-Type: application/json" -d '{"enabled": false, "dbDelayMs": 200}' | jq
+
+for i in 1 2 3; do
+  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+done
+
+# Prender la caché, con la base igual de lenta, y borrar la clave del Product
+# en Redis por si quedó de una lectura anterior, para empezar con la caché
+# vacía. Luego leer el Product otras 3 veces y comparar con el resultado
+# anterior: la primera lectura demora lo mismo, porque es un miss y va a
+# MongoDB; las siguientes demoran 2 o 3 milisegundos, porque son hits y salen
+# de Redis.
 
 curl -s -X PUT http://localhost/products/cache \
   -H "Content-Type: application/json" -d '{"enabled": true, "dbDelayMs": 200}' | jq
+
+docker compose exec redis redis-cli DEL product:60f7c2b5e1d3c2a1b8e4d123
+
+for i in 1 2 3; do
+  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+done
+
+# Ver el Product guardado en Redis: la clave product:{id}, su valor -el Product
+# en JSON, con los nombres de los campos tal como están en la clase Product- y
+# cuántos segundos le quedan antes de vencer, de los 60 con los que se guarda.
+
+docker compose exec redis redis-cli KEYS '*'
+docker compose exec redis redis-cli GET product:60f7c2b5e1d3c2a1b8e4d123
+docker compose exec redis redis-cli TTL product:60f7c2b5e1d3c2a1b8e4d123
+
+# En los logs de Products: los dos cambios de configuración de la caché y,
+# después de prenderla, un miss y dos hits.
+
+docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
+
+# Cambiar el nombre del Product. Products lo guarda en MongoDB y borra su
+# clave de Redis, para que nadie lea el nombre viejo: la clave ya no existe
+# -EXISTS devuelve 0-.
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+  -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
+
+docker compose exec redis redis-cli EXISTS product:60f7c2b5e1d3c2a1b8e4d123
+
+# Leer el Product 2 veces, mostrando el Product y el tiempo de respuesta: la
+# primera es un miss, demora algo más de 0.2 segundos y trae el nombre nuevo
+# desde MongoDB; la segunda es un hit y trae el mismo nombre desde Redis.
+
+curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+
+# En los logs, al final, después de las líneas anteriores: la invalidación de
+# la clave del Product y de la lista de Products, un miss y un hit.
+
+docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
+
+# Detener Redis y leer el Product 2 veces: Products sigue respondiendo, pero
+# las dos lecturas demoran algo más de 0.2 segundos, porque van a MongoDB. La
+# caché mejora el rendimiento, pero Products no depende de ella para
+# funcionar.
+
+docker compose stop redis
+
+curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+
+# En los logs, al final: dos líneas "Redis no está conectado, se lee MongoDB",
+# una por lectura.
+
+docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
+
+# Volver a levantar Redis, devolverle al Product su nombre y dejar la caché
+# con sus valores por defecto: prendida y sin demora.
+
+docker compose start redis
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+  -H "Content-Type: application/json" -d '{"name": "Camisa", "price": 1200.50}' | jq
+
 curl -s -X DELETE http://localhost/products/cache | jq
 
 # El siguiente script simula una base que demora 200 ms, lee el mismo Product
@@ -1110,18 +1192,23 @@ curl -s -X DELETE http://localhost/products/cache | jq
 
 ./demos/10-cache-aside.sh
 
-# Resultado: la primera lectura demora unos 200 ms -miss- y las siguientes, 2 o
-# 3 ms -hit-. Después de cambiar el nombre, la lectura siguiente es un miss y
-# trae el nombre nuevo. Con Redis detenido, Products sigue respondiendo, a la
-# velocidad de MongoDB.
-# Logs de Docker: una línea [CACHE-ASIDE] por lectura, con hit o miss.
+# Resultado en consola: la primera lectura demora unos 200 ms -miss- y las
+# siguientes, 2 o 3 ms -hit-. Después de cambiar el nombre, la lectura siguiente
+# es un miss y trae el nombre nuevo. Con Redis detenido, Products sigue
+# respondiendo, a la velocidad de MongoDB. Logs de Docker: una línea
+# [CACHE-ASIDE] por lectura, con hit o miss.
 
 docker compose logs products-service --since 2m | grep '\[CACHE-ASIDE\]'
 
-# Bajo carga: 50 lecturas por segundo, 30 s con la caché apagada y 30 s prendida.
+# Bajo carga: 50 lecturas por segundo, 30 s con la caché apagada y 30 s
+# prendida.
+
 docker compose run --rm k6 run /scripts/cache-aside.js
-# Consola: el threshold de la fase con caché, p(95)<50, aparece con ✓.
-# Grafana:
+
+# Resulado en la consola: el threshold de la fase con caché, p(95)<50, aparece
+# con ✓.
+#
+# Resultado en Grafana:
 # - "Lecturas de la caché de Products, por resultado": "disabled" en unas 50
 #   por segundo en la primera fase; en la segunda, "hit" en unas 50 por segundo
 #   y algún "miss" al empezar, uno por Product.
