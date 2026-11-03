@@ -73,11 +73,11 @@ nombres en la vista.
 | Herramienta | Para qué | macOS | Windows |
 | ----------- | -------- | ----- | ------- |
 | Docker | Levantar la aplicación | Docker Desktop[^docker] | Docker Desktop[^docker] |
-| `bash` y `curl` | Los comandos de [commands.azcli](commands.azcli) y los scripts de [demos/](demos/) | Incluidos | Git Bash[^gitbash] o WSL[^wsl]; PowerShell y `cmd` no sirven, porque los comandos usan sintaxis de `bash` |
-| `jq`[^jq] | Formatear las respuestas JSON y convertirlas en tablas con la función `table` de `commands.azcli` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
+| `bash` y `curl` | Los comandos de los archivos de [commands/](commands/) y los scripts de [demos/](demos/) | Incluidos | Git Bash[^gitbash] o WSL[^wsl]; PowerShell y `cmd` no sirven, porque los comandos usan sintaxis de `bash` |
+| `jq`[^jq] | Formatear las respuestas JSON y convertirlas en tablas con la función `table` de los archivos de `commands/` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
 | `column` | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
-| `xmllint` | Indentar las respuestas SOAP de `Users` en `commands.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
-| Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir [commands.azcli](commands.azcli) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
+| `xmllint` | Indentar las respuestas SOAP de `Users` en `commands/01-api-gateway.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
+| Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir los archivos de [commands/](commands/) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
 | Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de MySQL, PostgreSQL, MongoDB y Redis; los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
 [^docker]: Docker Desktop: <https://www.docker.com/products/docker-desktop/>
@@ -103,7 +103,17 @@ En ese caso hay dos opciones:
 
 ### Cómo ejecutarla
 
-Los comandos están en [commands.azcli](commands.azcli). En resumen:
+Los comandos están en la carpeta [commands/](commands/), en tres archivos:
+
+- [01-api-gateway.azcli](commands/01-api-gateway.azcli): probar los servicios a
+  través del API Gateway.
+- [02-availability.azcli](commands/02-availability.azcli): demos de los
+  patrones de disponibilidad, de la 01 a la 09.
+- [03-performance.azcli](commands/03-performance.azcli): demos de los
+  patrones de rendimiento, de la 10 a la 16.
+
+Cada archivo empieza levantando todos los servicios y termina con el *tear
+down*, así que se puede usar por separado. En resumen:
 
 ```bash
 docker compose up -d --build --wait
@@ -115,7 +125,7 @@ curl http://localhost/orders/user/1/details
 Las bases de datos se crean con datos de ejemplo la primera vez que se levantan
 los contenedores, con los scripts de `*/mysqlinit`, `*/mongoinit` y `*/pginit`.
 Para volver a empezar desde cero hay que borrar las carpetas `mysqldata`,
-`mongodbdata` y `pgdata`; los comandos están al final de `commands.azcli`.
+`mongodbdata` y `pgdata`; los comandos están al final de cada archivo de `commands/`.
 
 ### Conectarse a las bases de datos
 
@@ -260,7 +270,8 @@ lo activa, como un servicio que falla, que está lento o que recibe demasiadas
 solicitudes, y muestra el resultado.
 
 Las instrucciones para ejecutar estos scripts y la explicación de lo que sucede
-en cada uno está en [commands.azcli](commands.azcli).
+en cada uno está en [02-availability.azcli](commands/02-availability.azcli) y
+[03-performance.azcli](commands/03-performance.azcli).
 
 Mientras corren las pruebas, también se puede mirar:
 
@@ -274,7 +285,7 @@ Mientras corren las pruebas, también se puede mirar:
 
 Los scripts de [demos/](./demos/) muestran cada patrón paso a paso, con pocas
 solicitudes; la evidencia en los logs de Docker se ve con los comandos de
-[commands.azcli](commands.azcli). Para ver cómo se comportan los patrones
+los archivos de [commands/](commands/). Para ver cómo se comportan los patrones
 bajo carga y a lo largo del tiempo, la aplicación tiene además un perfil
 opcional de observabilidad y escenarios de carga con [k6](https://k6.io).
 

@@ -1,3 +1,7 @@
+# Parte 2: demos de los patrones de disponibilidad, de la 01 a la 09
+#
+# Las demos de rendimiento están en 03-performance.azcli.
+
 # ---------------------------------------------------------------------------
 # Levantar todos los servicios
 # ---------------------------------------------------------------------------
@@ -19,7 +23,7 @@ docker compose build
 docker compose up -d --wait
 
 # ---------------------------------------------------------------------------
-# Probar los servicios a través del API Gateway
+# Funciones auxiliares
 # ---------------------------------------------------------------------------
 
 # Seleccionar y ejecutar esta función en la terminal de la misma forma como se
@@ -35,141 +39,6 @@ table() {
          else to_entries[] | [.key, (.value | tostring)] | @tsv end' \
   | column -t -s $'\t'
 }
-
-# Users expone SOAP en lugar de REST. Comparado con Products:
-# - Hay un único endpoint, /users/UserService.svc, y todas las operaciones son
-#   POST, incluso las que solo leen. La operación no está en la URL ni en el
-#   método HTTP: va en el encabezado SOAPAction y en el elemento del sobre.
-# - El cuerpo es un sobre XML con namespaces, que hay que escribir completo.
-# - El contrato se publica como WSDL.
-# - Los errores son SOAP Faults, que viajan siempre como HTTP 500.
-
-# Ver el contrato de Users
-curl -s "http://localhost/users/UserService.svc?wsdl" | xmllint --format -
-
-# Obtener todos los usuarios
-curl -s -X POST http://localhost/users/UserService.svc \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/ListUsers"' \
-  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-        <soap:Body>
-          <ListUsers xmlns="http://ucu.edu.uy/andis/users" />
-        </soap:Body>
-      </soap:Envelope>' | xmllint --format -
-
-# Agregar un nuevo usuario. El email es único: si el comando se ejecuta dos
-# veces, la segunda responde HTTP 500 con un SOAP Fault que explica el motivo;
-# para crear otro usuario, cambiar el email.
-curl -s -X POST http://localhost/users/UserService.svc \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/CreateUser"' \
-  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-        <soap:Body>
-          <CreateUser xmlns="http://ucu.edu.uy/andis/users">
-            <name>julia</name>
-            <email>julia@example.com</email>
-          </CreateUser>
-        </soap:Body>
-      </soap:Envelope>' | xmllint --format -
-
-# Buscar un usuario. Si no existe, la respuesta llega con HTTP 200 y sin
-# GetUserResult, no con un Fault.
-curl -s -X POST http://localhost/users/UserService.svc \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' \
-  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-        <soap:Body>
-          <GetUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>1</id>
-          </GetUser>
-        </soap:Body>
-      </soap:Envelope>' | xmllint --format -
-
-# Cambiar un usuario. Users publica el evento user.updated, y la vista
-# materializada de Orders actualiza el nombre del cliente.
-curl -s -X POST http://localhost/users/UserService.svc \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
-  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-        <soap:Body>
-          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>1</id>
-            <name>alice</name>
-            <email>alice@example.com</email>
-          </UpdateUser>
-        </soap:Body>
-      </soap:Envelope>' | xmllint --format -
-
-# Obtener todos los productos
-curl -s http://localhost/products/ | table
-
-# Agregar un producto
-curl -s -X POST http://localhost/products/ \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Buzo", "price": 2300.00}' | jq
-
-# Buscar un producto. La primera vez lo lee de MongoDB y lo guarda en Redis;
-# las siguientes, durante 60 segundos, lo lee de Redis -Cache-Aside-.
-curl -s http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 | jq
-
-# Cambiar un producto. Products borra el producto de Redis y publica el evento
-# product.updated.
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Camisa", "price": 1200.50}' | jq
-
-# Obtener todas las órdenes
-curl -s http://localhost/orders/ | table
-
-# Crear una nueva orden -Asynchronous Request-Reply-. Orders no procesa la
-# orden en el momento: la guarda como Pending y responde enseguida con
-# 202 Accepted, que significa "recibí el pedido, pero todavía no está listo".
-# La respuesta trae dos encabezados que le dicen al cliente cómo seguir:
-# - Location: la dirección donde consultar el estado, /orders/{id}/status.
-# - Retry-After: cuántos segundos esperar antes de consultarla, 2.
-# Un worker procesa la orden después, en segundo plano. Con -i, curl incluye
-# los encabezados en la respuesta. La respuesta se guarda en una variable para
-# mostrarla y para sacar de ella la dirección de Location, que usan los
-# comandos siguientes.
-response=$(curl -s -i -X POST http://localhost/orders/ \
-  -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 2}')
-echo "$response"
-location=$(echo "$response" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
-echo "$location"
-
-# Consultar el estado de la orden en la dirección que indicó Location, igual
-# que haría un cliente. La respuesta depende de si el worker ya la procesó:
-# - Si todavía está Pending, responde 200 con el estado y otra vez
-#   Retry-After: el cliente tiene que volver a consultar más tarde.
-# - Si ya la confirmó o la rechazó, responde 303 See Other, sin cuerpo, con
-#   Location apuntando a la orden, /orders/{id}: el resultado está ahí.
-# Una orden nueva tarda unos 3 segundos en procesarse: si se consulta enseguida
-# se ve el 200, y repitiendo la consulta unos segundos después, el 303.
-curl -s -i "http://localhost$location"
-
-# Lo mismo, pero con -L curl sigue la redirección del 303 por su cuenta y
-# muestra directamente la orden, con su estado final.
-curl -s -L "http://localhost$location" | jq
-
-# Obtener las órdenes de un usuario y sus detalles, pidiendo los nombres a
-# Users y a Products
-curl -s http://localhost/orders/user/1/details | table
-
-# Lo mismo, leído de la vista materializada -CQRS-
-curl -s http://localhost/orders/user/1/details/view | table
-
-# Obtener los eventos de una orden -Event Sourcing- y el estado que resulta de
-# reproducirlos. La respuesta tiene las dos partes: se muestra cada una como
-# tabla por separado.
-curl -s http://localhost/orders/1/events | jq .events | table
-curl -s http://localhost/orders/1/events | jq .replayed_state | table
-
-# Ver la salud de cada servicio -Health Endpoint Monitoring-. La respuesta tiene
-# objetos anidados, que se leen mejor con jq que como tabla.
-curl -s http://localhost/health/users | jq .
-curl -s http://localhost/health/products | jq .
-curl -s http://localhost/health/orders | jq .
 
 # ---------------------------------------------------------------------------
 # Observabilidad -opcional, recomendada para las demos-
@@ -204,7 +73,7 @@ docker compose --profile observability up -d --wait
 curl http://localhost:8000/metrics
 
 # ---------------------------------------------------------------------------
-# Demos de los patrones
+# Demos de los patrones de disponibilidad
 # ---------------------------------------------------------------------------
 
 # Cada patrón tiene un script en la carpeta 'demos/' que lo muestra paso a paso,
@@ -229,11 +98,9 @@ curl -s -X DELETE http://localhost/orders/patterns | jq
 # Mientras corren, se puede tener abierto en otras terminales:
 # 1. Los logs de Docker de Orders, donde cada patrón deja su etiqueta: [RETRY],
 #    [CIRCUIT BREAKER], [BULKHEAD], [THROTTLING], [COMPETING CONSUMERS] y
-#    [OUTBOX]; y, para los patrones de rendimiento, los de orders-projector y
-#    products-service: [PUB/SUB], [MATERIALIZED VIEW] y [CACHE-ASIDE]
+#    [OUTBOX]
 
     docker compose logs -f --since 1s orders-service orders-worker
-    docker compose logs -f --since 1s orders-projector products-service
 
 # 2. La salud de los servicios en vivo
 
@@ -1087,315 +954,8 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 #   pueden consumir.
 
 # ---------------------------------------------------------------------------
-# Patrones de rendimiento
-# ---------------------------------------------------------------------------
-# Los siguientes patrones agregan a la aplicación un exchange de eventos en
-# RabbitMQ, andis.events; una caché de Products en Redis; y una vista
-# materializada del detalle de las Orders, que mantiene orders-projector.
-
-# ----------------------
-# --- 10 Cache-Aside ---
-# ----------------------
-# Products busca primero en Redis. Si no está -miss-, lee MongoDB y lo guarda en
-# Redis por 60 segundos; la próxima lectura sale de Redis -hit-. Al cambiar un
-# Product, borra su clave de Redis. Para que la diferencia se note, se puede
-# simular una base más lenta y apagar la caché, sin reiniciar.
-#
-# Apagar la caché y simular que cada lectura de MongoDB demora 200 ms. Luego
-# leer el mismo Product 3 veces, mostrando solo el tiempo de respuesta: todas
-# demoran algo más de 0.2 segundos, porque todas van a MongoDB.
-
-curl -s -X PUT http://localhost/products/cache \
-  -H "Content-Type: application/json" -d '{"enabled": false, "dbDelayMs": 200}' | jq
-
-for i in 1 2 3; do
-  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-done
-
-# Prender la caché, con la base igual de lenta, y borrar la clave del Product
-# en Redis por si quedó de una lectura anterior, para empezar con la caché
-# vacía. Luego leer el Product otras 3 veces y comparar con el resultado
-# anterior: la primera lectura demora lo mismo, porque es un miss y va a
-# MongoDB; las siguientes demoran 2 o 3 milisegundos, porque son hits y salen
-# de Redis.
-
-curl -s -X PUT http://localhost/products/cache \
-  -H "Content-Type: application/json" -d '{"enabled": true, "dbDelayMs": 200}' | jq
-
-docker compose exec redis redis-cli DEL product:60f7c2b5e1d3c2a1b8e4d123
-
-for i in 1 2 3; do
-  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-done
-
-# Ver el Product guardado en Redis: la clave product:{id}, su valor -el Product
-# en JSON, con los nombres de los campos tal como están en la clase Product- y
-# cuántos segundos le quedan antes de vencer, de los 60 con los que se guarda.
-
-docker compose exec redis redis-cli KEYS '*'
-docker compose exec redis redis-cli GET product:60f7c2b5e1d3c2a1b8e4d123
-docker compose exec redis redis-cli TTL product:60f7c2b5e1d3c2a1b8e4d123
-
-# En los logs de Products: los dos cambios de configuración de la caché y,
-# después de prenderla, un miss y dos hits.
-
-docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
-
-# Cambiar el nombre del Product. Products lo guarda en MongoDB y borra su
-# clave de Redis, para que nadie lea el nombre viejo: la clave ya no existe
-# -EXISTS devuelve 0-.
-
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
-  -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
-
-docker compose exec redis redis-cli EXISTS product:60f7c2b5e1d3c2a1b8e4d123
-
-# Leer el Product 2 veces, mostrando el Product y el tiempo de respuesta: la
-# primera es un miss, demora algo más de 0.2 segundos y trae el nombre nuevo
-# desde MongoDB; la segunda es un hit y trae el mismo nombre desde Redis.
-
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-
-# En los logs, al final, después de las líneas anteriores: la invalidación de
-# la clave del Product y de la lista de Products, un miss y un hit.
-
-docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
-
-# Detener Redis y leer el Product 2 veces: Products sigue respondiendo, pero
-# las dos lecturas demoran algo más de 0.2 segundos, porque van a MongoDB. La
-# caché mejora el rendimiento, pero Products no depende de ella para
-# funcionar.
-
-docker compose stop redis
-
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-
-# En los logs, al final: dos líneas "Redis no está conectado, se lee MongoDB",
-# una por lectura.
-
-docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
-
-# Volver a levantar Redis, devolverle al Product su nombre y dejar la caché
-# con sus valores por defecto: prendida y sin demora.
-
-docker compose start redis
-
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
-  -H "Content-Type: application/json" -d '{"name": "Camisa", "price": 1200.50}' | jq
-
-curl -s -X DELETE http://localhost/products/cache | jq
-
-# El siguiente script simula una base que demora 200 ms, lee el mismo Product
-# varias veces, le cambia el nombre y detiene Redis.
-
-./demos/10-cache-aside.sh
-
-# Resultado en consola: la primera lectura demora unos 200 ms -miss- y las
-# siguientes, 2 o 3 ms -hit-. Después de cambiar el nombre, la lectura siguiente
-# es un miss y trae el nombre nuevo. Con Redis detenido, Products sigue
-# respondiendo, a la velocidad de MongoDB. Logs de Docker: una línea
-# [CACHE-ASIDE] por lectura, con hit o miss.
-
-docker compose logs products-service --since 2m | grep '\[CACHE-ASIDE\]'
-
-# Bajo carga: 50 lecturas por segundo, 30 s con la caché apagada y 30 s
-# prendida.
-
-docker compose run --rm k6 run /scripts/cache-aside.js
-
-# Resulado en la consola: el threshold de la fase con caché, p(95)<50, aparece
-# con ✓.
-#
-# Resultado en Grafana:
-# - "Lecturas de la caché de Products, por resultado": "disabled" en unas 50
-#   por segundo en la primera fase; en la segunda, "hit" en unas 50 por segundo
-#   y algún "miss" al empezar, uno por Product.
-# - "Latencia p95 por servicio": products-service baja de más de 100 ms a unos
-#   5 ms cuando se prende la caché.
-# - "Latencia p95 vista por k6, por endpoint": "product sin caché" por encima de
-#   100 ms; "product con caché" empieza alto, por los primeros miss, y baja a
-#   unos 5 ms.
-# El script de la demo hace pocas lecturas: en Grafana se ve solo bajo carga.
-
-# ------------------------------------
-# --- 11 Queue-Based Load Leveling ---
-# ------------------------------------
-# POST /orders/ solo guarda la Order y responde; el trabajo de verificar el User
-# y el Product lo hacen los workers desde la cola, a su ritmo. La cola absorbe
-# el pico: Users y Products reciben como máximo una llamada por réplica del
-# worker, lleguen las Orders que lleguen.
-#
-# El siguiente script crea 30 Orders a la vez, directamente en orders-service:
-# el Throttling por cliente del gateway rechazaría el pico antes de llegar a la
-# cola. Tarda unos 25 segundos.
-
-./demos/11-queue-based-load-leveling.sh
-
-# Resultado: las 30 responden 202 en pocos milisegundos; la cola baja de a 3
-# mensajes cada 2 segundos, uno por réplica, hasta vaciarse.
-
-# Bajo carga: 10 POST por segundo durante 10 s.
-docker compose run --rm k6 run /scripts/load-leveling.js
-# Consola: el threshold de "create order", p(95)<200, aparece con ✓.
-# Grafana:
-# - "Cola orders.process": "esperando" sube a unos 80 durante el pico y baja de
-#   forma pareja durante algo más de un minuto; "en proceso" queda en 3, uno
-#   por réplica.
-# - "Latencia p95 vista por k6, por endpoint": "create order" se mantiene por
-#   debajo de 30 ms durante todo el pico.
-
-# ---------------------------------------------
-# --- 12 Competing Consumers: escalabilidad ---
-# ---------------------------------------------
-# El mismo patrón de la demo 07, como patrón de rendimiento: el throughput crece
-# agregando réplicas de orders-worker, sin cambiar el código.
-#
-# El siguiente script procesa 30 Orders con 3 réplicas, escala a 6 y procesa
-# otras 30. Al terminar vuelve a 3 réplicas. Tarda cerca de un minuto.
-
-./demos/12-competing-consumers-scaling.sh
-
-# Resultado: con 3 réplicas, unos 21 segundos; con 6, unos 12.
-# Bajo carga, con 6 réplicas:
-docker compose up -d --scale orders-worker=6
-docker compose run --rm k6 run /scripts/load-leveling.js
-docker compose up -d --scale orders-worker=3
-# Grafana:
-# - "Cola orders.process": "consumidores" sube a 6 y "en proceso" a 6; la cola
-#   se vacía en unos 40 segundos, cerca de la mitad que con 3 réplicas.
-# - "Orders procesadas por segundo, por réplica": 6 franjas, una por réplica,
-#   cada una identificada por el id de su contenedor.
-
-# -------------------------------
-# --- 13 Publisher/Subscriber ---
-# -------------------------------
-# Orders, Users y Products publican eventos en el exchange andis.events. Cada
-# suscriptor tiene su propia cola y la enlaza con las claves que le interesan:
-# orders.process, del worker, recibe order.created; orders.details-view, del
-# proyector, recibe order.*, user.updated y product.updated. Los enlaces se ven
-# en la consola de RabbitMQ, http://localhost:15672, en Exchanges > andis.events.
-#
-# El siguiente script muestra los enlaces, crea una Order y cambia el nombre de
-# un Product y de un User, mostrando qué suscriptor recibe cada evento.
-
-./demos/13-publisher-subscriber.sh
-
-# Resultado: order.created llega al worker y al proyector; product.updated y
-# user.updated, solo al proyector, que actualiza los nombres en la vista.
-# Logs de Docker:
-
-docker compose logs orders-projector --since 2m | grep '\[PUB/SUB\]'
-docker compose logs users-service products-service --since 2m | grep '\[PUB/SUB\]'
-
-# Grafana: no hay un panel propio. Son pocos eventos y se procesan enseguida:
-# las colas de "Cola orders.process" y "Cola orders.details-view" no llegan a
-# acumular mensajes. Los enlaces se ven en la consola de RabbitMQ.
-
-# -------------------------------------
-# --- 14 Asynchronous Request-Reply ---
-# -------------------------------------
-# POST /orders/ responde 202 Accepted con Location: /orders/{id}/status y
-# Retry-After: 2. El estado responde 200 mientras la Order está Pending, y 303
-# See Other a la Order cuando un worker la confirmó o la rechazó.
-#
-# El siguiente script crea una Order y consulta su estado respetando
-# Retry-After hasta el 303.
-
-./demos/14-asynchronous-request-reply.sh
-
-# Resultado: el 202 con sus encabezados; dos o tres consultas con 200 Pending,
-# una cada 2 segundos; el 303 con Location: /orders/{id}; y la Order confirmada.
-# Grafana: no hay un panel propio.
-
-# ---------------
-# --- 15 CQRS ---
-# ---------------
-# Los comandos -crear y procesar Orders- escriben orders, order_events y
-# outbox_messages. La consulta GET /orders/user/{userId}/details/view lee otra
-# tabla, order_details, que ya tiene la forma de la respuesta: una consulta a
-# MySQL y ninguna llamada a Users ni a Products. La consulta síncrona de las
-# demos 01 a 04, GET /orders/user/{userId}/details, sigue disponible para
-# comparar.
-#
-# El siguiente script hace la misma consulta por los dos lados, sin fallas y con
-# Products demorando 300 ms, y después muestra la consistencia eventual.
-
-./demos/15-cqrs.sh
-
-# Resultado: sin fallas, la síncrona demora unos 100 ms y la vista, unos 3. Con
-# Products lento, la síncrona pasa a casi 2 segundos y la vista no cambia. Justo
-# después de crear una Order, la síncrona ya la tiene y la vista todavía no.
-
-# Bajo carga, se corre load.js de las dos formas y se comparan en Grafana:
-docker compose run --rm k6 run -e DETAILS=live /scripts/load.js
-docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
-# Grafana, comparando la primera corrida con la segunda:
-# - "Latencia p95 del detalle de Orders: síncrono contra vista": la línea
-#   "orders/user/{userId}/details/view" queda por debajo de la de
-#   "orders/user/{userId}/details". Sin fallas la diferencia es de pocos
-#   milisegundos; con Products lento, como en el script, sería de segundos.
-# - "Latencia p95 vista por k6, por endpoint": lo mismo visto por el cliente,
-#   "details" en la primera corrida y "details view" en la segunda.
-# - "Resultado de las llamadas a cada dependencia": en la segunda corrida todas
-#   las series bajan a 0, porque con la vista Orders no llama a Users ni a
-#   Products.
-
-# ----------------------------
-# --- 16 Materialized View ---
-# ----------------------------
-# order_details guarda el detalle de cada Order con el nombre del cliente y del
-# producto ya copiados. La mantiene orders-projector a partir de los eventos:
-# al recibir order.created busca los nombres una sola vez; con order.confirmed
-# y order.rejected actualiza el estado; con user.updated y product.updated,
-# los nombres.
-#
-# El siguiente script cambia el nombre de un Product, hace fallar a Products y
-# detiene el proyector mientras se crea una Order.
-
-./demos/16-materialized-view.sh
-
-# Resultado: la vista refleja el nombre nuevo. Con Products fallando, la
-# consulta síncrona responde "no disponible" y la vista, con los nombres. Con el
-# proyector detenido, la Order se confirma pero no aparece en la vista, y sus
-# eventos esperan en la cola; al levantarlo, la vista se pone al día.
-# Logs de Docker:
-
-docker compose logs orders-projector --since 2m | grep '\[MATERIALIZED VIEW\]'
-
-# Para ver la vista directamente en la base:
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
-  -e "SELECT * FROM order_details ORDER BY order_id DESC LIMIT 10"
-# Grafana:
-# - "Cola orders.details-view": durante los 15 segundos en que el proyector está
-#   detenido, "consumidores" baja a 0 y "esperando" sube a 2, los eventos
-#   order.created y order.confirmed de la Order nueva; al levantarlo, vuelven a
-#   1 y a 0.
-# - "Patrones de resiliencia prendidos en Orders": los cuatro bajan a 0 mientras
-#   Products falla, y vuelven a 1 al terminar la demo.
-# - "Salud de los servicios": orders-projector en gris, no responde, durante los
-#   15 segundos en que está detenido.
-
-# ---------------------------------------------------------------------------
-# Prueba de carga base, para las demos de rendimiento
-# ---------------------------------------------------------------------------
-# Lecturas mezcladas -detalle de Orders, Products y Users- a una tasa que sube
-# hasta RATE solicitudes por segundo, se mantiene durante DURATION y baja.
-docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
-# Consola: los thresholds p(95)<500 y rate<0.01 aparecen con ✓ si se cumple el
-# objetivo de rendimiento; si no, k6 los marca con ✗ y termina con error.
-# Grafana: "Solicitudes por segundo, por servicio y código HTTP" y "Latencia
-# p95 por servicio" muestran el throughput y la latencia de cada servicio; sirve
-# como línea base para comparar antes y después de cada patrón de rendimiento.
-
-# Para probar los endpoints sin pasar por el API Gateway, agrega los puertos
-# donde están escuchando los servicios, por ejemplo:
-# - http://localhost:8000/orders/
-# - http://localhost:8001/products/
-# - http://localhost:8002/users/UserService.svc?wsdl
-
 # Tear down
+# ---------------------------------------------------------------------------
 
 docker compose --profile observability down -v
 
@@ -1409,5 +969,3 @@ docker builder prune -f
 rm -rf ./OrdersService/mysqldata
 rm -rf ./ProductsService/mongodbdata
 rm -rf ./UsersService/pgdata
-
-

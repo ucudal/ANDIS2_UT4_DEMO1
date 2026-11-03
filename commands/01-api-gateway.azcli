@@ -1,0 +1,200 @@
+# Parte 1: probar los servicios a través del API Gateway
+#
+# Las demos de los patrones están en 02-availability.azcli y
+# 03-performance.azcli.
+
+# ---------------------------------------------------------------------------
+# Levantar todos los servicios
+# ---------------------------------------------------------------------------
+
+# Estos comandos deben ejecutarse desde la raíz del repositorio. Usar el comando
+# 'Azure CLI: Run Line in Terminal'.
+
+# Inicia Docker si no está iniciado
+docker desktop start
+
+# Crear las carpetas que serán montadas como volúmenes para contener las bases
+# de datos
+mkdir -p UsersService/pgdata
+mkdir -p ProductsService/mongodbdata
+mkdir -p OrdersService/mysqldata
+
+# Levantar todos los contenedores
+docker compose build
+docker compose up -d --wait
+
+# ---------------------------------------------------------------------------
+# Probar los servicios a través del API Gateway
+# ---------------------------------------------------------------------------
+
+# Seleccionar y ejecutar esta función en la terminal de la misma forma como se
+# ejecutan los demás comandos de este archivo -o definirla en ~/.zshrc o
+# ~/.bashrc para tenerla siempre-. Es una ayuda para ver las respuestas de los
+# comandos 'curl' que son JSON como tabla, definir Requiere jq y column; ver los
+# requisitos en README.md. Una lista de objetos se muestra con una columna por
+# campo, y un objeto solo, como pares clave-valor. Para ver el resultado en JSON
+# seleccionar sólo el comando 'curl' hasta antes del pipe '|'.
+table() {
+  jq -r 'if type == "array"
+         then (.[0] | keys_unsorted) as $k | ($k | @tsv), (.[] | [.[$k[]] | tostring] | @tsv)
+         else to_entries[] | [.key, (.value | tostring)] | @tsv end' \
+  | column -t -s $'\t'
+}
+
+# Users expone SOAP en lugar de REST. Comparado con Products:
+# - Hay un único endpoint, /users/UserService.svc, y todas las operaciones son
+#   POST, incluso las que solo leen. La operación no está en la URL ni en el
+#   método HTTP: va en el encabezado SOAPAction y en el elemento del sobre.
+# - El cuerpo es un sobre XML con namespaces, que hay que escribir completo.
+# - El contrato se publica como WSDL.
+# - Los errores son SOAP Faults, que viajan siempre como HTTP 500.
+
+# Ver el contrato de Users
+curl -s "http://localhost/users/UserService.svc?wsdl" | xmllint --format -
+
+# Obtener todos los usuarios
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/ListUsers"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <ListUsers xmlns="http://ucu.edu.uy/andis/users" />
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+# Agregar un nuevo usuario. El email es único: si el comando se ejecuta dos
+# veces, la segunda responde HTTP 500 con un SOAP Fault que explica el motivo;
+# para crear otro usuario, cambiar el email.
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/CreateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <CreateUser xmlns="http://ucu.edu.uy/andis/users">
+            <name>julia</name>
+            <email>julia@example.com</email>
+          </CreateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+# Buscar un usuario. Si no existe, la respuesta llega con HTTP 200 y sin
+# GetUserResult, no con un Fault.
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <GetUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>1</id>
+          </GetUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+# Cambiar un usuario. Users publica el evento user.updated, y la vista
+# materializada de Orders actualiza el nombre del cliente.
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>1</id>
+            <name>alice</name>
+            <email>alice@example.com</email>
+          </UpdateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+# Obtener todos los productos
+curl -s http://localhost/products/ | table
+
+# Agregar un producto
+curl -s -X POST http://localhost/products/ \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Buzo", "price": 2300.00}' | jq
+
+# Buscar un producto. La primera vez lo lee de MongoDB y lo guarda en Redis;
+# las siguientes, durante 60 segundos, lo lee de Redis -Cache-Aside-.
+curl -s http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 | jq
+
+# Cambiar un producto. Products borra el producto de Redis y publica el evento
+# product.updated.
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Camisa", "price": 1200.50}' | jq
+
+# Obtener todas las órdenes
+curl -s http://localhost/orders/ | table
+
+# Crear una nueva orden -Asynchronous Request-Reply-. Orders no procesa la
+# orden en el momento: la guarda como Pending y responde enseguida con
+# 202 Accepted, que significa "recibí el pedido, pero todavía no está listo".
+# La respuesta trae dos encabezados que le dicen al cliente cómo seguir:
+# - Location: la dirección donde consultar el estado, /orders/{id}/status.
+# - Retry-After: cuántos segundos esperar antes de consultarla, 2.
+# Un worker procesa la orden después, en segundo plano. Con -i, curl incluye
+# los encabezados en la respuesta. La respuesta se guarda en una variable para
+# mostrarla y para sacar de ella la dirección de Location, que usan los
+# comandos siguientes.
+response=$(curl -s -i -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 2}')
+echo "$response"
+location=$(echo "$response" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
+echo "$location"
+
+# Consultar el estado de la orden en la dirección que indicó Location, igual
+# que haría un cliente. La respuesta depende de si el worker ya la procesó:
+# - Si todavía está Pending, responde 200 con el estado y otra vez
+#   Retry-After: el cliente tiene que volver a consultar más tarde.
+# - Si ya la confirmó o la rechazó, responde 303 See Other, sin cuerpo, con
+#   Location apuntando a la orden, /orders/{id}: el resultado está ahí.
+# Una orden nueva tarda unos 3 segundos en procesarse: si se consulta enseguida
+# se ve el 200, y repitiendo la consulta unos segundos después, el 303.
+curl -s -i "http://localhost$location"
+
+# Lo mismo, pero con -L curl sigue la redirección del 303 por su cuenta y
+# muestra directamente la orden, con su estado final.
+curl -s -L "http://localhost$location" | jq
+
+# Obtener las órdenes de un usuario y sus detalles, pidiendo los nombres a
+# Users y a Products
+curl -s http://localhost/orders/user/1/details | table
+
+# Lo mismo, leído de la vista materializada -CQRS-
+curl -s http://localhost/orders/user/1/details/view | table
+
+# Obtener los eventos de una orden -Event Sourcing- y el estado que resulta de
+# reproducirlos. La respuesta tiene las dos partes: se muestra cada una como
+# tabla por separado.
+curl -s http://localhost/orders/1/events | jq .events | table
+curl -s http://localhost/orders/1/events | jq .replayed_state | table
+
+# Ver la salud de cada servicio -Health Endpoint Monitoring-. La respuesta tiene
+# objetos anidados, que se leen mejor con jq que como tabla.
+curl -s http://localhost/health/users | jq .
+curl -s http://localhost/health/products | jq .
+curl -s http://localhost/health/orders | jq .
+
+# Para probar los endpoints sin pasar por el API Gateway, agrega los puertos
+# donde están escuchando los servicios, por ejemplo:
+# - http://localhost:8000/orders/
+# - http://localhost:8001/products/
+# - http://localhost:8002/users/UserService.svc?wsdl
+
+# ---------------------------------------------------------------------------
+# Tear down
+# ---------------------------------------------------------------------------
+
+docker compose --profile observability down -v
+
+docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
+docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
+docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
+docker image prune -f
+docker volume prune -f
+docker builder prune -f
+
+rm -rf ./OrdersService/mysqldata
+rm -rf ./ProductsService/mongodbdata
+rm -rf ./UsersService/pgdata

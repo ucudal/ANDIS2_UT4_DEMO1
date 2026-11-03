@@ -168,7 +168,8 @@ respuestas trae algún producto "no disponible"; con reintentos, casi todas
 traen el nombre del producto, porque los reintentos ocultan las fallas. Las que
 tardan más son las que necesitaron reintentos. Los *logs* de
 Docker de `orders-service` muestran cada `[RETRY]` con su demora y su causa; el comando
-para verlos está en [commands.azcli](commands.azcli).
+para verlos está en
+[commands/02-availability.azcli](commands/02-availability.azcli).
 
 > [!TIP]
 >

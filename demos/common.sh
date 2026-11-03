@@ -68,10 +68,10 @@ products_calls() {
 }
 
 # table [filtro]: muestra una respuesta JSON como tabla, igual que la función
-# table de commands.azcli. El filtro de jq opcional elige una parte de la
-# respuesta. Las celdas vacías se muestran con un guion, porque column junta
-# los separadores seguidos y correría las columnas. Si falta jq o column, o la
-# respuesta no es JSON, la muestra tal cual.
+# table de los archivos de commands/. El filtro de jq opcional elige una parte
+# de la respuesta. Las celdas vacías se muestran con un guion, porque column
+# junta los separadores seguidos y correría las columnas. Si falta jq o column,
+# o la respuesta no es JSON, la muestra tal cual.
 table() {
     local json
     json=$(cat)
