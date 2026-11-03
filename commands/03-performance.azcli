@@ -348,21 +348,93 @@ docker compose run --rm k6 run /scripts/load-leveling.js
 # ---------------------------------------------
 # --- 12 Competing Consumers: escalabilidad ---
 # ---------------------------------------------
-# El mismo patrón de la demo 07, en 02-availability.azcli, como patrón de
+# El mismo patrón de la demo 07, en 02-availability.azcli, ahora como patrón de
 # rendimiento: el throughput crece agregando réplicas de orders-worker, sin
 # cambiar el código.
 #
+# Ver las réplicas de orders-worker y la cola orders.process: hay 3 réplicas,
+# y la cola tiene 3 consumidores, uno por réplica.
+
+docker compose ps --format 'table {{.Name}}\t{{.Status}}' orders-worker
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Con 3 réplicas, crear un pico de 30 Orders y medir cuánto tardan en
+# procesarse. Seleccionar y ejecutar el bloque completo: crea las Orders
+# directamente en orders-service, en el puerto 8000, sin pasar por el límite de
+# POST del gateway -ver Throttling-, y después muestra cada 2 segundos cuántas
+# siguen Pending, con los segundos transcurridos desde que se crearon. Cada
+# réplica demora 2 segundos por Order: las 30 tardan entre 20 y 23 segundos.
+
+start=$(date +%s)
+for i in $(seq 30); do
+  curl -s -o /dev/null -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}'
+done
+while :; do
+  pending=$(curl -s http://localhost/orders/ | jq '[.[] | select(.status == "Pending")] | length')
+  echo "$(( $(date +%s) - start )) s  Pending: $pending"
+  [ "$pending" = 0 ] && break
+  sleep 2
+done
+
+# Cuántas Orders confirmó cada réplica desde que empezó el pico -la variable
+# start la guardó el bloque anterior-: unas 10 cada una.
+
+docker compose logs --since $start orders-worker | grep 'Confirmed' | awk '{ print $1 }' | sort | uniq -c
+
+# Escalar a 6 réplicas, sin cambiar el código ni la configuración: Docker crea
+# 3 contenedores más de la misma imagen. --wait espera a que estén sanos. Las
+# nuevas réplicas se conectan a la misma cola: esperar unos segundos y ver que
+# la cola tiene 6 consumidores. En Grafana, "consumidores" sube a 6 en el panel
+# "Cola orders.process".
+
+docker compose up -d --scale orders-worker=6 --wait orders-worker
+
+docker compose ps --format 'table {{.Name}}\t{{.Status}}' orders-worker
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Con 6 réplicas, crear otro pico de 30 Orders y medir, con el mismo bloque, y
+# comparar con el resultado anterior: ahora tardan entre 11 y 13 segundos,
+# cerca de la mitad, porque el trabajo se reparte entre el doble de
+# consumidores.
+
+start=$(date +%s)
+for i in $(seq 30); do
+  curl -s -o /dev/null -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}'
+done
+while :; do
+  pending=$(curl -s http://localhost/orders/ | jq '[.[] | select(.status == "Pending")] | length')
+  echo "$(( $(date +%s) - start )) s  Pending: $pending"
+  [ "$pending" = 0 ] && break
+  sleep 2
+done
+
+# Cuántas Orders confirmó cada réplica desde que empezó este pico: unas 5 cada
+# una, entre las 6. En Grafana, "Orders procesadas por segundo, por réplica"
+# muestra 6 franjas, más finas que las anteriores, pero que suman el doble.
+
+docker compose logs --since $start orders-worker | grep 'Confirmed' | awk '{ print $1 }' | sort | uniq -c
+
+# Volver a 3 réplicas: Docker detiene y borra las 3 que agregó.
+
+docker compose up -d --scale orders-worker=3 --wait orders-worker
+
 # El siguiente script procesa 30 Orders con 3 réplicas, escala a 6 y procesa
 # otras 30. Al terminar vuelve a 3 réplicas. Tarda cerca de un minuto.
 
 ./demos/12-competing-consumers-scaling.sh
 
-# Resultado: con 3 réplicas, unos 21 segundos; con 6, unos 12.
-# Bajo carga, con 6 réplicas:
+# Resultado en consola: con 3 réplicas, unos 21 segundos; con 6, unos 12. Bajo
+# carga, con 6 réplicas:
+
 docker compose up -d --scale orders-worker=6
 docker compose run --rm k6 run /scripts/load-leveling.js
 docker compose up -d --scale orders-worker=3
-# Grafana:
+
+# Resulado en Grafana:
 # - "Cola orders.process": "consumidores" sube a 6 y "en proceso" a 6; la cola
 #   se vacía en unos 40 segundos, cerca de la mitad que con 3 réplicas.
 # - "Orders procesadas por segundo, por réplica": 6 franjas, una por réplica,
