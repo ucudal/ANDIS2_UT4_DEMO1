@@ -94,7 +94,9 @@ docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
 # ---------------------------------------------------------------------------
 # Los siguientes patrones agregan a la aplicación un exchange de eventos en
 # RabbitMQ, andis.events; una caché de Products en Redis; y una vista
-# materializada del detalle de las Orders, que mantiene orders-projector.
+# materializada del detalle de las Orders, que mantiene orders-projector. Qué
+# es un exchange y en qué se diferencia de una cola está explicado en
+# PATTERNS.md, en la sección de Publisher/Subscriber.
 
 # Cada patrón tiene un script en la carpeta 'demos/' que lo muestra paso a paso,
 # con pocas solicitudes; la evidencia en los logs de Docker se ve con los
@@ -447,23 +449,143 @@ docker compose up -d --scale orders-worker=3
 # suscriptor tiene su propia cola y la enlaza con las claves que le interesan:
 # orders.process, del worker, recibe order.created; orders.details-view, del
 # proyector, recibe order.*, user.updated y product.updated. Los enlaces se ven
-# en la consola de RabbitMQ, http://localhost:15672, en Exchanges > andis.events.
+# en la consola de RabbitMQ, http://localhost:15672, en Exchanges >
+# andis.events. La diferencia entre el exchange y las colas está explicada en
+# PATTERNS.md, en la sección de Publisher/Subscriber.
 #
+# Ver los enlaces del exchange andis.events: cada cola y las claves de ruteo
+# con las que la enlazó su suscriptor. Se leen de la API de la consola de
+# RabbitMQ, con usuario y contraseña guest.
+
+curl -s -u guest:guest http://localhost:15672/api/exchanges/%2F/andis.events/bindings/source \
+  | jq '[.[] | {cola: .destination, clave: .routing_key}]' | table
+
+# Crear una Order.
+
+curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq
+
+# Esperar unos 3 segundos y ver las últimas 4 líneas de los logs de los dos
+# suscriptores: orders-worker procesa la Order porque recibió order.created, y
+# orders-projector recibió order.created y, cuando el worker la confirmó,
+# order.confirmed. Orders publicó cada evento una sola vez, sin saber cuántos
+# suscriptores había. docker compose logs muestra las líneas agrupadas por
+# contenedor, no en orden cronológico: con -t cada línea trae la hora, sort las
+# ordena por esa columna, y sed borra la hora antes de mostrarlas. Como la
+# salida de grep pasa por otros comandos, --color=always hace que igual
+# resalte la etiqueta entre corchetes.
+
+docker compose logs -t orders-worker orders-projector \
+  | grep --color=always -E '\[PUB/SUB\]|\[COMPETING CONSUMERS\]' \
+  | sort -k3 | tail -4 | sed -E 's/ [0-9T:.-]+Z / /'
+
+# Cambiar el nombre de un Product.
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Content-Type: application/json" -d '{"name": "Zapatillas", "price": 3500.75}' | jq
+
+# Las últimas 2 líneas de los logs de Products y de orders-projector: Products
+# publica product.updated, y orders-projector lo recibe y actualiza el nombre
+# en la vista. El worker no lo recibe: como se vio en los enlaces, no está
+# suscripto a ese evento. En los logs, la recepción puede aparecer antes que
+# la publicación, porque Products la anota después de publicar.
+
+docker compose logs -t products-service orders-projector \
+  | grep --color=always '\[PUB/SUB\]' \
+  | sort -k3 | tail -2 | sed -E 's/ [0-9T:.-]+Z / /'
+
+# Agregar un suscriptor nuevo sin tocar el código de ningún servicio: crear la
+# cola spy y enlazarla al exchange con la clave #, que en un exchange de tipo
+# topic recibe todos los eventos. Volver a ver los enlaces: aparece la cola
+# spy. La cola es durable porque RabbitMQ 4 no admite colas no durables
+# compartidas; al final de la demo se borra. La API responde sin cuerpo, así
+# que cada comando muestra solo el código HTTP: 201 al crear la cola -204 si
+# ya existía- y 201 al crear el enlace. En Grafana, la cola spy aparece en el
+# panel "Mensajes en cada cola".
+
+curl -s -o /dev/null -w '%{http_code}\n' -u guest:guest -X PUT http://localhost:15672/api/queues/%2F/spy \
+  -H "Content-Type: application/json" -d '{"durable": true}'
+
+curl -s -o /dev/null -w '%{http_code}\n' -u guest:guest -X POST http://localhost:15672/api/bindings/%2F/e/andis.events/q/spy \
+  -H "Content-Type: application/json" -d '{"routing_key": "#"}'
+
+curl -s -u guest:guest http://localhost:15672/api/exchanges/%2F/andis.events/bindings/source \
+  | jq '[.[] | {cola: .destination, clave: .routing_key}]' | table
+
+# Generar eventos de los tres publicadores: crear una Order, cambiar el nombre
+# de un Product y cambiar el nombre de un User -Users es SOAP-.
+
+curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}' | jq
+
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>2</id>
+            <name>roberto</name>
+            <email>bob@example.com</email>
+          </UpdateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+# Esperar unos 3 segundos y leer los mensajes de la cola spy: tiene una copia
+# de cada evento -order.created, order.confirmed, product.updated y
+# user.updated-, los mismos que recibieron los otros suscriptores. Ningún
+# publicador cambió: no saben que spy existe. Los eventos de la Order pueden
+# aparecer después de los otros, aunque se creó primero, porque Orders los
+# publica a través del outbox, que publica cada segundo -ver Transactional
+# Outbox-.
+
+curl -s -u guest:guest -X POST http://localhost:15672/api/queues/%2F/spy/get \
+  -H "Content-Type: application/json" \
+  -d '{"count": 20, "ackmode": "ack_requeue_false", "encoding": "auto"}' \
+  | jq '[.[] | {clave: .routing_key, mensaje: .payload}]' | table
+
+# Borrar la cola spy -responde 204- y devolverle al User su nombre.
+
+curl -s -o /dev/null -w '%{http_code}\n' -u guest:guest -X DELETE http://localhost:15672/api/queues/%2F/spy
+
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>2</id>
+            <name>bob</name>
+            <email>bob@example.com</email>
+          </UpdateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
 # El siguiente script muestra los enlaces, crea una Order y cambia el nombre de
 # un Product y de un User, mostrando qué suscriptor recibe cada evento.
 
 ./demos/13-publisher-subscriber.sh
 
-# Resultado: order.created llega al worker y al proyector; product.updated y
-# user.updated, solo al proyector, que actualiza los nombres en la vista.
-# Logs de Docker:
+# Resultado en consola: order.created llega al worker y al proyector;
+# product.updated y user.updated, solo al proyector, que actualiza los nombres
+# en la vista. Logs de Docker:
 
 docker compose logs orders-projector --since 2m | grep '\[PUB/SUB\]'
 docker compose logs users-service products-service --since 2m | grep '\[PUB/SUB\]'
 
-# Grafana: no hay un panel propio. Son pocos eventos y se procesan enseguida:
-# las colas de "Cola orders.process" y "Cola orders.details-view" no llegan a
-# acumular mensajes. Los enlaces se ven en la consola de RabbitMQ.
+# Grafana:
+# - "Mensajes en cada cola": durante el paso a paso, la cola spy aparece al
+#   crearla y sube de a uno con cada evento, porque nadie la consume; vuelve a
+#   0 al leer sus mensajes y desaparece al borrarla. orders.process y
+#   orders.details-view quedan en 0: sus suscriptores procesan cada evento
+#   enseguida. El script no crea la cola spy, así que con él solo se ven esas
+#   dos.
+# - Los enlaces se ven en la consola de RabbitMQ.
 
 # -------------------------------------
 # --- 14 Asynchronous Request-Reply ---

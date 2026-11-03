@@ -1,32 +1,32 @@
 # Demos de la UT4: patrones de arquitectura sobre una misma aplicación
 
-- [Aplicación base](#aplicación-base)
-- [Demos de disponibilidad](#demos-de-disponibilidad)
-  - [Qué agrega a la aplicación base](#qué-agrega-a-la-aplicación-base)
-  - [Patrones de disponibilidad](#patrones-de-disponibilidad)
-    - [Retry](#retry)
-    - [Circuit Breaker](#circuit-breaker)
-    - [Bulkhead](#bulkhead)
-    - [Throttling](#throttling)
-    - [Rate Limiting](#rate-limiting)
-    - [Health Endpoint Monitoring](#health-endpoint-monitoring)
-    - [Competing Consumers](#competing-consumers)
-    - [Event Sourcing](#event-sourcing)
-    - [Transactional Outbox](#transactional-outbox)
-- [Demos de rendimiento y procesamiento asíncrono](#demos-de-rendimiento-y-procesamiento-asíncrono)
-  - [Qué agrega a las demos de disponibilidad](#qué-agrega-a-las-demos-de-disponibilidad)
-  - [Patrones de rendimiento](#patrones-de-rendimiento)
-    - [Cache-Aside](#cache-aside)
-    - [Queue-Based Load Leveling](#queue-based-load-leveling)
-    - [Competing Consumers](#competing-consumers-1)
-    - [Publisher/Subscriber](#publishersubscriber)
-    - [Asynchronous Request-Reply](#asynchronous-request-reply)
-    - [CQRS](#cqrs)
-    - [Materialized View](#materialized-view)
-- [Demos de seguridad](#demos-de-seguridad)
-- [Demos de facilidad de modificación](#demos-de-facilidad-de-modificación)
-- [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
-- [Cobertura](#cobertura)
+* [Aplicación base](#aplicación-base)
+* [Demos de disponibilidad](#demos-de-disponibilidad)
+  * [Qué agrega a la aplicación base](#qué-agrega-a-la-aplicación-base)
+  * [Patrones de disponibilidad](#patrones-de-disponibilidad)
+    * [Retry](#retry)
+    * [Circuit Breaker](#circuit-breaker)
+    * [Bulkhead](#bulkhead)
+    * [Throttling](#throttling)
+    * [Rate Limiting](#rate-limiting)
+    * [Health Endpoint Monitoring](#health-endpoint-monitoring)
+    * [Competing Consumers](#competing-consumers)
+    * [Event Sourcing](#event-sourcing)
+    * [Transactional Outbox](#transactional-outbox)
+* [Demos de rendimiento y procesamiento asíncrono](#demos-de-rendimiento-y-procesamiento-asíncrono)
+  * [Qué agrega a las demos de disponibilidad](#qué-agrega-a-las-demos-de-disponibilidad)
+  * [Patrones de rendimiento](#patrones-de-rendimiento)
+    * [Cache-Aside](#cache-aside)
+    * [Queue-Based Load Leveling](#queue-based-load-leveling)
+    * [Competing Consumers](#competing-consumers-1)
+    * [Publisher/Subscriber](#publishersubscriber)
+    * [Asynchronous Request-Reply](#asynchronous-request-reply)
+    * [CQRS](#cqrs)
+    * [Materialized View](#materialized-view)
+* [Demos de seguridad](#demos-de-seguridad)
+* [Demos de facilidad de modificación](#demos-de-facilidad-de-modificación)
+* [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
+* [Cobertura](#cobertura)
 
 ## Aplicación base
 
@@ -796,8 +796,20 @@ unos 12 segundos. Al final vuelve a 3 réplicas.
 tiene que conocerlos a todos, y cada interesado nuevo obliga a cambiarlo.
 
 **Implementación:** `Orders`, `Users` y `Products` publican eventos en el
-exchange `andis.events`, de tipo *topic*. Cada suscriptor tiene su propia cola y
-la enlaza con las claves de ruteo que le interesan:
+exchange `andis.events`, de tipo *topic*. En RabbitMQ, un exchange y una cola
+son piezas distintas:
+
+- Un **exchange** es donde se publica. No guarda mensajes: según la clave de
+  ruteo de cada mensaje, por ejemplo `order.created`, pone una copia en cada
+  cola enlazada con esa clave. Si ninguna cola está enlazada, el mensaje se
+  descarta. En un exchange de tipo *topic*, las claves de los enlaces admiten
+  comodines: `order.*` recibe `order.created`, `order.confirmed` y
+  `order.rejected`.
+- Una **cola** es donde los mensajes esperan hasta que un consumidor los toma.
+  Cada mensaje de una cola lo procesa un solo consumidor.
+
+Cada suscriptor tiene su propia cola y la enlaza con las claves de ruteo que le
+interesan:
 
 | Cola | Suscriptor | Claves |
 | ---- | ---------- | ------ |
@@ -810,9 +822,16 @@ publicación están en la clase `RabbitMq`, en [Common/RabbitMq.cs](src/Common/R
 el método `PublishEventAsync` publica un evento, y el método
 `DeclareSubscriberQueueAsync` declara la cola de un suscriptor con sus claves.
 
+El exchange y las colas corresponden a dos patrones distintos. Entre colas,
+Publisher/Subscriber: cada suscriptor recibe su propia copia de cada evento.
+Dentro de una cola, [Competing Consumers](#competing-consumers-1): las réplicas
+de `orders-worker` comparten `orders.process`, y cada mensaje lo procesa una
+sola.
+
 **Cómo funciona:**
 
-![Quién publica cada evento y quién se suscribe](assets/13-publisher-subscriber.svg)
+![Quién publica cada evento y quién se
+suscribe](assets/13-publisher-subscriber.svg)
 
 Quien publica no conoce las colas: cada suscriptor declara la suya y elige las
 claves de ruteo.
@@ -825,10 +844,11 @@ Los contratos de los eventos y la conexión a RabbitMQ están en `Common`, el
 único proyecto que comparten los servicios. Los registros `OrderConfirmed` y
 `OrderRejected` también están ahí; el diagrama no los muestra.
 
-**Cómo verlo:** [demos/13-publisher-subscriber.sh](demos/13-publisher-subscriber.sh)
-muestra los enlaces del exchange, crea una `Order` y muestra los *logs* del
-*worker* y del proyector, que la reciben los dos. Después cambia el nombre de un
-`Product` y de un `User`: esos eventos solo los recibe el proyector.
+**Cómo verlo:**
+[demos/13-publisher-subscriber.sh](demos/13-publisher-subscriber.sh) muestra los
+enlaces del exchange, crea una `Order` y muestra los *logs* del *worker* y del
+proyector, que la reciben los dos. Después cambia el nombre de un `Product` y de
+un `User`: esos eventos solo los recibe el proyector.
 
 #### Asynchronous Request-Reply
 
