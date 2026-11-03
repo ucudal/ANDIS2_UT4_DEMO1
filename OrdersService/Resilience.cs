@@ -12,6 +12,10 @@ namespace Ucu.Andis.OrdersService;
 // Las estrategias se aplican de afuera hacia adentro, en este orden:
 //
 //   Bulkhead -> Timeout total -> Retry -> Circuit Breaker -> Timeout por intento -> HTTP
+//
+// El Bulkhead, el Retry y el Circuit Breaker se pueden apagar en tiempo de
+// ejecución -ver Patterns.cs-: apagados, dejan pasar las llamadas sin hacer
+// nada.
 public static class Resilience
 {
     // Bulkhead: llamadas simultáneas permitidas y llamadas en espera, por
@@ -42,6 +46,7 @@ public static class Resilience
             var logger = context.ServiceProvider
                 .GetRequiredService<ILoggerFactory>()
                 .CreateLogger($"Resilience.{dependency}");
+            var patterns = context.ServiceProvider.GetRequiredService<PatternSettings>();
 
             // Bulkhead: un ConcurrencyLimiter, que funciona como un semáforo con
             // fila. Si hay un lugar libre entre los PermitLimit, la llamada lo
@@ -55,13 +60,19 @@ public static class Resilience
             // completa, reintentos incluidos: una llamada que reintenta no ocupa
             // más de un lugar. Por lo mismo, el timeout total empieza a contar
             // recién cuando la llamada consigue su lugar, no mientras espera.
+            //
+            // Con el Bulkhead apagado, toda llamada recibe lugar sin pasar por el
+            // limitador.
+            var bulkhead = new ConcurrencyLimiter(new ConcurrencyLimiterOptions
+            {
+                PermitLimit = bulkheadPermitLimit,
+                QueueLimit = bulkheadQueueLimit
+            });
             pipeline.AddRateLimiter(new HttpRateLimiterStrategyOptions
             {
-                DefaultRateLimiterOptions = new ConcurrencyLimiterOptions
-                {
-                    PermitLimit = bulkheadPermitLimit,
-                    QueueLimit = bulkheadQueueLimit
-                },
+                RateLimiter = args => patterns.Bulkhead
+                    ? bulkhead.AcquireAsync(1, args.Context.CancellationToken)
+                    : ValueTask.FromResult<RateLimitLease>(AcquiredLease.Instance),
                 OnRejected = _ =>
                 {
                     logger.LogWarning("[BULKHEAD] {Dependency}: compartimento lleno [{PermitLimit} en curso, {QueueLimit} en espera]; se rechaza la llamada",
@@ -72,8 +83,12 @@ public static class Resilience
 
             pipeline.AddTimeout(TotalTimeout);
 
+            // Con el Retry apagado, ninguna falla se reintenta.
+            var retry = new HttpRetryStrategyOptions();
+            var shouldRetry = retry.ShouldHandle;
             pipeline.AddRetry(new HttpRetryStrategyOptions
             {
+                ShouldHandle = args => patterns.Retry ? shouldRetry(args) : PredicateResult.False(),
                 MaxRetryAttempts = MaxRetries,
                 BackoffType = DelayBackoffType.Exponential,
                 UseJitter = true,
@@ -86,8 +101,15 @@ public static class Resilience
                 }
             });
 
+            // Con el Circuit Breaker apagado, ninguna falla cuenta para abrir el
+            // circuito; al apagarlo, además, se cierra si estaba abierto.
+            var circuitBreaker = new HttpCircuitBreakerStrategyOptions();
+            var shouldBreak = circuitBreaker.ShouldHandle;
             pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
             {
+                ShouldHandle = args => patterns.CircuitBreaker ? shouldBreak(args) : PredicateResult.False(),
+                ManualControl = patterns.RegisterCircuit(),
+                StateProvider = patterns.RegisterCircuitState(dependency),
                 FailureRatio = CircuitFailureRatio,
                 MinimumThroughput = CircuitMinimumThroughput,
                 SamplingDuration = CircuitSamplingDuration,
@@ -118,4 +140,20 @@ public static class Resilience
 
     private static string Cause(Outcome<HttpResponseMessage> outcome) =>
         outcome.Exception?.GetType().Name ?? $"HTTP {(int?)outcome.Result?.StatusCode}";
+
+    // El lugar que recibe una llamada cuando el Bulkhead está apagado.
+    private sealed class AcquiredLease : RateLimitLease
+    {
+        public static readonly AcquiredLease Instance = new();
+
+        public override bool IsAcquired => true;
+
+        public override IEnumerable<string> MetadataNames => [];
+
+        public override bool TryGetMetadata(string metadataName, out object? metadata)
+        {
+            metadata = null;
+            return false;
+        }
+    }
 }

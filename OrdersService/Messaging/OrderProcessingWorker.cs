@@ -1,5 +1,5 @@
 using System.Diagnostics.Metrics;
-using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -13,9 +13,17 @@ namespace Ucu.Andis.OrdersService.Messaging;
 // consume de la misma cola. RabbitMQ entrega cada mensaje a un solo consumidor,
 // así que las réplicas se reparten el trabajo. Si una réplica se cae antes de
 // confirmar -ack- un mensaje, RabbitMQ se lo entrega a otra.
+//
+// Publisher/Subscriber: la cola orders.process es la suscripción del worker al
+// evento order.created del exchange andis.events. El proyector de la vista
+// materializada tiene su propia cola y recibe el mismo evento.
 public class OrderProcessingWorker : BackgroundService
 {
     public const string MeterName = "Ucu.Andis.OrdersWorker";
+
+    // Cola de órdenes pendientes de procesar. Todos los workers consumen de esta
+    // misma cola: Competing Consumers.
+    public const string OrdersQueue = "orders.process";
 
     private static readonly TimeSpan RequeueDelay = TimeSpan.FromSeconds(5);
 
@@ -44,7 +52,7 @@ public class OrderProcessingWorker : BackgroundService
     {
         var connection = await ConnectAsync(stoppingToken);
         var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
-        await RabbitMq.DeclareOrdersQueueAsync(channel, stoppingToken);
+        await RabbitMq.DeclareSubscriberQueueAsync(channel, OrdersQueue, [Events.OrderCreated], stoppingToken);
 
         // Cada réplica toma un solo mensaje a la vez: así el trabajo se reparte
         // según la capacidad de cada una, en lugar de que una acapare la cola.
@@ -53,8 +61,25 @@ public class OrderProcessingWorker : BackgroundService
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, delivery) =>
         {
-            var orderId = int.Parse(Encoding.UTF8.GetString(delivery.Body.Span));
-            if (await ProcessAsync(orderId, stoppingToken))
+            // Un mensaje que no es un OrderCreated válido no se va a poder procesar
+            // nunca: se descarta en lugar de devolverlo a la cola para siempre.
+            OrderCreated? created;
+            try
+            {
+                created = JsonSerializer.Deserialize<OrderCreated>(delivery.Body.Span);
+            }
+            catch (JsonException)
+            {
+                created = null;
+            }
+            if (created is null)
+            {
+                _logger.LogWarning("Worker {Worker}: se descarta un mensaje que no es un OrderCreated", _workerName);
+                await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, stoppingToken);
+                return;
+            }
+
+            if (await ProcessAsync(created.OrderId, stoppingToken))
             {
                 await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, stoppingToken);
             }
@@ -65,8 +90,8 @@ public class OrderProcessingWorker : BackgroundService
             }
         };
 
-        await channel.BasicConsumeAsync(RabbitMq.OrdersQueue, autoAck: false, consumer, stoppingToken);
-        _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} escuchando la cola {Queue}", _workerName, RabbitMq.OrdersQueue);
+        await channel.BasicConsumeAsync(OrdersQueue, autoAck: false, consumer, stoppingToken);
+        _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} escuchando la cola {Queue}", _workerName, OrdersQueue);
 
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
@@ -89,6 +114,9 @@ public class OrderProcessingWorker : BackgroundService
 
     // Devuelve false si la orden no se pudo procesar porque una dependencia no
     // está disponible; en ese caso el mensaje vuelve a la cola.
+    //
+    // Es idempotente: si la orden ya no está Pending, no hace nada. Hace falta
+    // porque el outbox entrega cada mensaje al menos una vez, no exactamente una.
     private async Task<bool> ProcessAsync(int orderId, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -121,8 +149,15 @@ public class OrderProcessingWorker : BackgroundService
             ? OrderEvent.Create(orderId, OrderEventTypes.OrderConfirmed, new OrderConfirmedData(_workerName))
             : OrderEvent.Create(orderId, OrderEventTypes.OrderRejected, new OrderRejectedData(rejection, _workerName));
 
+        // Transactional Outbox: el evento de Event Sourcing, el cambio de estado y
+        // el mensaje para los suscriptores se guardan juntos.
+        var outboxMessage = rejection is null
+            ? OutboxMessage.Create(Events.OrderConfirmed, new OrderConfirmed(orderId))
+            : OutboxMessage.Create(Events.OrderRejected, new OrderRejected(orderId, rejection));
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.OrderEvents.Add(orderEvent);
+        db.OutboxMessages.Add(outboxMessage);
         order.Status = rejection is null ? OrderStatus.Confirmed : OrderStatus.Rejected;
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

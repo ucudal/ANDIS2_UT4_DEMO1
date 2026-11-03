@@ -1,6 +1,6 @@
 {
   "uid": "ut4-demo1",
-  "title": "UT4 · Demo 1 · Resiliencia y disponibilidad",
+  "title": "ANDIS II - UT4",
   "tags": [
     "andis2",
     "ut4"
@@ -31,7 +31,7 @@
     {
       "type": "timeseries",
       "id": 2,
-      "title": "Solicitudes por segundo, por código HTTP",
+      "title": "Solicitudes por segundo, por código HTTP [Demos 2, 4, 5]",
       "description": "Lo que ve el cliente. 429 viene del throttling por cliente del gateway -lo que nginx llama rate limiting-; 503, del throttling de Orders.",
       "datasource": {
         "type": "prometheus",
@@ -147,8 +147,8 @@
     {
       "type": "timeseries",
       "id": 3,
-      "title": "Latencia p95 vista por k6, por endpoint",
-      "description": "Percentil 95 del tiempo de respuesta medido por k6.",
+      "title": "Latencia p95 vista por k6, por endpoint [Demos 5, 10, 11, 15]",
+      "description": "Percentil 95 del tiempo de respuesta medido por k6, acumulado desde que empezó el escenario: no baja aunque las últimas respuestas sean rápidas. Solo muestra los endpoints del escenario que está corriendo.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -189,7 +189,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (name) (k6_http_req_duration_p95{name!=\"chaos\"})",
+          "expr": "max by (name) (max_over_time(k6_http_req_duration_p95{name!=\"chaos\"}[10s]))",
           "legendFormat": "{{name}}",
           "range": true
         }
@@ -198,8 +198,8 @@
     {
       "type": "timeseries",
       "id": 4,
-      "title": "Usuarios virtuales y respuestas degradadas",
-      "description": "Respuestas degradadas: respondieron 200 pero con algún dato no disponible.",
+      "title": "Usuarios virtuales y respuestas degradadas [Demo 2]",
+      "description": "Respuestas degradadas: respondieron 200 pero con algún dato no disponible. Es la fracción acumulada desde que empezó el escenario: baja de a poco, no vuelve a 0 enseguida.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -240,7 +240,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(k6_vus)",
+          "expr": "sum(max_over_time(k6_vus[10s]))",
           "legendFormat": "usuarios virtuales",
           "range": true
         },
@@ -250,7 +250,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(k6_degraded_responses_rate) * 100",
+          "expr": "max(max_over_time(k6_degraded_responses_rate[10s])) * 100",
           "legendFormat": "% respuestas degradadas",
           "range": true
         }
@@ -259,7 +259,7 @@
     {
       "type": "row",
       "id": 5,
-      "title": "Fallas inyectadas",
+      "title": "Fallas inyectadas y patrones prendidos",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -272,7 +272,7 @@
     {
       "type": "timeseries",
       "id": 6,
-      "title": "Fracción de solicitudes que fallan a propósito",
+      "title": "Fracción de solicitudes que fallan a propósito [Demo 1]",
       "description": "Configurada con PUT /{servicio}/chaos.",
       "datasource": {
         "type": "prometheus",
@@ -281,7 +281,7 @@
       "gridPos": {
         "x": 0,
         "y": 10,
-        "w": 12,
+        "w": 8,
         "h": 6
       },
       "fieldConfig": {
@@ -316,7 +316,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "chaos_failure_rate{job!=\"orders-worker\"}",
+          "expr": "chaos_failure_rate{job!~\"orders-worker|orders-projector\"}",
           "legendFormat": "{{job}}",
           "range": true
         }
@@ -325,16 +325,16 @@
     {
       "type": "timeseries",
       "id": 7,
-      "title": "Demora agregada a propósito",
+      "title": "Demora agregada a propósito [Demo 4]",
       "description": "Configurada con PUT /{servicio}/chaos.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 12,
+        "x": 8,
         "y": 10,
-        "w": 12,
+        "w": 8,
         "h": 6
       },
       "fieldConfig": {
@@ -368,8 +368,63 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "chaos_delay_seconds{job!=\"orders-worker\"}",
+          "expr": "chaos_delay_seconds{job!~\"orders-worker|orders-projector\"}",
           "legendFormat": "{{job}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 24,
+      "title": "Patrones de resiliencia prendidos en Orders [Demos 1-4, 16]",
+      "description": "1 prendido, 0 apagado. Cada demo deja prendido solo su patrón, para que no intervengan los demás; configurado con PUT /orders/patterns.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "stepAfter"
+          },
+          "min": 0,
+          "max": 1,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "orders_patterns_enabled{job=\"orders-service\"}",
+          "legendFormat": "{{pattern}}",
           "range": true
         }
       ]
@@ -390,8 +445,8 @@
     {
       "type": "timeseries",
       "id": 9,
-      "title": "Eventos de resiliencia por segundo",
-      "description": "Reintentos, aperturas y cierres del circuito, timeouts y rechazos del bulkhead, por dependencia.",
+      "title": "Eventos de resiliencia [Demos 1-3]",
+      "description": "Reintentos, aperturas y cierres del circuito, timeouts y rechazos del bulkhead, por dependencia. Cada barra es la cantidad de eventos en ese intervalo de 5 segundos: una apertura del circuito es una barra de altura 1.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -399,7 +454,7 @@
       "gridPos": {
         "x": 0,
         "y": 17,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "fieldConfig": {
@@ -410,8 +465,13 @@
             "fillOpacity": 80,
             "showPoints": "never",
             "spanNulls": true,
-            "drawStyle": "bars"
-          }
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "decimals": 0
         },
         "overrides": [
           {
@@ -524,8 +584,108 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "label_replace(sum by (pipeline_name, event_name) (rate(resilience_polly_strategy_events_total{event_name!~\"PipelineExecuting|PipelineExecuted\"}[$__rate_interval])), \"dependency\", \"$1\", \"pipeline_name\", \".*-resilience-(.*)\")",
+          "expr": "sum by (dependency, event_name) (label_replace(clamp_min(resilience_polly_strategy_events_total{event_name!~\"PipelineExecuting|PipelineExecuted\"} - (resilience_polly_strategy_events_total{event_name!~\"PipelineExecuting|PipelineExecuted\"} offset $__interval or resilience_polly_strategy_events_total{event_name!~\"PipelineExecuting|PipelineExecuted\"} * 0), 0), \"dependency\", \"$1\", \"pipeline_name\", \".*-resilience-(.*)\"))",
           "legendFormat": "{{dependency}} · {{event_name}}",
+          "range": true
+        }
+      ],
+      "interval": "5s"
+    },
+    {
+      "type": "state-timeline",
+      "id": 25,
+      "title": "Estado del circuito de cada dependencia [Demo 2]",
+      "description": "Verde cerrado, rojo abierto, naranja semiabierto -se deja pasar una llamada de prueba-, gris con el Circuit Breaker apagado. Muestra cuánto tiempo queda abierto el circuito.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 17,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8e8e8e",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "apagado",
+                  "index": 0
+                },
+                "0": {
+                  "text": "cerrado",
+                  "index": 1
+                },
+                "1": {
+                  "text": "semiabierto",
+                  "index": 2
+                },
+                "2": {
+                  "text": "abierto",
+                  "index": 3
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "alignValue": "left",
+        "rowHeight": 0.8,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "orders_circuit_state{job=\"orders-service\"}",
+          "legendFormat": "{{dependency}}",
           "range": true
         }
       ]
@@ -533,16 +693,16 @@
     {
       "type": "timeseries",
       "id": 10,
-      "title": "Duración de las llamadas a cada dependencia, p95",
+      "title": "Duración de las llamadas a cada dependencia, p95 [Demo 3]",
       "description": "Incluye los reintentos y las esperas entre ellos. Cuando el circuito está abierto o el bulkhead lleno, la llamada falla de inmediato y la duración cae.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 17,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "fieldConfig": {
@@ -584,16 +744,16 @@
     {
       "type": "timeseries",
       "id": 11,
-      "title": "Resultado de las llamadas a cada dependencia",
+      "title": "Resultado de las llamadas a cada dependencia [Demos 2, 3, 15]",
       "description": "Llamadas por segundo según cómo terminaron, después de aplicar toda la resiliencia: código HTTP, o la excepción si el circuito estaba abierto, el bulkhead lleno o venció el timeout.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 16,
+        "x": 18,
         "y": 17,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "fieldConfig": {
@@ -724,7 +884,7 @@
     {
       "type": "timeseries",
       "id": 13,
-      "title": "Solicitudes por segundo, por servicio y código HTTP",
+      "title": "Solicitudes por segundo, por servicio y código HTTP [Demos 5, 16]",
       "description": "Medido por cada servicio; no incluye /health ni /metrics.",
       "datasource": {
         "type": "prometheus",
@@ -775,7 +935,7 @@
     {
       "type": "timeseries",
       "id": 14,
-      "title": "Latencia p95 por servicio",
+      "title": "Latencia p95 por servicio [Demo 10]",
       "description": "Medida por cada servicio; no incluye /health ni /metrics.",
       "datasource": {
         "type": "prometheus",
@@ -826,7 +986,7 @@
     {
       "type": "timeseries",
       "id": 15,
-      "title": "Throttling en Orders",
+      "title": "Throttling en Orders [Demo 4]",
       "description": "Consultas de detalle en curso, con un máximo de 20, y consultas aceptadas y rechazadas por segundo.",
       "datasource": {
         "type": "prometheus",
@@ -956,7 +1116,7 @@
     {
       "type": "timeseries",
       "id": 17,
-      "title": "Cola orders.process",
+      "title": "Cola orders.process [Demos 7, 9, 11, 12]",
       "description": "Mensajes esperando, mensajes entregados a un worker sin confirmar todavía, y consumidores conectados.",
       "datasource": {
         "type": "prometheus",
@@ -1073,7 +1233,7 @@
     {
       "type": "timeseries",
       "id": 18,
-      "title": "Orders procesadas por segundo, por réplica",
+      "title": "Orders procesadas por segundo, por réplica [Demos 7, 8, 12]",
       "description": "Cada réplica de orders-worker se identifica por el id de su contenedor. Requeued: la Order volvió a la cola porque una dependencia no estaba disponible.",
       "datasource": {
         "type": "prometheus",
@@ -1124,6 +1284,392 @@
           "range": true
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 19,
+      "title": "Rendimiento: caché, CQRS y outbox",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 20,
+      "title": "Lecturas de la caché de Products, por resultado [Demo 10]",
+      "description": "Cache-Aside: hit sale de Redis; miss lee MongoDB y lo guarda en Redis; error es Redis caído; disabled es la caché apagada desde /products/cache.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hit"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "miss"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "disabled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (result) (rate(products_cache_total[$__rate_interval]))",
+          "legendFormat": "{{result}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "Latencia p95 del detalle de Orders: síncrono contra vista [Demo 15]",
+      "description": "CQRS y Materialized View: details arma el detalle llamando a Users y a Products; details/view lee la vista materializada.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"orders-service\", http_route=~\"orders/user/\\\\{userId\\\\}/details.*\"}[$__rate_interval])))",
+          "legendFormat": "{{http_route}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 22,
+      "title": "Outbox de Orders [Demo 9]",
+      "description": "Transactional Outbox: mensajes guardados en la base que esperan ser publicados en RabbitMQ, y mensajes publicados por segundo.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pendientes"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "publicados por segundo"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(outbox_pending{job=\"orders-service\"})",
+          "legendFormat": "pendientes",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(outbox_published_total{job=\"orders-service\"}[$__rate_interval]))",
+          "legendFormat": "publicados por segundo",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 23,
+      "title": "Cola orders.details-view [Demos 9, 16]",
+      "description": "Publisher/Subscriber: la cola del proyector de la vista materializada. Si crece, la vista está atrasada respecto de los eventos.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "esperando"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "en proceso"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "consumidores"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rabbitmq_detailed_queue_messages_ready{queue=\"orders.details-view\"})",
+          "legendFormat": "esperando",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rabbitmq_detailed_queue_messages_unacked{queue=\"orders.details-view\"})",
+          "legendFormat": "en proceso",
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rabbitmq_detailed_queue_consumers{queue=\"orders.details-view\"})",
+          "legendFormat": "consumidores",
+          "range": true
+        }
+      ]
     }
-  ]
+  ],
+  "description": "Entre corchetes, al final del título de cada panel, las demos que lo usan: el número es el del script en demos/, por ejemplo [Demo 1] es 01-retry.sh."
 }

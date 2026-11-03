@@ -1,0 +1,38 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Ucu.Andis.OrdersService.Models;
+
+// Materialized View: el detalle de cada Order ya armado, con el nombre del
+// cliente y el del producto copiados de Users y Products. La consulta de
+// detalle lo lee tal cual, sin llamar a nadie. Lo mantiene al día
+// OrderDetailsProjector a partir de los eventos; nadie más lo escribe.
+[Table("order_details")]
+public class OrderDetails
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    [Column("order_id")]
+    public int OrderId { get; set; }
+
+    [Column("user_id")]
+    public int UserId { get; set; }
+
+    [Column("customer_name")]
+    public string? CustomerName { get; set; }
+
+    [Column("product_id")]
+    public string? ProductId { get; set; }
+
+    [Column("product_name")]
+    public string? ProductName { get; set; }
+
+    [Column("quantity")]
+    public int Quantity { get; set; }
+
+    [Column("status")]
+    public string Status { get; set; } = OrderStatus.Pending;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

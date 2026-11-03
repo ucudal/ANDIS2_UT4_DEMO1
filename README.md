@@ -9,54 +9,64 @@ width="150"/>
 # Demo de patrones de arquitectura en una arquitectura de microservicios
 
 Esta demo es la aplicación base de la UT4, una pequeña aplicación de comercio
-electrónico, con los patrones de resiliencia y disponibilidad de la Demo 1
-implementados.
+electrónico, con los patrones de disponibilidad y rendimiento implementados.
 
 También es la demo de la [arquitectura de microservicios](ARCHITECTURE.md) en la
 UT5.
 
-El panorama de las cinco demos y la explicación de cada patrón de esta demo
-están en [PATTERNS.md](PATTERNS.md).
+El panorama de la demo y la explicación de cada patrón está en
+[PATTERNS.md](PATTERNS.md).`
 
 ## Descripción
 
 La aplicación tiene tres servicios de dominio, cada uno con su propia base de
 datos, detrás de un API Gateway. Las `Orders` se procesan en segundo plano por
-varias réplicas de un *worker* que consumen una cola de RabbitMQ.
+varias réplicas de un *worker* que consumen una cola de RabbitMQ. Los servicios
+publican eventos en RabbitMQ, y un proyector los usa para mantener una vista
+materializada del detalle de las `Orders`. `Products` usa Redis como caché.
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
 | `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/` | nginx 1.25 | 80 |
 | `users-service` | Alta y consulta de [`Users`](UsersService/Models/Users.cs) por SOAP, con el contrato publicado como WSDL | ASP.NET Core 10 + SoapCore + EF Core | 8002 |
-| `products-service` | Catálogo de [`Products`](ProductsService/Models/Product.cs) | ASP.NET Core 10 + MongoDB Driver | 8001 |
-| `orders-service` | Alta y consulta de [`Orders`](OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP; publica las `Orders` nuevas en la cola | ASP.NET Core 10 + EF Core | 8000 |
+| `products-service` | Catálogo de [`Products`](ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + MongoDB Driver + StackExchange.Redis | 8001 |
+| `orders-service` | Alta y consulta de [`Orders`](OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
 | `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
-| `rabbitmq` | Cola `orders.process` | RabbitMQ 4.4 | 5672, 15672 consola |
+| `orders-projector` | Mantiene la vista materializada del detalle de las `Orders` a partir de los eventos; es la misma imagen que `orders-service` con el proyector habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
+| `rabbitmq` | Exchange `andis.events` y colas `orders.process` y `orders.details-view` | RabbitMQ 4.4 | 5672, 15672 consola |
+| `redis` | Caché de `Products` | Redis 8 | 6379 |
 | `users-db` | Datos de `Users` | PostgreSQL 18 | 5432 |
 | `products-db` | Datos de `Products` | MongoDB 9 | 27017 |
-| `orders-db` | `Orders` y sus eventos | MySQL 26 | 3306 |
+| `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | MySQL 26 | 3306 |
 
 Endpoints disponibles a través del gateway, en `http://localhost`:
 
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
 | `GET` | `/users/UserService.svc?wsdl` | Contrato SOAP de `Users` |
-| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un [`User`](UsersService/Models/Users.cs) y `CreateUser` crea uno; ver [UsersService.http](UsersService/UsersService.http) |
+| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un [`User`](UsersService/Models/Users.cs), `CreateUser` crea uno y `UpdateUser` lo cambia y publica `user.updated`; ver [UsersService.http](UsersService/UsersService.http) |
 | `GET` | `/products/` | Lista los `Products` |
 | `GET` | `/products/{id}` | Obtiene un [`Product`](ProductsService/Models/Product.cs) |
 | `POST` | `/products/` | Crea un `Product` |
+| `PUT` | `/products/{id}` | Cambia un `Product`, invalida la caché y publica `product.updated` |
+| `PUT`, `DELETE` | `/products/cache` | Prende o apaga la caché y simula una base lenta, para las pruebas: ver [PATTERNS.md](PATTERNS.md#qué-agrega-a-la-demo-1) |
 | `GET` | `/orders/` | Lista las `Orders` con su estado |
 | `GET` | `/orders/{id}` | Obtiene una [`Order`](OrdersService/Models/Order.cs) |
-| `POST` | `/orders/` | Crea una `Order` en estado `Pending` y la encola para procesarla |
-| `GET` | `/orders/user/{userId}/details` | `Orders` de un `User` con el nombre del `User` y de cada `Product` |
+| `POST` | `/orders/` | Crea una `Order` en estado `Pending` y la encola para procesarla; responde `202 Accepted` con `Location` |
+| `GET` | `/orders/{id}/status` | Estado de una `Order`: `200` mientras está `Pending`, `303` a la `Order` cuando se procesó |
+| `GET` | `/orders/user/{userId}/details` | `Orders` de un `User` con el nombre del `User` y de cada `Product`, pidiéndolos a `Users` y a `Products` |
+| `GET` | `/orders/user/{userId}/details/view` | Lo mismo, leído de la vista materializada |
 | `GET` | `/orders/{id}/events` | Eventos de una `Order` y el estado que resulta de reproducirlos |
 | `POST` | `/orders/projections/rebuild` | Reconstruye la tabla de `Orders` a partir de los eventos |
 | `GET` | `/health/users`, `/health/products`, `/health/orders` | Salud de cada servicio |
 | `PUT`, `DELETE` | `/users/chaos`, `/products/chaos`, `/orders/chaos` | Inyección de fallas para las pruebas: ver [PATTERNS.md](PATTERNS.md#qué-agrega-a-la-aplicación-base) |
+| `GET`, `PUT`, `DELETE` | `/orders/patterns` | Prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, para que cada prueba muestre un patrón por vez |
 
 `orders-service` llama a `users-service` y a `products-service` al armar el
 detalle de las `Orders` de un `User`, y `orders-worker` los llama al procesar
 cada `Order`. Esas llamadas son las que protegen los patrones de resiliencia.
+`orders-projector` también los llama, una vez por `Order`, para copiar los
+nombres en la vista.
 
 ### Requisitos
 
@@ -78,8 +88,8 @@ cada `Order`. Esas llamadas son las que protegen los patrones de resiliencia.
 
 `jq` y `column` solo hacen falta para ver las respuestas como tabla. Los
 scripts de `demos/` también los usan, pero si falta alguno muestran el JSON tal
-cual; las excepciones son `03-bulkhead.sh`, `04-throttling.sh` y
-`05-rate-limiting.sh`, que necesitan `jq` para armar su tabla.
+cual; las excepciones son `03-bulkhead.sh`, `04-throttling.sh`,
+`05-rate-limiting.sh` y los demos del `09` en adelante, que necesitan `jq`.
 
 En Windows conviene usar WSL, porque se comporta igual que Linux y macOS. Si Git Bash
 no tiene `column`, la función `table` falla con `column: command not found`.
@@ -152,13 +162,15 @@ flowchart LR
                 direction TB
                 ps["«container» products-service<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» ProductsService.dll"]
                 pdb[("«container» products-db<br/>MongoDB 9<br/>──────────<br/>«artifact» mongoinit.js")]
+                rd[("«container» redis<br/>Redis 8")]
             end
 
             subgraph orders["Orders"]
                 direction TB
                 os["«container» orders-service<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» OrdersService.dll"]
                 ow["«container» orders-worker ×3<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» OrdersService.dll"]
-                mq[["«container» rabbitmq<br/>RabbitMQ 4.4<br/>──────────<br/>cola orders.process"]]
+                op["«container» orders-projector<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» OrdersService.dll"]
+                mq[["«container» rabbitmq<br/>RabbitMQ 4.4<br/>──────────<br/>exchange andis.events"]]
                 odb[("«container» orders-db<br/>MySQL 26<br/>──────────<br/>«artifact» mysqlinit.sql")]
             end
         end
@@ -171,20 +183,27 @@ flowchart LR
     os -- "HTTP :8000" --> us
     os -- "HTTP :8000" --> ps
     os -- "AMQP :5672 publica" --> mq
+    us -- "AMQP :5672 publica" --> mq
+    ps -- "AMQP :5672 publica" --> mq
     mq -- "AMQP :5672 consume" --> ow
+    mq -- "AMQP :5672 consume" --> op
     ow -- "HTTP :8000" --> us
     ow -- "HTTP :8000" --> ps
+    op -- "HTTP :8000" --> us
+    op -- "HTTP :8000" --> ps
     us -- "TCP :5432" --> udb
     ps -- "TCP :27017" --> pdb
+    ps -- "TCP :6379" --> rd
     os -- "TCP :3306" --> odb
     ow -- "TCP :3306" --> odb
+    op -- "TCP :3306" --> odb
 ```
 
 Cada nodo `«container»` es un contenedor definido en
 [docker-compose.yaml](docker-compose.yaml). Los servicios escuchan en el puerto
 8000 dentro de la red de Docker; en el host se publican en 8000, 8001 y 8002,
-para probarlos sin pasar por el gateway. Las réplicas de `orders-worker` no se
-publican en el host.
+para probarlos sin pasar por el gateway. Las réplicas de `orders-worker` y
+`orders-projector` no se publican en el host.
 
 ## Patrones implementados
 
@@ -198,9 +217,18 @@ publican en el host.
 | Health Endpoint Monitoring | `AddHealthChecks` y `MapHealthChecks` en el `Program.cs` de cada servicio; `healthcheck` en [docker-compose.yaml](docker-compose.yaml); rutas `/health/*` en `nginx.conf` |
 | Competing Consumers | [OrdersService/Messaging/](OrdersService/Messaging/): `RabbitMq.cs` publica, `OrderProcessingWorker.cs` consume; servicio `orders-worker` con 3 réplicas en `docker-compose.yaml` |
 | Event Sourcing | [OrdersService/Models/OrderEvent.cs](OrdersService/Models/OrderEvent.cs) y [OrderProjection.cs](OrdersService/Models/OrderProjection.cs); tabla `order_events` en [mysqlinit.sql](OrdersService/mysqlinit/mysqlinit.sql) |
+| Transactional Outbox | [OutboxMessage.cs](OrdersService/Models/OutboxMessage.cs), escrito en `CreateOrder` de [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) y en el *worker*; [OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs) lo publica |
+| Cache-Aside | [ProductsService/ProductCache.cs](ProductsService/ProductCache.cs), usado en [ProductsController.cs](ProductsService/Controllers/ProductsController.cs) |
+| Queue-Based Load Leveling | `POST /orders/` responde sin procesar la `Order`; la cola `orders.process` absorbe los picos |
+| Publisher/Subscriber | [Common/RabbitMq.cs](Common/RabbitMq.cs) y los contratos de [Common/Events.cs](Common/Events.cs); publican `Orders`, `Users` y `Products`; se suscriben `orders-worker` y `orders-projector` |
+| Asynchronous Request-Reply | `CreateOrder` y `GetOrderStatus` en [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) |
+| CQRS | Comandos en [OrdersController.cs](OrdersService/Controllers/OrdersController.cs) y [OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs); consultas en [OrdersQueriesController.cs](OrdersService/Controllers/OrdersQueriesController.cs) |
+| Materialized View | Tabla `order_details`, mantenida por [OrderDetailsProjector.cs](OrdersService/Messaging/OrderDetailsProjector.cs) en `orders-projector` |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
-está en la sección Demo 1 de [PATTERNS.md](PATTERNS.md#demo-1-resiliencia-y-disponibilidad).
+está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad)
+y [Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono)
+de PATTERNS.md.
 
 ## Cómo probar los patrones
 
@@ -214,10 +242,10 @@ en cada uno está en [commands.azcli](commands.azcli).
 Mientras corren las pruebas, también se puede mirar:
 
 - La salud de los servicios en vivo, en otra terminal: `./demos/monitor-health.sh`.
-- Los eventos de los patrones en los logs de Docker de `Orders`:
-  `docker compose logs -f orders-service orders-worker`.
-- La cola y sus consumidores en la consola de RabbitMQ: <http://localhost:15672>,
-  usuario y contraseña `guest`.
+- Los eventos de los patrones en los logs de Docker:
+  `docker compose logs -f orders-service orders-worker orders-projector products-service`.
+- Las colas, sus consumidores y los enlaces del exchange `andis.events` en la
+  consola de RabbitMQ: <http://localhost:15672>, usuario y contraseña `guest`.
 
 ## Observabilidad y pruebas de carga
 
@@ -261,7 +289,11 @@ código a mano:
 | `resilience_polly_pipeline_duration_milliseconds` | Polly | Duración de cada llamada a `Users` y `Products`, con los reintentos incluidos |
 | `rabbitmq_detailed_queue_*` | RabbitMQ | Mensajes esperando y en proceso en la cola, y consumidores conectados |
 | `orders_processed_total` | [OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
+| `outbox_pending`, `outbox_published_total` | [OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs) | Mensajes del *outbox* que esperan ser publicados, y los publicados |
+| `products_cache_total` | [ProductCache.cs](ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
 | `chaos_failure_rate`, `chaos_delay_seconds` | [Common/Chaos.cs](Common/Chaos.cs) | Las fallas inyectadas, para ver en qué momento empezaron y terminaron |
+| `orders_patterns_enabled` | [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
+| `orders_circuit_state` | [OrdersService/Patterns.cs](OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
 | `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
 
 ### Escenarios de carga
@@ -277,7 +309,9 @@ dashboard.
 | `throttling.js` | `Orders` demora 1 s; los usuarios virtuales suben de 0 a 40 | Las consultas en curso se estabilizan en 20 y el excedente recibe 503 |
 | `rate-limiting.js` | 5 `POST /orders/` por segundo durante 30 s, sin Rate Limiting; después, 1 por segundo durante 30 s, con Rate Limiting; 5 `GET /orders/` por segundo todo el tiempo | En la primera fase pasa un POST por segundo y el resto recibe 429; en la segunda no hay 429; los GET siempre responden 200 |
 | `competing-consumers.js` | Crea 60 `Orders` de golpe | La cola crece y se vacía a unas 1,5 `Orders` por segundo, repartidas entre las 3 réplicas |
-| `load.js` | Carga base para las demos de rendimiento: lecturas mezcladas a una tasa configurable | Throughput y latencia por servicio; k6 termina con error si no se cumple el objetivo de p95 menor a 500 ms con menos de 1 % de errores |
+| `load.js` | Carga base para las demos de rendimiento: lecturas mezcladas a una tasa configurable; con `-e DETAILS=view`, el detalle se lee de la vista | Throughput y latencia por servicio; k6 termina con error si no se cumple el objetivo de p95 menor a 500 ms con menos de 1 % de errores; comparando las dos corridas, la latencia de `details` contra la de `details view` |
+| `cache-aside.js` | 50 lecturas de `Products` por segundo, con una base que demora 100 ms: 30 s con la caché apagada y 30 s prendida | La latencia de `product` baja de unos 100 ms a unos 3 ms; las lecturas de la caché pasan de `disabled` a casi todas `hit` |
+| `load-leveling.js` | 10 `POST /orders/` por segundo durante 10 s, directamente en `orders-service` | La latencia de `create order` se mantiene baja; la cola `orders.process` crece durante el pico y se vacía a ritmo constante |
 
 `load.js` acepta la tasa y la duración como parámetros:
 

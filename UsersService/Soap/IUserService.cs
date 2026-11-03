@@ -23,6 +23,12 @@ public interface IUserService
     // Fault con el motivo, que reemplaza al 409 de la API REST.
     [OperationContract]
     Task<int> CreateUser(string name, string email);
+
+    // Cambia el nombre y el email de un User y publica el evento UserUpdated
+    // -Publisher/Subscriber-. Responde un SOAP Fault si el User no existe o si
+    // el email ya es de otro User.
+    [OperationContract]
+    Task<User> UpdateUser(int id, string name, string email);
 }
 
 public static class UserServiceContract

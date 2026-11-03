@@ -85,6 +85,21 @@ curl -s -X POST http://localhost/users/UserService.svc \
         </soap:Body>
       </soap:Envelope>' | xmllint --format -
 
+# Cambiar un usuario. Users publica el evento user.updated, y la vista
+# materializada de Orders actualiza el nombre del cliente.
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>1</id>
+            <name>alice</name>
+            <email>alice@example.com</email>
+          </UpdateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
 # Obtener todos los productos
 curl -s http://localhost/products/ | table
 
@@ -93,19 +108,56 @@ curl -s -X POST http://localhost/products/ \
   -H "Content-Type: application/json" \
   -d '{"name": "Buzo", "price": 2300.00}' | jq
 
-# Buscar un producto
+# Buscar un producto. La primera vez lo lee de MongoDB y lo guarda en Redis;
+# las siguientes, durante 60 segundos, lo lee de Redis -Cache-Aside-.
 curl -s http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 | jq
+
+# Cambiar un producto. Products borra el producto de Redis y publica el evento
+# product.updated.
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Camisa", "price": 1200.50}' | jq
 
 # Obtener todas las órdenes
 curl -s http://localhost/orders/ | table
 
-# Crear una nueva orden
-curl -s -X POST http://localhost/orders/ \
+# Crear una nueva orden -Asynchronous Request-Reply-. Orders no procesa la
+# orden en el momento: la guarda como Pending y responde enseguida con
+# 202 Accepted, que significa "recibí el pedido, pero todavía no está listo".
+# La respuesta trae dos encabezados que le dicen al cliente cómo seguir:
+# - Location: la dirección donde consultar el estado, /orders/{id}/status.
+# - Retry-After: cuántos segundos esperar antes de consultarla, 2.
+# Un worker procesa la orden después, en segundo plano. Con -i, curl incluye
+# los encabezados en la respuesta. La respuesta se guarda en una variable para
+# mostrarla y para sacar de ella la dirección de Location, que usan los
+# comandos siguientes.
+response=$(curl -s -i -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 2}' | jq
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 2}')
+echo "$response"
+location=$(echo "$response" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
+echo "$location"
 
-# Obtener las órdenes de un usuario y sus detalles
+# Consultar el estado de la orden en la dirección que indicó Location, igual
+# que haría un cliente. La respuesta depende de si el worker ya la procesó:
+# - Si todavía está Pending, responde 200 con el estado y otra vez
+#   Retry-After: el cliente tiene que volver a consultar más tarde.
+# - Si ya la confirmó o la rechazó, responde 303 See Other, sin cuerpo, con
+#   Location apuntando a la orden, /orders/{id}: el resultado está ahí.
+# Una orden nueva tarda unos 3 segundos en procesarse: si se consulta enseguida
+# se ve el 200, y repitiendo la consulta unos segundos después, el 303.
+curl -s -i "http://localhost$location"
+
+# Lo mismo, pero con -L curl sigue la redirección del 303 por su cuenta y
+# muestra directamente la orden, con su estado final.
+curl -s -L "http://localhost$location" | jq
+
+# Obtener las órdenes de un usuario y sus detalles, pidiendo los nombres a
+# Users y a Products
 curl -s http://localhost/orders/user/1/details | table
+
+# Lo mismo, leído de la vista materializada -CQRS-
+curl -s http://localhost/orders/user/1/details/view | table
 
 # Obtener los eventos de una orden -Event Sourcing- y el estado que resulta de
 # reproducirlos. La respuesta tiene las dos partes: se muestra cada una como
@@ -136,7 +188,12 @@ docker compose --profile observability up -d --wait
 # Grafana, así que aparece directamente. Grafana
 # lo carga al arrancar desde observability/grafana/dashboards/andis-demo.json;
 # no hay que importarlo. Conviene dejarlo abierto durante todas las demos; se
-# actualiza cada 5 seguntos.
+# actualiza cada 5 segundos.
+#
+# Al final del título de cada panel, entre corchetes, están las demos que lo
+# usan, por el número de su script en 'demos/': [Demo 1] es 01-retry.sh, y
+# [Demos 1-3, 16] son 01, 02, 03 y 16. En los textos de este archivo los
+# paneles se nombran sin ese agregado.
 #
 # Prometheus y el estado de cada target:
 #
@@ -157,52 +214,144 @@ curl http://localhost:8000/metrics
 # tiempo. Los scripts y escenarios inyectan las fallas que
 # necesitan y las quitan al terminar.
 #
+# Para que cada demo muestre un solo patrón, las de Retry, Circuit Breaker,
+# Bulkhead y Throttling dejan prendido en Orders solo el suyo y apagan los
+# demás; al terminar, los vuelven a prender. Así, en la demo de Retry no se abre
+# el circuito, y en la de Throttling no actúa el Bulkhead. En Grafana, el panel
+# "Patrones de resiliencia prendidos en Orders" muestra cuáles estaban prendidos
+# en cada momento. También se pueden prender y apagar a mano, sin reiniciar:
+
+curl -s http://localhost/orders/patterns | jq
+curl -s -X PUT http://localhost/orders/patterns -H "Content-Type: application/json" \
+  -d '{"retry": true, "circuitBreaker": false, "bulkhead": false, "throttling": false}' | jq
+curl -s -X DELETE http://localhost/orders/patterns | jq
+
 # Mientras corren, se puede tener abierto en otras terminales:
-# - Los logs de Docker de Orders, donde cada patrón deja su etiqueta: [RETRY],
-#   [CIRCUIT BREAKER], [BULKHEAD], [THROTTLING] y [COMPETING CONSUMERS]
-#
+# 1. Los logs de Docker de Orders, donde cada patrón deja su etiqueta: [RETRY],
+#    [CIRCUIT BREAKER], [BULKHEAD], [THROTTLING], [COMPETING CONSUMERS] y
+#    [OUTBOX]; y, para los patrones de rendimiento, los de orders-projector y
+#    products-service: [PUB/SUB], [MATERIALIZED VIEW] y [CACHE-ASIDE]
+
     docker compose logs -f --since 1s orders-service orders-worker
-#
-# - La salud de los servicios en vivo
-#
+    docker compose logs -f --since 1s orders-projector products-service
+
+# 2. La salud de los servicios en vivo
+
     ./demos/monitor-health.sh
-#
 
-# -------------
-# --- Retry ---
-# -------------
-# El detalle de las Orders del User 1 lo arma Orders: lee las Orders en su base
+# ----------------
+# --- 01 Retry ---
+# ----------------
+# El detalle de las Orders de un User lo arma Orders: lee las Orders en su base
 # y, para completarlas, le pide a Users el nombre del cliente y a Products el
-# nombre del producto de cada Order. Cada consulta hace 1 llamada a Users y 1 a
-# Products por cada Order. Sin fallas, la respuesta trae una entrada por Order
-# con el nombre del cliente y el nombre del producto:
+# nombre del producto de cada Order; en caso de que Users o Products no estén
+# disponbibles, muestra 'no disponible' en lugar del nombre del cliente o del
+# producto, respectivamente. Cada consulta hace 1 llamada a Users y 1 a Products
+# por cada Order. Sin fallas, la respuesta trae una entrada por Order con el
+# nombre del cliente y el nombre del producto:
 
-curl http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/1/details | table
 
-# El siguiente script hace que Products falle en el 20 % de las solicitudes y
-# repite esa misma consulta 8 veces.
+# Configurar Products para que falle 100% de las veces, ejecutar nuevamente la
+# consulta /orders/users/{id}/detals, y comparar el resultado con el anterior:
+
+curl -s -X PUT http://localhost/products/chaos \
+  -H 'Content-Type: application/json' \
+  -d "{\"failureRate\": 1, \"delayMs\": 0}"
+
+curl -s http://localhost/orders/user/1/details | table
+
+# Reparar Products, configurar Users para que falle 100% de las veces, ejecutar
+# nuevamente la consulta /orders/user/{id}/detals, y comparar con el resultado
+# anterior:
+
+curl -s -X DELETE http://localhost/products/chaos
+
+curl -s -X PUT http://localhost/users/chaos \
+  -H 'Content-Type: application/json' \
+  -d "{\"failureRate\": 1, \"delayMs\": 0}" | jq
+
+curl -s http://localhost/orders/user/1/details | table
+
+# Restaurar Users
+
+curl -s -X DELETE http://localhost/users/chaos | jq
+
+# Apagar el patrón Retry -y los demás- y hacer que Products y Users fallen el
+# 30% de las veces. Luego ejecutar varias veces la consulta a
+# orders/user/{id}/detail. Debería aparecer a veces 'no disponible (error HTTP
+# 503)' en lugar del nombre del usuario o de los productos.
+
+curl -s -X PUT http://localhost/orders/patterns \
+  -H "Content-Type: application/json" \
+  -d '{"retry": false, "circuitBreaker": false, "bulkhead": false, "throttling": false}' | jq
+
+curl -s -X PUT http://localhost/products/chaos \
+  -H 'Content-Type: application/json' \
+  -d "{\"failureRate\": 0.3, \"delayMs\": 0}" | jq
+
+curl -s -X PUT http://localhost/users/chaos \
+  -H 'Content-Type: application/json' \
+  -d "{\"failureRate\": 0.3, \"delayMs\": 0}" | jq
+
+curl -s http://localhost/orders/user/1/details | table
+
+# Prender el patrón Retry solamente y nuevamente ejecutar varias veces la
+# consulta a orders/user/{id}/details. Ahora el nombre del usuario y de los
+# productos debería aparecer siempre, excepto que falle todas las veces que se
+# reintente, hasta desistir. Cuando hay reintentos, la consulta demora más.
+
+curl -s -X PUT http://localhost/orders/patterns \
+  -H "Content-Type: application/json" \
+  -d '{"retry": true, "circuitBreaker": false, "bulkhead": false, "throttling": false}' | jq
+
+curl -s http://localhost/orders/user/1/details | table
+
+# Prender el resto de los patrones y reparar Products y Users.
+
+curl -s -X DELETE http://localhost/orders/patterns
+curl -s -X DELETE http://localhost/products/chaos
+curl -s -X DELETE http://localhost/users/chaos
+
+# El siguiente script hace lo mismo, solo con Products: lo hace fallar en el
+# 30 % de las solicitudes y repite la consulta 8 veces, una por segundo, con
+# todos los patrones apagados; después prende solo el Retry y la repite otras 8
+# veces. Tarda unos 20 segundos.
 
 ./demos/01-retry.sh
 
-# Resultado: cada consulta muestra al final el código HTTP y el tiempo de
-# respuesta. Sin reintentos, con las dos Orders de los datos iniciales, cerca de
-# 1 de cada 3 consultas traería algún producto "no disponible". Orders reintenta
-# cada llamada fallida hasta 3 veces; como la falla es transitoria, casi siempre
-# funciona y la respuesta trae el nombre del producto. Si se agotaran los
-# reintentos, en lugar del nombre diría "no disponible". Las que demoran más son
-# las que necesitaron reintentos: 0.5, 1 o 2 segundos, con jitter.
+# Resultado en consola: cada consulta muestra al final el código HTTP y el
+# tiempo de respuesta:
+# - Con el Retry apagado, cada llamada fallida queda fallida: con las dos Orders
+#   de los datos iniciales, cerca de la mitad de las consultas trae algún
+#   producto "no disponible (error HTTP 503)". Todas responden en milisegundos.
+# - Con el Retry prendido, Orders reintenta cada llamada fallida hasta 3 veces;
+#   como la falla es transitoria, casi siempre funciona y la respuesta trae el
+#   nombre del producto. Si se agotaran los reintentos, diría "no disponible".
+#   Las que demoran más son las que necesitaron reintentos: 0.5, 1 o 2
+#   segundos, con jitter.
+# El Circuit Breaker queda apagado tanto con Retry prendido como con Retry
+# apagado: con 30 % de fallas podría abrirse en una mala racha, y la consulta
+# diría "no disponible (circuito abierto)", lo que mezclaría los dos patrones.
+
 # Logs de Docker: una línea [RETRY] por reintento, con el número de reintento,
-# la espera y la causa -HTTP 503-.
+# la espera y la causa -HTTP 503-, solo en la segunda mitad.
 
 docker compose logs orders-service | grep '\[RETRY\]'
 
-# Grafana: barras amarillas "products · OnRetry" en "Eventos de resiliencia por
-# segundo", y la línea de Products en "Fracción de solicitudes que fallan a
-# propósito" sube a 20 % mientras dura la demo.
+# Resultado en Grafana: la demo dura unos 20 segundos, así que las señales son
+# breves:
+# - "Patrones de resiliencia prendidos en Orders": los cuatro en 0 durante la
+#   primera mitad; en la segunda, Retry sube a 1.
+# - "Eventos de resiliencia": barras amarillas "products · OnRetry", con la
+#   cantidad de reintentos de cada intervalo de 5 segundos, solo en la segunda
+#   mitad.
+# - "Fracción de solicitudes que fallan a propósito": products-service sube a
+#   30 % mientras dura la demo.
 
-# -----------------------
-# --- Circuit Breaker ---
-# -----------------------
+# --------------------------
+# --- 02 Circuit Breaker ---
+# --------------------------
 # Al igual que en la demo de Retry, se consulta el detalle de las Orders del
 # User 1, que Orders completa pidiéndole a Products el nombre del producto de
 # cada Order. Pero ahora Products falla siempre: reintentar no sirve, y seguir
@@ -210,48 +359,92 @@ docker compose logs orders-service | grep '\[RETRY\]'
 # recuperarse. Orders tiene un circuito por dependencia: si fallan al menos la
 # mitad de las llamadas en 10 segundos, con un mínimo de 5, el circuito se abre
 # y durante 15 segundos las llamadas fallan de inmediato, sin llegar a Products.
-# Después de 15 segungos pasa a semiabierto: deja pasar una llamada de prueba y,
+# Después de 15 segundos pasa a semiabierto: deja pasar una llamada de prueba y,
 # si funciona, se cierra.
 #
-# El siguiente script hace que Products falle en el 100 % de las solicitudes,
-# consulta el detalle 6 veces, hace que Products se recupere y espera a que el
-# circuito se cierre. Tarda unos 20 segundos.
+# El siguiente script hace que Products falle en el 100 % de las solicitudes y
+# consulta el detalle 6 veces con todos los patrones apagados; después prende
+# solo el Circuit Breaker y lo consulta otras 6 veces. Después de cada tanda
+# dice cuántas llamadas le llegaron a Products, según las métricas de Products.
+# Al final hace que Products se recupere y espera a que el circuito se cierre.
+# Tarda unos 25 segundos.
 
 ./demos/02-circuit-breaker.sh
 
-# Resultado en consola: la primera consulta demora unos segundos, porque
-# reintenta y, al acumular fallas, abre el circuito. Las siguientes responden al
-# instante y, en lugar del nombre del producto, dicen "no disponible [circuito
-# abierto]": Orders ya no llama a Products. Cuando Products se recupera, la
-# respuesta sigue degradada, porque el circuito queda abierto 15 segundos aunque
-# Products ya funcione. Pasado ese tiempo, la llamada de prueba funciona, el
-# circuito se cierra y vuelve el nombre del producto. Logs de Docker: circuito
-# ABIERTO, SEMIABIERTO y CERRADO, en ese orden.
+# Resultado en consola:
+# - Con el Circuit Breaker apagado, las 6 consultas dicen "no disponible (error
+#   HTTP 503)" en los dos productos, y Products recibe 12 llamadas, 2 por
+#   consulta: Orders lo sigue llamando aunque falle siempre.
+# - Con el Circuit Breaker prendido, el Retry sigue apagado, así que cada
+#   llamada a Products falla una sola vez y cuenta una vez para el circuito.
+#   Las dos primeras consultas dicen "no disponible (error HTTP 503)": Orders
+#   llamó a Products y falló. En la tercera se llega a 5 fallas y el circuito
+#   se abre: su segundo producto ya dice "no disponible (circuito abierto)".
+#   Desde ahí, las consultas dicen "no disponible (circuito abierto)" en los
+#   dos productos: Orders ya no llama a Products, que recibe solo 5 llamadas.
+# Cuando Products se recupera, la respuesta sigue degradada, porque el circuito
+# queda abierto 15 segundos aunque Products ya funcione. Pasado ese tiempo, la
+# llamada de prueba funciona, el circuito se cierra y vuelve el nombre del
+# producto. Todas responden en milisegundos.
+#
+# Con el Retry prendido la primera consulta demoraría unos segundos: cada
+# llamada se reintentaría hasta 3 veces antes de que se abriera el circuito, y
+# cada reintento contaría como una falla más.
+
+# Logs de Docker: circuito ABIERTO, SEMIABIERTO y CERRADO, en ese orden.
 
 docker compose logs orders-service | grep '\[CIRCUIT BREAKER\]'
 
-# Bajo carga: 5 consultas por segundo durante 80 segungos; Products falla entre
+# Grafana:
+# - "Patrones de resiliencia prendidos en Orders": los cuatro en 0 durante la
+#   primera tanda; desde la segunda, Circuit Breaker sube a 1.
+# - "Estado del circuito de cada dependencia": Products y Users en gris,
+#   apagado, durante la primera tanda; como dura pocos segundos, es una franja
+#   angosta. Después, Products pasa a rojo, abierto,
+#   durante 15 segundos, y vuelve a verde, cerrado. El semiabierto dura lo que
+#   tarda la llamada de prueba, milisegundos, y no llega a verse. Users queda
+#   en verde.
+# - "Eventos de resiliencia": una barra de altura 1 para cada evento:
+#   OnCircuitOpened en rojo cuando se abre el circuito, y unos 15 segundos
+#   después, OnCircuitClosed en verde con OnCircuitHalfOpened en naranja
+#   apilada encima, porque ocurren en el mismo intervalo de 5 segundos.
+
+# Bajo carga: 5 consultas por segundo durante 80 segundos; Products falla entre
 # los 15 y los 50 segundos.
 
 docker compose run --rm k6 run /scripts/circuit-breaker.js
 
-# Resulado en consola: todos los checks "status 200" pasan; degraded_responses
-# indica qué fracción de las respuestas llegó degradada.
+# Resultado en la consola: todos los checks "status 200" pasan;
+# degraded_responses indica qué fracción de las respuestas llegó degradada.
 #
 # En Grafana:
-# - "Eventos de resiliencia por segundo": OnRetry al empezar la falla, luego
-#   OnCircuitOpened en rojo, y al final OnCircuitHalfOpened y OnCircuitClosed.
-# - "Duración de las llamadas a cada dependencia, p95": Products sube por los
-#   reintentos y cae a casi cero cuando el circuito se abre y falla de inmediato.
-# - "Resultado de las llamadas a cada dependencia": "products · BrokenCircuit"
-#   reemplaza a "products · HTTP 503" mientras el circuito está abierto.
-# - "Solicitudes por segundo, por código HTTP": el cliente sigue recibiendo 200.
+# - "Patrones de resiliencia prendidos en Orders": solo circuit breaker queda en
+#   1; sin Retry, no hay barras OnRetry.
+# - "Eventos de resiliencia": una barra de altura 1 para cada evento; los que
+#   ocurren en el mismo intervalo de 5 segundos se apilan. Al empezar la falla,
+#   OnCircuitOpened en rojo. Como la falla dura 35 segundos, más que los 15 que
+#   el circuito queda abierto, cada 15 segundos aparecen apiladas
+#   OnCircuitHalfOpened en naranja y otra vez OnCircuitOpened: la llamada de
+#   prueba falló. Pasa dos o tres veces, según cuándo cae la prueba. Después de
+#   la recuperación, OnCircuitHalfOpened y OnCircuitClosed en verde.
+# - "Estado del circuito de cada dependencia": Products en verde, cerrado,
+#   hasta unos segundos después de empezar la falla; en rojo, abierto, de
+#   corrido mientras dura la falla y hasta 15 segundos después, porque cada
+#   prueba fallida lo vuelve a abrir; y otra vez en verde. Users sigue en verde
+#   todo el tiempo.
+# - "Resultado de las llamadas a cada dependencia": al empezar la falla aparece
+#   "products · HTTP 503" por unos segundos, hasta que el circuito se abre;
+#   desde ahí "products · BrokenCircuit" la reemplaza, y "products · HTTP 200"
+#   baja a 0. Después de la recuperación vuelve "products · HTTP 200".
+# - "Solicitudes por segundo, por código HTTP": el cliente sigue recibiendo 200
+#   todo el tiempo.
 # - "Usuarios virtuales y respuestas degradadas": el % degradado sube durante la
-#   falla y vuelve a 0 cuando el circuito se cierra.
+#   falla hasta cerca de 70 % y baja de a poco después: es la fracción acumulada
+#   desde el inicio del escenario, así que no vuelve a 0.
 
-# ----------------
-# --- Bulkhead ---
-# ----------------
+# -------------------
+# --- 03 Bulkhead ---
+# -------------------
 # Al igual que en la demo de Retry, se consulta el detalle de las Orders del
 # User 1, que Orders completa pidiéndole a Users el nombre del cliente y a
 # Products el nombre del producto de cada Order. Si Products se pone lento, las
@@ -270,20 +463,33 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 # primero que atraviesa cada llamada, antes que Retry y Circuit Breaker: un
 # lugar cubre la llamada completa, reintentos incluidos.
 #
-# El siguiente script hace algunas rondas de consultas para que los servicios
-# tengan abiertas sus conexiones, hace que Products demore 1.5 segundos en cada
-# solicitud y lanza 15 consultas de detalle simultáneas.
+# El siguiente script apaga todos los patrones, hace algunas rondas de
+# consultas para que los servicios tengan abiertas sus conexiones, hace que
+# Products demore 1.5 segundos en cada solicitud y lanza 15 consultas de detalle
+# simultáneas. Después prende solo el Bulkhead y lanza otras 15. Mientras corre
+# cada tanda, mide cuántas llamadas atiende Products a la vez, según las
+# métricas de Products. Tarda unos 25 segundos.
 
 ./demos/03-bulkhead.sh
 
-# Resultado en consola: una fila por consulta, ordenadas por tiempo de
-# respuesta, y un resumen. El User 1 tiene 2 Orders, así que cada consulta hace
-# 2 llamadas a Products, de a una y de 1.5 segundos cada una. Si se llama A a
-# las 5 primeras consultas, B a las 5 siguientes y C a las últimas 5:
+# Resultado en consola: en cada tanda, una fila por consulta, ordenadas por
+# tiempo de respuesta, y un resumen. El User 1 tiene 2 Orders, así que cada
+# consulta hace 2 llamadas a Products, de a una y de 1.5 segundos cada una.
+#
+# Con el Bulkhead apagado, las 15 consultas traen todos los nombres y demoran
+# 3 segundos, 2 llamadas de 1.5 segundos; pero Products llega a atender 15
+# llamadas a la vez: Orders le manda todas las que recibe. Con 15 consultas
+# Products las atiende, pero con 1.000 se quedaría sin conexiones, y Orders
+# acumularía 1.000 llamadas pendientes que ocupan los recursos que también
+# necesitan las llamadas a Users.
+#
+# Con el Bulkhead prendido, Products nunca atiende más de 5 llamadas a la vez.
+# El costo: 5 consultas se rechazan y otras demoran más. Si se llama A a las 5
+# primeras consultas, B a las 5 siguientes y C a las últimas 5:
 # - 0 segundos: A toma los 5 lugares y B ocupa la fila. C encuentra todo
 #   lleno y se rechaza; su otra llamada también, porque el compartimento sigue
 #   lleno, así que C termina en milisegundos con los dos productos "no
-#   disponible".
+#   disponible (bulkhead lleno)".
 # - 1.5 segundos: A termina su primera llamada y libera los lugares, que toma
 #   B, la primera en la fila. A pide su segunda llamada y va a la fila.
 # - 3 segundos: B termina su primera llamada; A entra con la segunda y B va a
@@ -292,32 +498,49 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 #   con la segunda.
 # - 6 segundos: B termina. A demora 4.5 segundos y no 3, como serían 2 llamadas
 #   de 1.5 segundos, porque se turna con B por los 5 lugares. A y B traen todos
-#   los nombres de los productos. El nombre del cliente aparece en todas: Users
-#   tiene su propio compartimento de 20 lugares, entran las 15 consultas y no
-#   compite con Products por nada. Logs de Docker: líneas [BULKHEAD] solo para
-#   products.
+#   los nombres de los productos.
+# En las dos tandas el nombre del cliente aparece en todas: Users tiene su
+# propio compartimento de 20 lugares, entran las 15 consultas y no compite con
+# Products por nada.
+
+# Logs de Docker: líneas [BULKHEAD] solo para Products, solo en la segunda
+# tanda.
 
 docker compose logs orders-service | grep '\[BULKHEAD\]'
+
+# Grafana: entre las dos tandas el script espera 10 segundos, para que se
+# distingan:
+# - "Patrones de resiliencia prendidos en Orders": los cuatro en 0 durante la
+#   primera tanda; en la segunda, bulkhead sube a 1.
+# - "Eventos de resiliencia": OnRateLimiterRejected en violeta, solo en la
+#   segunda tanda: 10 rechazos, las 2 llamadas de cada una de las 5 consultas C.
+# - "Resultado de las llamadas a cada dependencia": en la primera tanda, solo
+#   "products · HTTP 200"; en la segunda aparece "products · RateLimiterRejected".
+#   "users · HTTP 200" en las dos, sin rechazos.
+# - "Duración de las llamadas a cada dependencia, p95": Products en unos 2
+#   segundos en la primera tanda y en unos 4.5 en la segunda, porque incluye el
+#   tiempo que la llamada espera en la fila. Users en milisegundos en las dos.
 
 # Bajo carga: 6 consultas por segundo durante 45 s, con Products lento.
 
 docker compose run --rm k6 run /scripts/bulkhead.js
 
-# Resultado en consola: todos los checks pasan; cerca del 80 % de las respuestas
-# llega degradada
+# Resultado en consola: todos los checks pasan; cerca del 70 % de las respuestas
+# llegan degradadas.
 #
 # Resultado en Grafana:
-# - "Eventos de resiliencia por segundo": OnRateLimiterRejected en violeta, solo
-#   en products.
+# - "Patrones de resiliencia prendidos en Orders": solo bulkhead queda en 1.
+# - "Eventos de resiliencia": OnRateLimiterRejected en violeta, solo en
+#   Products, con la cantidad de rechazos de cada intervalo de 5 segundos.
 # - "Resultado de las llamadas a cada dependencia": "products ·
 #   RateLimiterRejected" junto a unas pocas "products · HTTP 200", y
 #   "users · HTTP 200" sin rechazos.
 # - "Duración de las llamadas a cada dependencia, p95": Products en varios
 #   segundos y Users en pocos milisegundos, sin cambios.
 
-# ------------------
-# --- Throttling ---
-# ------------------
+# ---------------------
+# --- 04 Throttling ---
+# ---------------------
 # Al igual que en la demo de Retry, se consulta el detalle de las Orders del
 # User 1. Pero ahora el problema no está en las dependencias sino en Orders: un
 # pico de consultas podría saturarlo y degradarlo para todos sus clientes.
@@ -347,28 +570,23 @@ docker compose run --rm k6 run /scripts/bulkhead.js
 # Resultado en consola: una fila por consulta, en el orden en que se lanzaron,
 # con el tiempo de respuesta, el código HTTP, el encabezado Retry-After, el
 # nombre del cliente y el nombre del producto de cada Order, y un resumen. Las
-# 20 primeras consultas se atienden con 200 en unos 2 segundos, y las 20
-# siguientes se rechazan de inmediato con 503, sin datos: como cada consulta
-# demora 2 segundos, las 20 primeras ocupan todos los lugares mientras llegan
-# las demás. Todas las rechazadas traen Retry-After: 2, y las atendidas no lo
-# traen.
+# 20 primeras consultas se atienden con 200 en unos 2 segundos, con todos los
+# nombres, y las 20 siguientes se rechazan de inmediato con 503, sin datos: como
+# cada consulta demora 2 segundos, las 20 primeras ocupan todos los lugares
+# mientras llegan las demás. Todas las rechazadas traen Retry-After: 2, y las
+# atendidas no lo traen.
 #
-# En algunas de las consultas atendidas, el nombre de uno o más productos dice
-# "no disponible (bulkhead lleno)". No es un error de la demo: es el Bulkhead
-# de la demo anterior actuando junto con el Throttling. Las 20 consultas
-# atendidas esperan los mismos 2 segundos y después llaman a Products todas a
-# la vez, con 2 llamadas cada una. El compartimento de Products admite 5
-# llamadas en curso y 5 en espera, y rechaza el resto. El Throttling protege a
-# Orders de lo que recibe, y el Bulkhead lo protege de lo que llama: cada
-# patrón cubre un riesgo distinto, y en un sistema real actúan a la vez. Por
-# eso la respuesta es 200 aunque falten datos: Orders degrada la respuesta en
-# lugar de fallar entera.
+# El Bulkhead está apagado en esta demo. Si estuviera prendido, algunas de las
+# consultas atendidas dirían "no disponible (bulkhead lleno)" en uno o más
+# productos: las 20 esperan los mismos 2 segundos y después llaman a Products
+# todas a la vez, con 2 llamadas cada una, y el compartimento de Products
+# admite 5 en curso y 5 en espera. El Throttling protege a Orders de lo que
+# recibe, y el Bulkhead lo protege de lo que llama: cada patrón cubre un riesgo
+# distinto, y en un sistema real actúan a la vez.
 #
-# Logs de Docker:
-# una línea [THROTTLING] por cada consulta rechazada, y una línea [BULKHEAD]
-# por cada llamada a Products rechazada.
+# Logs de Docker: una línea [THROTTLING] por cada consulta rechazada.
 
-docker compose logs orders-service | grep '\[THROTTLING\]\|\[BULKHEAD\]'
+docker compose logs orders-service | grep '\[THROTTLING\]'
 
 # Bajo carga: Orders demora 1 segundo y los usuarios virtuales suben de 0 a 40,
 # se mantienen y bajan, en 60 segundos. Los clientes respetan Retry-After.
@@ -378,15 +596,16 @@ docker compose run --rm k6 run /scripts/throttling.js
 # Resultado en la consola: todos los checks "status 200 o 503" pasan.
 #
 # Resultado en Grafana:
+# - "Patrones de resiliencia prendidos en Orders": solo throttling queda en 1.
 # - "Throttling en Orders": "en curso" sube y se queda en 20 aunque haya 40
 #   usuarios virtuales; aparecen "rechazadas por segundo" mientras la carga
 #   supera el límite.
 # - "Solicitudes por segundo, por código HTTP": aparecen los 503 en rojo.
 # - "Demora agregada a propósito": orders-service en 1 s.
 
-# ---------------------
-# --- Rate Limiting ---
-# ---------------------
+# ------------------------
+# --- 05 Rate Limiting ---
+# ------------------------
 # En la demo de Throttling, Orders se protegía a sí mismo rechazando lo que no
 # podía atender. El Rate Limiting es la otra cara: lo aplica el cliente, que
 # regula el ritmo al que envía solicitudes para no superar el límite del
@@ -436,24 +655,28 @@ docker compose logs api-gateway | grep '" 429 '
 docker compose run --rm k6 run /scripts/rate-limiting.js
 
 # Resultado en la consola: todos los checks pasan; en la fase sin Rate Limiting
-# los POST responden 200 o 429, y en la fase con Rate Limiting, solo 200.
+# los POST responden 202 o 429, y en la fase con Rate Limiting, solo 202.
 #
 # Resultado en Grafana:
 # - "Solicitudes por segundo, por código HTTP": en la primera fase, unos 4 por
-#   segundo en naranja -429- y el resto en verde; en la segunda, sin naranja.
-# - "Latencia p95 vista por k6, por endpoint": "list orders" no se ve afectado.
-# - "Solicitudes por segundo, por servicio y código HTTP": orders-service recibe
-#   1 POST por segundo en las dos fases; los rechazados nunca le llegan.
+#   segundo en naranja -429-; en verde, los 200 de la lista de Orders y 1 por
+#   segundo de 202 de los POST aceptados. En la segunda fase, sin naranja.
+# - "Latencia p95 vista por k6, por endpoint": "list orders" se mantiene en
+#   unos 10 ms en las dos fases.
+# - "Solicitudes por segundo, por servicio y código HTTP": la serie
+#   "orders-service · 202" se mantiene en 1 por segundo en las dos fases: los
+#   POST rechazados nunca llegan a orders-service.
 
-# ----------------------------------
-# --- Health Endpoint Monitoring ---
-# ----------------------------------
+# -------------------------------------
+# --- 06 Health Endpoint Monitoring ---
+# -------------------------------------
 # Cada servicio expone /health, que verifica sus propias dependencias y devuelve
 # el resultado de cada chequeo: 200 si está sano y 503 si no. Users chequea su
 # base PostgreSQL; Products, su base MongoDB; y Orders, su base MySQL y
-# RabbitMQ. Orders no chequea a Users ni a Products: como se vio en la demo de
-# Retry, si una de esas dependencias falla, Orders sigue funcionando degradado y
-# no debe figurar como caído. Docker consulta /health cada 5 segundos para saber
+# RabbitMQ -si RabbitMQ no está, Orders queda Degraded y responde 200, porque
+# sigue aceptando Orders: ver Transactional Outbox-. Orders no chequea a Users
+# ni a Products: como se vio en la demo de Retry, si una de esas dependencias
+# falla, Orders sigue funcionando degradado y no debe figurar como caído. Docker consulta /health cada 5 segundos para saber
 # si cada contenedor está sano. El gateway publica el /health de cada servicio:
 
 curl -s http://localhost/health/products | jq
@@ -480,16 +703,17 @@ docker compose logs products-service --since 2m
 # Grafana: no hay un panel propio; este patrón se observa en la consola y en
 # ./demos/monitor-health.sh.
 
-# ---------------------------
-# --- Competing Consumers ---
-# ---------------------------
+# ------------------------------
+# --- 07 Competing Consumers ---
+# ------------------------------
 # Al crear una Order con POST /orders/, Orders la guarda como pendiente y
-# publica su id en la cola orders.process de RabbitMQ. Tres réplicas de
-# orders-worker consumen la misma cola, y RabbitMQ entrega cada mensaje a una
-# sola. Cada réplica procesa una Order por vez: le pide a Users y a Products sus
-# datos -como Orders en la demo de Retry-, la confirma o la rechaza, y recién
-# entonces le confirma el mensaje a RabbitMQ -ack-. Si una réplica se cae antes,
-# RabbitMQ entrega el mensaje a otra.
+# publica el evento order.created en RabbitMQ, a través del outbox -ver
+# Transactional Outbox-. El evento llega a la cola orders.process. Tres
+# réplicas de orders-worker consumen la misma cola, y RabbitMQ entrega cada
+# mensaje a una sola. Cada réplica procesa una Order por vez: le pide a Users y
+# a Products sus datos -como Orders en la demo de Retry-, la confirma o la
+# rechaza, y recién entonces le confirma el mensaje a RabbitMQ -ack-. Si una
+# réplica se cae antes, RabbitMQ entrega el mensaje a otra.
 #
 # El siguiente script crea 9 Orders y muestra qué réplica procesó cada una.
 # Después crea 9 más, detiene una réplica mientras procesa y al final la vuelve
@@ -522,9 +746,9 @@ docker compose up -d orders-worker
 #   altura, unas 0,5 por segundo cada una; si se detiene una réplica, su franja
 #   desaparece y la cola tarda más en vaciarse.
 
-# ----------------------
-# --- Event Sourcing ---
-# ----------------------
+# -------------------------
+# --- 08 Event Sourcing ---
+# -------------------------
 # Cada cambio de una Order se guarda como un evento inmutable en la tabla
 # order_events: OrderCreated al crearla, y OrderConfirmed u OrderRejected cuando
 # un worker la procesa, como en la demo de Competing Consumers. La tabla orders
@@ -550,6 +774,244 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 # Grafana: no hay un panel propio; en "Orders procesadas por segundo, por
 # réplica" se ve la Order confirmada por una de las réplicas.
 
+# -------------------------------
+# --- 09 Transactional Outbox ---
+# -------------------------------
+# POST /orders/ no publica en RabbitMQ: guarda la Order, su evento OrderCreated
+# y el mensaje order.created en la tabla outbox_messages, en la misma
+# transacción. El relay del outbox, que corre en orders-service, publica cada
+# segundo los mensajes pendientes y los marca como publicados. El worker hace lo
+# mismo con order.confirmed y order.rejected. Si RabbitMQ no está, los mensajes
+# esperan en la base: no se pierde ninguno, y Orders sigue aceptando Orders.
+#
+# El siguiente script detiene RabbitMQ, crea 5 Orders, muestra los mensajes
+# pendientes y vuelve a levantar RabbitMQ. Tarda unos 30 segundos.
+
+./demos/09-transactional-outbox.sh
+
+# Resultado: las 5 Orders responden 202 aunque RabbitMQ no esté; antes del
+# outbox, Orders respondía 503 y la Order quedaba Pending para siempre.
+# /health/orders responde Degraded, no Unhealthy. Los 5 mensajes quedan
+# pendientes en outbox_messages; al levantar RabbitMQ, el relay los publica, los
+# workers confirman las Orders y no queda ninguno pendiente.
+# Logs de Docker: "RabbitMQ no está disponible", una línea por mensaje publicado
+# y "RabbitMQ volvió".
+
+docker compose logs orders-service --since 2m | grep '\[OUTBOX\]'
+
+# Para ver el outbox directamente en la base:
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT id, routing_key, created_at, published_at FROM outbox_messages ORDER BY id DESC LIMIT 10"
+# Grafana:
+# - "Outbox de Orders": "pendientes" sube a 5 durante los 15 segundos en que
+#   RabbitMQ está detenido y vuelve a 0 cuando se levanta; en ese momento
+#   aparece un pico en "publicados por segundo".
+# - "Cola orders.process" y "Cola orders.details-view": las líneas se cortan
+#   mientras RabbitMQ está detenido, porque Prometheus no puede leer sus
+#   métricas.
+
+# ---------------------------------------------------------------------------
+# Patrones de rendimiento
+# ---------------------------------------------------------------------------
+# Los siguientes patrones agregan a la aplicación un exchange de eventos en
+# RabbitMQ, andis.events; una caché de Products en Redis; y una vista
+# materializada del detalle de las Orders, que mantiene orders-projector.
+
+# ----------------------
+# --- 10 Cache-Aside ---
+# ----------------------
+# Products busca primero en Redis. Si no está -miss-, lee MongoDB y lo guarda en
+# Redis por 60 segundos; la próxima lectura sale de Redis -hit-. Al cambiar un
+# Product, borra su clave de Redis. Para que la diferencia se note, se puede
+# simular una base más lenta y apagar la caché, sin reiniciar:
+
+curl -s -X PUT http://localhost/products/cache \
+  -H "Content-Type: application/json" -d '{"enabled": true, "dbDelayMs": 200}' | jq
+curl -s -X DELETE http://localhost/products/cache | jq
+
+# El siguiente script simula una base que demora 200 ms, lee el mismo Product
+# varias veces, le cambia el nombre y detiene Redis.
+
+./demos/10-cache-aside.sh
+
+# Resultado: la primera lectura demora unos 200 ms -miss- y las siguientes, 2 o
+# 3 ms -hit-. Después de cambiar el nombre, la lectura siguiente es un miss y
+# trae el nombre nuevo. Con Redis detenido, Products sigue respondiendo, a la
+# velocidad de MongoDB.
+# Logs de Docker: una línea [CACHE-ASIDE] por lectura, con hit o miss.
+
+docker compose logs products-service --since 2m | grep '\[CACHE-ASIDE\]'
+
+# Bajo carga: 50 lecturas por segundo, 30 s con la caché apagada y 30 s prendida.
+docker compose run --rm k6 run /scripts/cache-aside.js
+# Consola: el threshold de la fase con caché, p(95)<50, aparece con ✓.
+# Grafana:
+# - "Lecturas de la caché de Products, por resultado": "disabled" en unas 50
+#   por segundo en la primera fase; en la segunda, "hit" en unas 50 por segundo
+#   y algún "miss" al empezar, uno por Product.
+# - "Latencia p95 por servicio": products-service baja de más de 100 ms a unos
+#   5 ms cuando se prende la caché.
+# - "Latencia p95 vista por k6, por endpoint": "product sin caché" por encima de
+#   100 ms; "product con caché" empieza alto, por los primeros miss, y baja a
+#   unos 5 ms.
+# El script de la demo hace pocas lecturas: en Grafana se ve solo bajo carga.
+
+# ------------------------------------
+# --- 11 Queue-Based Load Leveling ---
+# ------------------------------------
+# POST /orders/ solo guarda la Order y responde; el trabajo de verificar el User
+# y el Product lo hacen los workers desde la cola, a su ritmo. La cola absorbe
+# el pico: Users y Products reciben como máximo una llamada por réplica del
+# worker, lleguen las Orders que lleguen.
+#
+# El siguiente script crea 30 Orders a la vez, directamente en orders-service:
+# el Throttling por cliente del gateway rechazaría el pico antes de llegar a la
+# cola. Tarda unos 25 segundos.
+
+./demos/11-queue-based-load-leveling.sh
+
+# Resultado: las 30 responden 202 en pocos milisegundos; la cola baja de a 3
+# mensajes cada 2 segundos, uno por réplica, hasta vaciarse.
+
+# Bajo carga: 10 POST por segundo durante 10 s.
+docker compose run --rm k6 run /scripts/load-leveling.js
+# Consola: el threshold de "create order", p(95)<200, aparece con ✓.
+# Grafana:
+# - "Cola orders.process": "esperando" sube a unos 80 durante el pico y baja de
+#   forma pareja durante algo más de un minuto; "en proceso" queda en 3, uno
+#   por réplica.
+# - "Latencia p95 vista por k6, por endpoint": "create order" se mantiene por
+#   debajo de 30 ms durante todo el pico.
+
+# ---------------------------------------------
+# --- 12 Competing Consumers: escalabilidad ---
+# ---------------------------------------------
+# El mismo patrón de la demo 07, como patrón de rendimiento: el throughput crece
+# agregando réplicas de orders-worker, sin cambiar el código.
+#
+# El siguiente script procesa 30 Orders con 3 réplicas, escala a 6 y procesa
+# otras 30. Al terminar vuelve a 3 réplicas. Tarda cerca de un minuto.
+
+./demos/12-competing-consumers-scaling.sh
+
+# Resultado: con 3 réplicas, unos 21 segundos; con 6, unos 12.
+# Bajo carga, con 6 réplicas:
+docker compose up -d --scale orders-worker=6
+docker compose run --rm k6 run /scripts/load-leveling.js
+docker compose up -d --scale orders-worker=3
+# Grafana:
+# - "Cola orders.process": "consumidores" sube a 6 y "en proceso" a 6; la cola
+#   se vacía en unos 40 segundos, cerca de la mitad que con 3 réplicas.
+# - "Orders procesadas por segundo, por réplica": 6 franjas, una por réplica,
+#   cada una identificada por el id de su contenedor.
+
+# -------------------------------
+# --- 13 Publisher/Subscriber ---
+# -------------------------------
+# Orders, Users y Products publican eventos en el exchange andis.events. Cada
+# suscriptor tiene su propia cola y la enlaza con las claves que le interesan:
+# orders.process, del worker, recibe order.created; orders.details-view, del
+# proyector, recibe order.*, user.updated y product.updated. Los enlaces se ven
+# en la consola de RabbitMQ, http://localhost:15672, en Exchanges > andis.events.
+#
+# El siguiente script muestra los enlaces, crea una Order y cambia el nombre de
+# un Product y de un User, mostrando qué suscriptor recibe cada evento.
+
+./demos/13-publisher-subscriber.sh
+
+# Resultado: order.created llega al worker y al proyector; product.updated y
+# user.updated, solo al proyector, que actualiza los nombres en la vista.
+# Logs de Docker:
+
+docker compose logs orders-projector --since 2m | grep '\[PUB/SUB\]'
+docker compose logs users-service products-service --since 2m | grep '\[PUB/SUB\]'
+
+# Grafana: no hay un panel propio. Son pocos eventos y se procesan enseguida:
+# las colas de "Cola orders.process" y "Cola orders.details-view" no llegan a
+# acumular mensajes. Los enlaces se ven en la consola de RabbitMQ.
+
+# -------------------------------------
+# --- 14 Asynchronous Request-Reply ---
+# -------------------------------------
+# POST /orders/ responde 202 Accepted con Location: /orders/{id}/status y
+# Retry-After: 2. El estado responde 200 mientras la Order está Pending, y 303
+# See Other a la Order cuando un worker la confirmó o la rechazó.
+#
+# El siguiente script crea una Order y consulta su estado respetando
+# Retry-After hasta el 303.
+
+./demos/14-asynchronous-request-reply.sh
+
+# Resultado: el 202 con sus encabezados; dos o tres consultas con 200 Pending,
+# una cada 2 segundos; el 303 con Location: /orders/{id}; y la Order confirmada.
+# Grafana: no hay un panel propio.
+
+# ---------------
+# --- 15 CQRS ---
+# ---------------
+# Los comandos -crear y procesar Orders- escriben orders, order_events y
+# outbox_messages. La consulta GET /orders/user/{userId}/details/view lee otra
+# tabla, order_details, que ya tiene la forma de la respuesta: una consulta a
+# MySQL y ninguna llamada a Users ni a Products. La consulta síncrona de las
+# demos 01 a 04, GET /orders/user/{userId}/details, sigue disponible para
+# comparar.
+#
+# El siguiente script hace la misma consulta por los dos lados, sin fallas y con
+# Products demorando 300 ms, y después muestra la consistencia eventual.
+
+./demos/15-cqrs.sh
+
+# Resultado: sin fallas, la síncrona demora unos 100 ms y la vista, unos 3. Con
+# Products lento, la síncrona pasa a casi 2 segundos y la vista no cambia. Justo
+# después de crear una Order, la síncrona ya la tiene y la vista todavía no.
+
+# Bajo carga, se corre load.js de las dos formas y se comparan en Grafana:
+docker compose run --rm k6 run -e DETAILS=live /scripts/load.js
+docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
+# Grafana, comparando la primera corrida con la segunda:
+# - "Latencia p95 del detalle de Orders: síncrono contra vista": la línea
+#   "orders/user/{userId}/details/view" queda por debajo de la de
+#   "orders/user/{userId}/details". Sin fallas la diferencia es de pocos
+#   milisegundos; con Products lento, como en el script, sería de segundos.
+# - "Latencia p95 vista por k6, por endpoint": lo mismo visto por el cliente,
+#   "details" en la primera corrida y "details view" en la segunda.
+# - "Resultado de las llamadas a cada dependencia": en la segunda corrida todas
+#   las series bajan a 0, porque con la vista Orders no llama a Users ni a
+#   Products.
+
+# ----------------------------
+# --- 16 Materialized View ---
+# ----------------------------
+# order_details guarda el detalle de cada Order con el nombre del cliente y del
+# producto ya copiados. La mantiene orders-projector a partir de los eventos:
+# al recibir order.created busca los nombres una sola vez; con order.confirmed
+# y order.rejected actualiza el estado; con user.updated y product.updated,
+# los nombres.
+#
+# El siguiente script cambia el nombre de un Product, hace fallar a Products y
+# detiene el proyector mientras se crea una Order.
+
+./demos/16-materialized-view.sh
+
+# Resultado: la vista refleja el nombre nuevo. Con Products fallando, la
+# consulta síncrona responde "no disponible" y la vista, con los nombres. Con el
+# proyector detenido, la Order se confirma pero no aparece en la vista, y sus
+# eventos esperan en la cola; al levantarlo, la vista se pone al día.
+# Logs de Docker:
+
+docker compose logs orders-projector --since 2m | grep '\[MATERIALIZED VIEW\]'
+
+# Para ver la vista directamente en la base:
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM order_details ORDER BY order_id DESC LIMIT 10"
+# Grafana:
+# - "Cola orders.details-view": durante los 15 segundos en que el proyector está
+#   detenido, "consumidores" baja a 0 y "esperando" sube a 2, los eventos
+#   order.created y order.confirmed de la Order nueva; al levantarlo, vuelven a
+#   1 y a 0.
+# - "Patrones de resiliencia prendidos en Orders": los cuatro bajan a 0 mientras
+#   Products falla, y vuelven a 1 al terminar la demo.
+
 # ---------------------------------------------------------------------------
 # Prueba de carga base, para las demos de rendimiento
 # ---------------------------------------------------------------------------
@@ -573,7 +1035,7 @@ docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
 docker compose --profile observability down -v
 
 docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
-docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management nginx:1.25-alpine
+docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
 docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
 docker image prune -f
 docker volume prune -f

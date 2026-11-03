@@ -16,8 +16,14 @@ GET {{OrdersService_HostAddress}}/orders/
 ### Get an order
 GET {{OrdersService_HostAddress}}/orders/1
 
+### Get the status of an order (Asynchronous Request-Reply)
+GET {{OrdersService_HostAddress}}/orders/1/status
+
 ### Get all orders for a user (with details)
 GET {{OrdersService_HostAddress}}/orders/user/1/details
+
+### Get all orders for a user from the materialized view (CQRS)
+GET {{OrdersService_HostAddress}}/orders/user/1/details/view
 
 ### Get the events of an order (Event Sourcing)
 GET {{OrdersService_HostAddress}}/orders/1/events
@@ -29,3 +35,17 @@ POST {{OrdersService_HostAddress}}/orders/projections/rebuild
 GET {{OrdersService_HostAddress}}/health/orders
 
 ###
+
+### Resilience patterns: only Retry on
+PUT {{OrdersService_HostAddress}}/orders/patterns
+Content-Type: application/json
+
+{
+  "retry": true,
+  "circuitBreaker": false,
+  "bulkhead": false,
+  "throttling": false
+}
+
+### Resilience patterns: all on
+DELETE {{OrdersService_HostAddress}}/orders/patterns

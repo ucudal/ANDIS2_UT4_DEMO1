@@ -2,6 +2,11 @@
 // sube hasta RATE por segundo, se mantiene y baja. La mezcla de solicitudes
 // imita a un cliente que consulta mucho más de lo que escribe.
 //
+// Con DETAILS=view, el detalle se lee de la vista materializada en lugar de
+// armarlo con llamadas a Users y Products -CQRS-; comparar las dos corridas en
+// Grafana muestra la diferencia:
+//   docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
+//
 // Los thresholds definen el objetivo de rendimiento: si no se cumplen, k6
 // termina con error. Se pueden cambiar sin tocar el script:
 //   docker compose run --rm k6 run -e RATE=100 -e DURATION=2m /scripts/load.js
@@ -10,6 +15,7 @@ import { GATEWAY, details, checkStatus } from './lib.js';
 
 const RATE = Number(__ENV.RATE || 30);
 const DURATION = __ENV.DURATION || '1m';
+const VIEW = __ENV.DETAILS === 'view';
 
 export const options = {
     scenarios: {
@@ -37,7 +43,7 @@ export default function () {
     // Siempre el User 1: los demás escenarios crean Orders para el User 2, y su
     // detalle crece con cada prueba, lo que haría incomparables las corridas.
     if (r < 0.5)
-        checkStatus(details(1), 200);
+        checkStatus(details(1, VIEW), 200);
     else if (r < 0.8)
         checkStatus(http.get(`${GATEWAY}/products/`, { tags: { name: 'list products' } }), 200);
     else

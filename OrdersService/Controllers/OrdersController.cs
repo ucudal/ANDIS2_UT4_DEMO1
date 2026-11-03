@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Ucu.Andis.Common;
 using Ucu.Andis.OrdersService.Data;
-using Ucu.Andis.OrdersService.Messaging;
 using Ucu.Andis.OrdersService.Models;
 
 namespace Ucu.Andis.OrdersService.Controllers;
@@ -14,20 +13,22 @@ public class OrdersController : ControllerBase
 {
     private readonly OrdersDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly RabbitMq _rabbitMq;
-    private readonly ILogger<OrdersController> _logger;
 
-    public OrdersController(OrdersDbContext db, IHttpClientFactory httpClientFactory, RabbitMq rabbitMq, ILogger<OrdersController> logger)
+    public OrdersController(OrdersDbContext db, IHttpClientFactory httpClientFactory)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
-        _rabbitMq = rabbitMq;
-        _logger = logger;
     }
 
     // POST /orders
-    // Guarda la orden como Pending junto con su evento OrderCreated y la publica
-    // en la cola para que la procese un worker.
+    // Guarda la orden como Pending junto con su evento OrderCreated y deja el
+    // mensaje order.created en el outbox, los tres en la misma transacción.
+    // Transactional Outbox: no se publica en RabbitMQ acá, lo hace OutboxRelay.
+    // Así no puede quedar una orden guardada sin su mensaje, ni un mensaje de
+    // una orden que no se guardó, y la orden se acepta aunque RabbitMQ no esté.
+    // Asynchronous Request-Reply: responde 202 Accepted, porque la orden todavía
+    // no se procesó, con Location para consultar su estado y Retry-After para
+    // indicar cada cuánto.
     [HttpPost]
     public async Task<ActionResult<object>> CreateOrder([FromBody] Order order)
     {
@@ -39,22 +40,36 @@ public class OrdersController : ControllerBase
             await _db.SaveChangesAsync();
             _db.OrderEvents.Add(OrderEvent.Create(order.Id, OrderEventTypes.OrderCreated,
                 new OrderCreatedData(order.UserId, order.ProductId, order.Quantity)));
+            _db.OutboxMessages.Add(OutboxMessage.Create(Events.OrderCreated,
+                new OrderCreated(order.Id, order.UserId, order.ProductId, order.Quantity)));
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
         }
 
-        try
+        Response.Headers.RetryAfter = "2";
+        return Accepted($"/orders/{order.Id}/status", new { id = order.Id, status = order.Status, msg = "Order accepted" });
+    }
+
+    // GET /orders/{id}/status
+    // Asynchronous Request-Reply: mientras la orden está Pending responde 200 con
+    // el estado y Retry-After. Cuando un worker la confirma o la rechaza,
+    // responde 303 See Other a la orden: el cliente sigue la redirección y
+    // obtiene el resultado.
+    [HttpGet("{id:int}/status")]
+    public async Task<ActionResult<object>> GetOrderStatus(int id)
+    {
+        var order = await _db.Orders.FindAsync(id);
+        if (order is null)
+            return NotFound();
+
+        if (order.Status != OrderStatus.Pending)
         {
-            await _rabbitMq.PublishOrderAsync(order.Id);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "No se pudo publicar la orden {OrderId} en la cola", order.Id);
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { id = order.Id, status = order.Status, msg = "Order created, but it could not be queued for processing" });
+            Response.Headers.Location = $"/orders/{id}";
+            return StatusCode(StatusCodes.Status303SeeOther);
         }
 
-        return Ok(new { id = order.Id, status = order.Status, msg = "Order created" });
+        Response.Headers.RetryAfter = "2";
+        return Ok(new { id = order.Id, status = order.Status });
     }
 
     // GET /orders

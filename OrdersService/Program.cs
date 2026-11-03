@@ -1,11 +1,17 @@
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Threading.RateLimiting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Ucu.Andis.Common;
 using Ucu.Andis.OrdersService;
 using Ucu.Andis.OrdersService.Data;
 using Ucu.Andis.OrdersService.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Qué patrones de resiliencia están prendidos -ver Patterns.cs-. Los usan los
+// pipelines de Resilience.cs y la política de throttling.
+builder.Services.AddSingleton<PatternSettings>();
 builder.Services.AddDbContext<OrdersDbContext>(options =>
     options.UseMySQL(
         builder.Configuration.GetConnectionString("OrdersDb")
@@ -60,11 +66,16 @@ builder.Services.AddRateLimiter(options =>
     // 503 y no 429: el problema no es que este cliente pida demasiado, sino que
     // el servicio está saturado.
     options.RejectionStatusCode = StatusCodes.Status503ServiceUnavailable;
-    options.AddConcurrencyLimiter("throttling", limiter =>
-    {
-        limiter.PermitLimit = 20;
-        limiter.QueueLimit = 0;
-    });
+    //
+    // Con el Throttling apagado -ver Patterns.cs-, la política no limita.
+    options.AddPolicy("throttling", context =>
+        context.RequestServices.GetRequiredService<PatternSettings>().Throttling
+            ? RateLimitPartition.GetConcurrencyLimiter("throttling", _ => new ConcurrencyLimiterOptions
+            {
+                PermitLimit = 20,
+                QueueLimit = 0
+            })
+            : RateLimitPartition.GetNoLimiter("sin throttling"));
     options.OnRejected = (context, _) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = "2";
@@ -75,22 +86,37 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
-// Competing Consumers: la API publica las órdenes en RabbitMQ; las réplicas de
-// orders-worker las consumen.
+// La misma imagen cumple tres papeles, según la configuración:
+// - orders-service, con Outbox:Enabled: la API y el relay del outbox, que
+//   publica en RabbitMQ los eventos que la API y el worker dejan en la base.
+// - orders-worker, con Worker:Enabled: Competing Consumers, las réplicas
+//   consumen la cola orders.process.
+// - orders-projector, con Projector:Enabled: mantiene la vista materializada.
 builder.Services.AddSingleton<RabbitMq>();
+var outboxEnabled = builder.Configuration.GetValue<bool>("Outbox:Enabled");
+if (outboxEnabled)
+    builder.Services.AddHostedService<OutboxRelay>();
 if (builder.Configuration.GetValue<bool>("Worker:Enabled"))
     builder.Services.AddHostedService<OrderProcessingWorker>();
+if (builder.Configuration.GetValue<bool>("Projector:Enabled"))
+    builder.Services.AddHostedService<OrderDetailsProjector>();
 
 // Health Endpoint Monitoring: el servicio está sano si llega a su base y a
 // RabbitMQ. No se chequea a Usuarios ni a Productos: si se cae una dependency,
 // Órdenes sigue funcionando degradado y no debe marcarse como caído.
+//
+// Con el outbox, la API ya no necesita a RabbitMQ para aceptar órdenes: si no
+// está, el servicio queda Degraded -responde 200- en lugar de Unhealthy. El
+// worker y el proyector sí lo necesitan, porque consumen de RabbitMQ.
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<OrdersDbContext>("orders-db")
-    .AddCheck<RabbitMqHealthCheck>("rabbitmq", timeout: TimeSpan.FromSeconds(5));
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq",
+        failureStatus: outboxEnabled ? HealthStatus.Degraded : HealthStatus.Unhealthy,
+        timeout: TimeSpan.FromSeconds(5));
 
 // Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más las
-// órdenes que procesa cada réplica del worker.
-builder.AddObservability(OrderProcessingWorker.MeterName);
+// órdenes que procesa cada réplica del worker y los mensajes del outbox.
+builder.AddObservability(OrderProcessingWorker.MeterName, OutboxRelay.MeterName, PatternSettings.MeterName);
 
 builder.Services.AddControllers();
 
@@ -102,6 +128,7 @@ app.UseRateLimiter();
 // ocupa un lugar del throttling.
 app.UseChaos("/orders");
 app.MapMetrics();
+app.MapPatterns("/orders/patterns");
 app.MapHealthChecks("/health", new() { ResponseWriter = HealthResponse.WriteJson });
 app.MapControllers();
 app.Run();

@@ -16,3 +16,26 @@ GET {{ProductsService_HostAddress}}/products/
 GET {{ProductsService_HostAddress}}/products/60f7c2b5e1d3c2a1b8e4d123
 
 ###
+
+### Update a product (invalidates the cache and publishes ProductUpdated)
+PUT {{ProductsService_HostAddress}}/products/60f7c2b5e1d3c2a1b8e4d123
+Content-Type: application/json
+
+{
+  "name": "Camisa de lino",
+  "price": 1500.00
+}
+
+### Cache settings for the demos (Cache-Aside)
+PUT {{ProductsService_HostAddress}}/products/cache
+Content-Type: application/json
+
+{
+  "enabled": true,
+  "dbDelayMs": 200
+}
+
+### Reset the cache settings
+DELETE {{ProductsService_HostAddress}}/products/cache
+
+###

@@ -42,3 +42,18 @@ SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"
 </soap:Envelope>
 
 ###
+
+### Update a user (publishes UserUpdated)
+POST {{UsersService_HostAddress}}/users/UserService.svc
+Content-Type: text/xml; charset=utf-8
+SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+      <id>1</id>
+      <name>alicia</name>
+      <email>alice@example.com</email>
+    </UpdateUser>
+  </soap:Body>
+</soap:Envelope>

@@ -7,6 +7,9 @@ source "$(dirname "$0")/common.sh"
 
 title "Throttling"
 
+step "Se deja prendido solo el Throttling: el Bulkhead no interviene"
+only_pattern throttling
+
 warm_up
 
 step "Orders demora 2 segundos en cada consulta"

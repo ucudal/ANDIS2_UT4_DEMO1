@@ -21,6 +21,10 @@ builder.AddObservability();
 builder.Services.AddSoapCore();
 builder.Services.AddScoped<IUserService, UserService>();
 
+// Publisher/Subscriber: Users publica UserUpdated en RabbitMQ. RabbitMQ no
+// entra en /health: Users atiende igual sin él, solo que no avisa los cambios.
+builder.Services.AddSingleton<RabbitMq>();
+
 var app = builder.Build();
 
 // La inyección de fallas va antes que el endpoint SOAP, para que también lo afecte.

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using ProductsService;
+using StackExchange.Redis;
 using ProductsService.Models;
 using Ucu.Andis.Common;
 
@@ -23,12 +24,32 @@ builder.Services.AddSingleton<IMongoCollection<Product>>(_ =>
     return client.GetDatabase(db).GetCollection<Product>("products");
 });
 
+// Cache-Aside: Redis guarda los Products leídos de MongoDB -ver ProductCache.cs-.
+// AbortOnConnectFail = false: Products arranca aunque Redis no esté, y se
+// reconecta solo cuando vuelve. Los timeouts cortos hacen que, si Redis no
+// responde, se pase a MongoDB enseguida en lugar de esperar.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(new ConfigurationOptions
+    {
+        EndPoints = { builder.Configuration["Redis:Host"] ?? "localhost" },
+        AbortOnConnectFail = false,
+        ConnectTimeout = 1000,
+        SyncTimeout = 500,
+        AsyncTimeout = 500
+    }));
+builder.Services.AddSingleton<ProductCache>();
+
+// Publisher/Subscriber: Products publica ProductUpdated en RabbitMQ.
+builder.Services.AddSingleton<RabbitMq>();
+
 // Health Endpoint Monitoring: el servicio está sano si puede conectarse a su base.
+// Ni Redis ni RabbitMQ entran: Products atiende igual sin ellos.
 builder.Services.AddHealthChecks()
     .AddCheck<MongoHealthCheck>("products-db", timeout: TimeSpan.FromSeconds(5));
 
-// Métricas para Prometheus en /metrics -ver Common/Observability.cs-.
-builder.AddObservability();
+// Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más los
+// aciertos de la caché.
+builder.AddObservability(ProductCache.MeterName);
 
 builder.Services.AddControllers();
 

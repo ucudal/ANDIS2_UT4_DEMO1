@@ -16,4 +16,4 @@ export const options = {
     },
 };
 
-export default function () { checkStatus(createOrder(ORDERS_DIRECT), 200); }
+export default function () { checkStatus(createOrder(ORDERS_DIRECT), 202); }

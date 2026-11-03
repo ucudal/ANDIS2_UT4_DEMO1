@@ -41,9 +41,9 @@ export const options = {
     },
 };
 
-export function writesWithoutRateLimiting() { checkStatus(createOrder(), 200, 429); }
+export function writesWithoutRateLimiting() { checkStatus(createOrder(), 202, 429); }
 
-export function writesWithRateLimiting() { checkStatus(createOrder(), 200); }
+export function writesWithRateLimiting() { checkStatus(createOrder(), 202); }
 
 export function reads() {
     checkStatus(http.get(`${GATEWAY}/orders/`, { tags: { name: 'list orders' } }), 200);

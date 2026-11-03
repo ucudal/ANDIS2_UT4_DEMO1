@@ -26,6 +26,18 @@ services:
       timeout: 5s
       retries: 20
 
+  # Cache-Aside: caché de Products. Sin volumen: si se recrea el contenedor, la
+  # caché arranca vacía y se vuelve a llenar con las lecturas.
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   orders-db:
     image: mysql:26
     environment:
@@ -57,6 +69,8 @@ services:
       UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
       RabbitMq__Host: "rabbitmq"
+      # Transactional Outbox: el relay publica los eventos que quedan en la base.
+      Outbox__Enabled: "true"
     ports:
       - "8000:8000"
     healthcheck:
@@ -108,6 +122,34 @@ services:
       orders-service:
         condition: service_healthy
 
+  # Materialized View: la misma imagen que orders-service, con el proyector
+  # habilitado. Mantiene la tabla order_details a partir de los eventos. Una
+  # sola réplica, para aplicar en orden los eventos de cada Order.
+  orders-projector:
+    build:
+      context: .
+      dockerfile: ./OrdersService/Dockerfile
+    image: orders-service:latest
+    environment:
+      SERVICE_NAME: "orders-projector"
+      ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
+      ProductsService__BaseUrl: "http://products-service:8000/products/"
+      RabbitMq__Host: "rabbitmq"
+      Projector__Enabled: "true"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      orders-service:
+        condition: service_healthy
+
   products-db:
     image: mongo:9
     ports:
@@ -136,6 +178,8 @@ services:
       MONGO_DB: "productsdb"
       MONGO_USER: "productsusr"
       MONGO_PASSWORD: "Pa55w0rd"
+      Redis__Host: "redis"
+      RabbitMq__Host: "rabbitmq"
     ports:
       - "8001:8000"
     healthcheck:
@@ -150,6 +194,11 @@ services:
     depends_on:
       products-db:
         condition: service_healthy
+      # Products atiende sin Redis y sin RabbitMQ: alcanza con que arranquen.
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
 
   users-db:
     image: postgres:18
@@ -176,6 +225,7 @@ services:
     environment:
       SERVICE_NAME: "users-service"
       ConnectionStrings__UsersDb: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+      RabbitMq__Host: "rabbitmq"
     ports:
       - "8002:8000"
     healthcheck:
@@ -190,6 +240,8 @@ services:
     depends_on:
       users-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_started
 
   # Observabilidad -opcional-: se levanta con
   #   docker compose --profile observability up -d

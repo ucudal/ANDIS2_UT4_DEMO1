@@ -2,9 +2,11 @@
 // de detalle por segundo. El compartimento de Products admite 5 llamadas en
 // curso y 5 en espera; las demás se rechazan de inmediato.
 //
+// Solo el Bulkhead queda prendido.
+//
 // Qué mirar en Grafana: rechazos del bulkhead solo en el pipeline de Products;
 // el de Users no tiene rechazos y su latencia no cambia.
-import { chaos, resetChaos, details, checkStatus } from './lib.js';
+import { chaos, resetChaos, onlyPattern, resetPatterns, details, checkStatus } from './lib.js';
 
 export const options = {
     scenarios: {
@@ -19,8 +21,8 @@ export const options = {
     },
 };
 
-export function setup() { chaos('products', 0, 1500); }
+export function setup() { onlyPattern('bulkhead'); chaos('products', 0, 1500); }
 
 export default function () { checkStatus(details(), 200); }
 
-export function teardown() { resetChaos(); }
+export function teardown() { resetChaos(); resetPatterns(); }
