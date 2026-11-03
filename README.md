@@ -78,6 +78,7 @@ nombres en la vista.
 | `column` | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
 | `xmllint` | Indentar las respuestas SOAP de `Users` en `commands.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir [commands.azcli](commands.azcli) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
+| Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de MySQL, PostgreSQL, MongoDB y Redis; los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
 [^docker]: Docker Desktop: <https://www.docker.com/products/docker-desktop/>
 [^gitbash]: Git Bash, incluido en Git para Windows: <https://git-scm.com/downloads/win>
@@ -85,6 +86,7 @@ nombres en la vista.
 [^jq]: `jq`: <https://jqlang.org/download/>
 [^vscode]: Visual Studio Code: <https://code.visualstudio.com/download>
 [^azcli]: Azure CLI Tools para Visual Studio Code: <https://marketplace.visualstudio.com/items?itemName=ms-vscode.azurecli>
+[^dbclient]: Database Client para Visual Studio Code: <https://marketplace.visualstudio.com/items?itemName=cweijan.vscode-database-client2>
 
 `jq` y `column` solo hacen falta para ver las respuestas como tabla. Los
 scripts de `demos/` también los usan, pero si falta alguno muestran el JSON tal
@@ -114,6 +116,27 @@ Las bases de datos se crean con datos de ejemplo la primera vez que se levantan
 los contenedores, con los scripts de `*/mysqlinit`, `*/mongoinit` y `*/pginit`.
 Para volver a empezar desde cero hay que borrar las carpetas `mysqldata`,
 `mongodbdata` y `pgdata`; los comandos están al final de `commands.azcli`.
+
+### Conectarse a las bases de datos
+
+Con los contenedores levantados, cada base se puede abrir desde la extensión
+Database Client o desde cualquier otro cliente, con estos datos:
+
+| Servicio | Motor | Host | Puerto | Base | Usuario | Contraseña |
+| -------- | ----- | ---- | ------ | ---- | ------- | ---------- |
+| `Orders` | MySQL | `localhost` | `3306` | `ordersdb` | `ordersusr` | `Pa55w0rd` |
+| `Users` | PostgreSQL | `localhost` | `5432` | `usersdb` | `usersusr` | `Pa55w0rd` |
+| `Products` | MongoDB | `localhost` | `27017` | `productsdb` | `productsusr` | `Pa55w0rd` |
+| Caché de `Products` | Redis | `localhost` | `6379` | — | — | — |
+
+En MongoDB el usuario `productsusr` se autentica contra la base `productsdb`,
+así que en el campo de base de autenticación -`authSource`- va `productsdb` y
+no `admin`. La cadena de conexión completa es
+`mongodb://productsusr:Pa55w0rd@localhost:27017/productsdb?authSource=productsdb`.
+Para ver todas las bases de MongoDB está el usuario `root`, con la misma
+contraseña y `admin` como base de autenticación.
+
+Redis no tiene usuario ni contraseña.
 
 ## Diagrama de despliegue
 

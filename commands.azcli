@@ -792,26 +792,93 @@ docker compose up -d orders-worker
 # order_events: OrderCreated al crearla, y OrderConfirmed u OrderRejected cuando
 # un worker la procesa, como en la demo de Competing Consumers. La tabla orders
 # es solo una proyección: el estado actual, calculado a partir de los eventos.
-# Los eventos de una Order y el estado que resulta de reproducirlos:
+#
+# Crear una Order y guardar su id en una variable, para usarlo en los comandos
+# siguientes. Orders responde 202 y la Order queda Pending: todavía no la
+# procesó ningún worker.
 
-curl -s http://localhost/orders/1/events | jq .events | table
-curl -s http://localhost/orders/1/events | jq .replayed_state | table
+id=$(curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 3}' | jq .id)
+echo "$id"
 
-# El siguiente script crea una Order, muestra sus eventos, borra la tabla orders
-# directamente en MySQL y la reconstruye a partir de los eventos.
+# Esperar unos 3 segundos a que un worker la procese y consultar la Order.
+# Debería estar Confirmed:
+
+curl -s http://localhost/orders/$id | table
+
+# Ver los eventos de la Order directamente en la tabla order_events. Hay dos:
+# OrderCreated, que guardó Orders al crearla, y OrderConfirmed, que guardó el
+# worker al procesarla. Los eventos nunca se modifican ni se borran: cada
+# cambio agrega uno nuevo.
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT id, order_id, type, data, occurred_at FROM order_events WHERE order_id = $id"
+
+# Ver la Order en la tabla orders. Tiene solo el estado actual, Confirmed: no
+# dice que antes estuvo Pending ni cuándo cambió.
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM orders WHERE id = $id"
+
+# Pedirle a Orders los eventos de la Order y el estado que resulta de
+# reproducirlos, uno detrás de otro: OrderCreated la crea Pending, y
+# OrderConfirmed la pasa a Confirmed. El estado reproducido coincide con el de
+# la tabla orders. La respuesta tiene las dos partes: se muestra cada una como
+# tabla por separado.
+
+curl -s http://localhost/orders/$id/events | jq .events | table
+curl -s http://localhost/orders/$id/events | jq .replayed_state | table
+
+# Simular que se pierde la proyección: borrar todas las filas de la tabla
+# orders directamente en MySQL.
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "DELETE FROM orders"
+
+# Ahora Orders no tiene ninguna Order: la lista viene vacía y la Order creada
+# antes no existe -404-.
+
+curl -s http://localhost/orders/ | jq
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/orders/$id
+
+# Pero los eventos siguen ahí, y alcanzan para saber cuál era el estado de la
+# Order:
+
+curl -s http://localhost/orders/$id/events | jq .replayed_state | table
+
+# Reconstruir la proyección: Orders reproduce todos los eventos de order_events
+# y vuelve a llenar la tabla orders. La respuesta dice cuántos eventos leyó y
+# cuántas Orders reconstruyó.
+
+curl -s -X POST http://localhost/orders/projections/rebuild | table
+
+# Las Orders volvieron, cada una con su estado: los eventos son la fuente de
+# verdad, y la tabla orders se puede volver a calcular a partir de ellos. La
+# cantidad de Orders coincide con la que informó la reconstrucción:
+
+curl -s http://localhost/orders/ | jq length
+curl -s http://localhost/orders/$id | table
+
+# El siguiente script hace lo mismo: crea una Order, muestra sus eventos, borra
+# la tabla orders directamente en MySQL y la reconstruye a partir de los
+# eventos.
 
 ./demos/08-event-sourcing.sh
 
-# Resultado: los eventos OrderCreated y OrderConfirmed y, debajo, el estado que
-# resulta de reproducirlos. Después del borrado, GET /orders/ devuelve una lista
-# vacía. La reconstrucción informa cuántos eventos leyó y cuántas Orders
-# reconstruyó, y la Order vuelve con su estado: los eventos son la fuente de
-# verdad.
+# Resultado en la consola: los eventos OrderCreated y OrderConfirmed y, debajo,
+# el estado que resulta de reproducirlos. Después del borrado, GET /orders/
+# devuelve una lista vacía. La reconstrucción informa cuántos eventos leyó y
+# cuántas Orders reconstruyó, y la Order vuelve con su estado: los eventos son
+# la fuente de verdad.
+#
 # Para ver la tabla de eventos directamente en la base:
+
 docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, order_id, type, occurred_at FROM order_events ORDER BY id DESC LIMIT 10"
-# Grafana: no hay un panel propio; en "Orders procesadas por segundo, por
-# réplica" se ve la Order confirmada por una de las réplicas.
+
+# Resulado en Grafana: no hay un panel propio; en "Orders procesadas por
+# segundo, por réplica" se ve la Order confirmada por una de las réplicas.
 
 # -------------------------------
 # --- 09 Transactional Outbox ---
