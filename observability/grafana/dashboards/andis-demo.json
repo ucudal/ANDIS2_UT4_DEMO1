@@ -1334,7 +1334,7 @@
     {
       "type": "timeseries",
       "id": 18,
-      "title": "Orders procesadas por segundo, por réplica [Demos 7, 8, 12]",
+      "title": "Orders procesadas por segundo, por réplica [Demos 7, 8, 11, 12]",
       "description": "Cada réplica de orders-worker se identifica por el id de su contenedor. Requeued: la Order volvió a la cola porque una dependencia no estaba disponible.",
       "datasource": {
         "type": "prometheus",

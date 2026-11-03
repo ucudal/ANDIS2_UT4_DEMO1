@@ -1,7 +1,7 @@
 services:
   api-gateway:
     build:
-      context: .
+      context: ./src
       dockerfile: ./ApiGateway/Dockerfile
     image: api-gateway:latest
     ports:
@@ -48,8 +48,8 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - ./OrdersService/mysqldata:/var/lib/mysql
-      - ./OrdersService/mysqlinit:/docker-entrypoint-initdb.d
+      - ./src/OrdersService/mysqldata:/var/lib/mysql
+      - ./src/OrdersService/mysqlinit:/docker-entrypoint-initdb.d
     healthcheck:
       # Se consulta la base con el usuario de la aplicación: durante la
       # inicialización ese usuario todavía no existe y el chequeo falla.
@@ -60,7 +60,7 @@ services:
 
   orders-service:
     build:
-      context: .
+      context: ./src
       dockerfile: ./OrdersService/Dockerfile
     image: orders-service:latest
     environment:
@@ -96,7 +96,7 @@ services:
   # habilitado. Las réplicas consumen de la misma cola de RabbitMQ.
   orders-worker:
     build:
-      context: .
+      context: ./src
       dockerfile: ./OrdersService/Dockerfile
     image: orders-service:latest
     environment:
@@ -127,7 +127,7 @@ services:
   # sola réplica, para aplicar en orden los eventos de cada Order.
   orders-projector:
     build:
-      context: .
+      context: ./src
       dockerfile: ./OrdersService/Dockerfile
     image: orders-service:latest
     environment:
@@ -155,8 +155,8 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - ./ProductsService/mongodbdata:/data/db
-      - ./ProductsService/mongoinit:/docker-entrypoint-initdb.d
+      - ./src/ProductsService/mongodbdata:/data/db
+      - ./src/ProductsService/mongoinit:/docker-entrypoint-initdb.d
     environment:
       MONGO_INITDB_ROOT_USERNAME: "root"
       MONGO_INITDB_ROOT_PASSWORD: "Pa55w0rd"
@@ -168,7 +168,7 @@ services:
 
   products-service:
     build:
-      context: .
+      context: ./src
       dockerfile: ./ProductsService/Dockerfile
     image: products-service:latest
     environment:
@@ -209,8 +209,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./UsersService/pgdata:/var/lib/postgresql
-      - ./UsersService/pginit:/docker-entrypoint-initdb.d
+      - ./src/UsersService/pgdata:/var/lib/postgresql
+      - ./src/UsersService/pginit:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "usersusr", "-d", "usersdb"]
       interval: 5s
@@ -219,7 +219,7 @@ services:
 
   users-service:
     build:
-      context: .
+      context: ./src
       dockerfile: ./UsersService/Dockerfile
     image: users-service:latest
     environment:

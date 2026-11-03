@@ -6,7 +6,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/OrdersService/bin/Debug/net10.0/OrdersService.dll",
+      "program": "${workspaceFolder}/src/OrdersService/bin/Debug/net10.0/OrdersService.dll",
       "args": [],
       "cwd": "${workspaceFolder}/OrdersService",
       "stopAtEntry": false,

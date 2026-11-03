@@ -14,9 +14,9 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p UsersService/pgdata
-mkdir -p ProductsService/mongodbdata
-mkdir -p OrdersService/mysqldata
+mkdir -p src/UsersService/pgdata
+mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
 docker compose build
@@ -77,12 +77,17 @@ curl http://localhost:8000/metrics
 # ---------------------------------------------------------------------------
 # Lecturas mezcladas -detalle de Orders, Products y Users- a una tasa que sube
 # hasta RATE solicitudes por segundo, se mantiene durante DURATION y baja.
+
 docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
-# Consola: los thresholds p(95)<500 y rate<0.01 aparecen con ✓ si se cumple el
-# objetivo de rendimiento; si no, k6 los marca con ✗ y termina con error.
-# Grafana: "Solicitudes por segundo, por servicio y código HTTP" y "Latencia
-# p95 por servicio" muestran el throughput y la latencia de cada servicio; sirve
-# como línea base para comparar antes y después de cada patrón de rendimiento.
+
+# Resultado en consola: los thresholds p(95)<500 y rate<0.01 aparecen con ✓ si
+# se cumple el objetivo de rendimiento; si no, k6 los marca con ✗ y termina con
+# error.
+#
+# Resultado en Grafana: "Solicitudes por segundo, por servicio y código HTTP" y
+# "Latencia p95 por servicio" muestran el throughput y la latencia de cada
+# servicio; sirve como línea base para comparar antes y después de cada patrón
+# de rendimiento.
 
 # ---------------------------------------------------------------------------
 # Demos de los patrones de rendimiento
@@ -95,8 +100,8 @@ docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
 # con pocas solicitudes; la evidencia en los logs de Docker se ve con los
 # comandos de este archivo. Los que dependen de la carga tienen además un
 # escenario de k6 en la carpeta 'k6/', para verlos en Grafana a lo largo del
-# tiempo. Los scripts y escenarios inyectan las fallas que
-# necesitan y las quitan al terminar.
+# tiempo. Los scripts y escenarios inyectan las fallas que necesitan y las
+# quitan al terminar.
 
 # Mientras corren, se puede tener abierto en otras terminales:
 # 1. Los logs de Docker de orders-projector, products-service y orders-worker,
@@ -243,19 +248,97 @@ docker compose run --rm k6 run /scripts/cache-aside.js
 # el pico: Users y Products reciben como máximo una llamada por réplica del
 # worker, lleguen las Orders que lleguen.
 #
+# A continuación e detienen los workers, se crea un pico de Orders que queda en
+# la cola, y después se levantan los workers de a poco para ver a qué ritmo la
+# vacían. En Grafana se ve en el panel "Cola orders.process": "esperando" es la
+# cantidad de mensajes en la cola, "en proceso" los que un worker tomó y todavía
+# no confirmó, y "consumidores" la cantidad de workers conectados. Y en "Orders
+# procesadas por segundo, por réplica", una franja por cada réplica que está
+# procesando. Grafana se actualiza cada 5 segundos.
+#
+# Detener las tres réplicas del worker. En Grafana, "consumidores" baja a 0.
+
+docker compose stop orders-worker
+
+# Crear un pico de 30 Orders. Se crean directamente en orders-service, en el
+# puerto 8000, sin pasar por el gateway, para no chocar con su límite de
+# POST /orders/ -ver Throttling-. Cada una muestra el código HTTP y el tiempo
+# de respuesta: todas responden 202 en pocos milisegundos -la primera puede
+# demorar un poco más-, aunque no haya ningún worker, porque POST /orders/ solo
+# guarda la Order y deja el mensaje para la cola.
+
+for i in $(seq 30); do
+  curl -s -o /dev/null -w '%{http_code} %{time_total} s\n' -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}'
+done
+
+# Esperar unos segundos y ver la cola: los 30 mensajes esperan, sin
+# consumidores. Si se consulta enseguida puede haber menos, porque los mensajes
+# llegan a la cola a través del outbox, que publica cada segundo -ver
+# Transactional Outbox-. En Grafana, "esperando" sube a 30.
+
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Levantar una sola réplica del worker y guardar su nombre en una variable.
+
+worker=$(docker compose ps -a --format '{{.Name}}' orders-worker | head -1)
+docker start $worker
+
+# Mirar la cola unas 10 veces, cada 2 o 3 segundos: con una sola réplica, que
+# demora 2 segundos por Order, baja de a 1 mensaje por vez. A ese ritmo
+# tardaría más de un minuto en vaciarse. En Grafana, "esperando" baja en línea recta,
+# con poca pendiente, y "en proceso" queda en 1.
+
+for i in $(seq 10); do
+  docker compose exec rabbitmq rabbitmqctl list_queues -q --no-table-headers name messages consumers \
+    | awk -v t="$(date +%T)" '$1 == "orders.process" { print t "  mensajes: " $2 "  consumidores: " $3 }'
+  sleep 2
+done
+
+# Crear otro pico de 30 Orders. Levantar las otras dos réplicas -docker compose
+# start levanta las que estén detenidas- y volver a mirar la cola: con tres
+# réplicas baja de a unos 3 mensajes por vez, el triple de rápido, y se vacía en
+# unos 15 segundos. En Grafana, "consumidores" y "en proceso" suben a 3,
+# "esperando" baja con más pendiente, y en "Orders procesadas por segundo, por
+# réplica" aparecen tres franjas.
+
+for i in $(seq 30); do
+  curl -s -o /dev/null -w '%{http_code} %{time_total} s\n' -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}'
+done
+
+docker compose start orders-worker
+
+for i in $(seq 10); do
+  docker compose exec rabbitmq rabbitmqctl list_queues -q --no-table-headers name messages consumers \
+    | awk -v t="$(date +%T)" '$1 == "orders.process" { print t "  mensajes: " $2 "  consumidores: " $3 }'
+  sleep 2
+done
+
+# En ningún momento las solicitudes esperaron a los workers: el pico lo absorbió
+# la cola, y Users y Products recibieron como máximo una llamada a la vez por
+# réplica, lleguen las Orders que lleguen. Sin la cola, cada POST /orders/
+# habría tenido que esperar a que se procesara su Order, y Users y Products
+# habrían recibido las 30 llamadas a la vez.
+#
 # El siguiente script crea 30 Orders a la vez, directamente en orders-service:
 # el Throttling por cliente del gateway rechazaría el pico antes de llegar a la
 # cola. Tarda unos 25 segundos.
 
 ./demos/11-queue-based-load-leveling.sh
 
-# Resultado: las 30 responden 202 en pocos milisegundos; la cola baja de a 3
-# mensajes cada 2 segundos, uno por réplica, hasta vaciarse.
+# Resultado en consola: las 30 responden 202 en pocos milisegundos; la cola baja
+# de a 3 mensajes cada 2 segundos, uno por réplica, hasta vaciarse.
 
 # Bajo carga: 10 POST por segundo durante 10 s.
+
 docker compose run --rm k6 run /scripts/load-leveling.js
-# Consola: el threshold de "create order", p(95)<200, aparece con ✓.
-# Grafana:
+
+# Resultado en onsola: el threshold de "create order", p(95)<200, aparece con ✓.
+#
+# Resultado en Grafana:
 # - "Cola orders.process": "esperando" sube a unos 80 durante el pico y baja de
 #   forma pareja durante algo más de un minuto; "en proceso" queda en 3, uno
 #   por réplica.
@@ -407,6 +490,6 @@ docker image prune -f
 docker volume prune -f
 docker builder prune -f
 
-rm -rf ./OrdersService/mysqldata
-rm -rf ./ProductsService/mongodbdata
-rm -rf ./UsersService/pgdata
+rm -rf ./src/OrdersService/mysqldata
+rm -rf ./src/ProductsService/mongodbdata
+rm -rf ./src/UsersService/pgdata

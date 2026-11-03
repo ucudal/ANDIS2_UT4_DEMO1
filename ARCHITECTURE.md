@@ -29,9 +29,9 @@ que mejor le sirve.
 
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
-| `users-service` | [`Users`](UsersService/Models/Users.cs): nombre y correo | PostgreSQL, relacional | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `user.updated` |
-| `products-service` | [`Products`](ProductsService/Models/Product.cs): nombre y precio | MongoDB, documentos; Redis como caché | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated` |
-| `orders-service` | [`Orders`](OrdersService/Models/Order.cs), sus [eventos](OrdersService/Models/OrderEvent.cs), el [*outbox*](OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](OrdersService/Models/OrderDetails.cs) | MySQL, relacional | gateway | `users-service`, `products-service`, RabbitMQ |
+| `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | PostgreSQL, relacional | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `user.updated` |
+| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio | MongoDB, documentos; Redis como caché | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated` |
+| `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | MySQL, relacional | gateway | `users-service`, `products-service`, RabbitMQ |
 | `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `orders-projector` | Comparte la base de `orders-service`; es el único que escribe la vista del detalle | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `api-gateway` | Nada: solo enruta | — | clientes | los tres servicios |
@@ -386,15 +386,15 @@ distintos servicios no coincidan.
 Los microservicios buscan que cada servicio se pueda cambiar y desplegar sin
 coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
 
-- **La biblioteca [Common](Common/).** Los tres servicios la referencian. Tiene
+- **La biblioteca [Common](src/Common/).** Los tres servicios la referencian. Tiene
   código transversal -inyección de fallas, métricas, la respuesta de salud- y
   también los contratos que `Orders` usa para leer las respuestas de `Users` y
-  `Products`: los registros `UserDto`, en [Common/UserDto.cs](Common/UserDto.cs),
-  y `ProductDto`, en [Common/ProductDto.cs](Common/ProductDto.cs).
+  `Products`: los registros `UserDto`, en [Common/UserDto.cs](src/Common/UserDto.cs),
+  y `ProductDto`, en [Common/ProductDto.cs](src/Common/ProductDto.cs).
   `Products` no usa `ProductDto`: tiene su propio modelo. También tiene la
   conexión con RabbitMQ, en la clase `RabbitMq`, y los contratos de los
   eventos, en la clase `Events` y sus registros, en
-  [Common/Events.cs](Common/Events.cs). Un cambio en `Common` obliga a recompilar y
+  [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a recompilar y
   redesplegar los tres servicios.
 - **Los contratos de los eventos.** El proyector espera que `product.updated`
   traiga el identificador y el nombre del `Product`. Publisher/Subscriber
@@ -410,7 +410,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   contrato como WSDL en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
   sobre de `GetUser` y lee el XML de la respuesta -ver el método `GetUserAsync`
   de la clase `Dependencies`, en
-  [OrdersService/Dependencies.cs](OrdersService/Dependencies.cs)-, así que depende del
+  [OrdersService/Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que depende del
   namespace, del nombre de la operación y de los nombres de los elementos. El
   WSDL documenta el contrato, pero `Orders` no lo usa para generar el cliente:
   un cliente WCF generado tendría su propio canal HTTP y dejaría afuera el

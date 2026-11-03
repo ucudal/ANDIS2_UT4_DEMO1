@@ -15,9 +15,9 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p UsersService/pgdata
-mkdir -p ProductsService/mongodbdata
-mkdir -p OrdersService/mysqldata
+mkdir -p src/UsersService/pgdata
+mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
 docker compose build
@@ -195,6 +195,6 @@ docker image prune -f
 docker volume prune -f
 docker builder prune -f
 
-rm -rf ./OrdersService/mysqldata
-rm -rf ./ProductsService/mongodbdata
-rm -rf ./UsersService/pgdata
+rm -rf ./src/OrdersService/mysqldata
+rm -rf ./src/ProductsService/mongodbdata
+rm -rf ./src/UsersService/pgdata

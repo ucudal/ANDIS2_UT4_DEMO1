@@ -484,6 +484,6 @@ $RECYCLE.BIN/
 *.swp
 
 .DS_Store
-OrdersService/mysqldata/
-ProductsService/mongodbdata/
-UsersService/pgdata/
+src/OrdersService/mysqldata/
+src/ProductsService/mongodbdata/
+src/UsersService/pgdata/

@@ -35,9 +35,9 @@ este repositorio:
 
 | Servicio | Responsabilidad | Base de datos |
 | -------- | --------------- | ------------- |
-| `users-service` | Alta y consulta de [`Users`](UsersService/Models/Users.cs) | PostgreSQL |
-| `products-service` | Catálogo de [`Products`](ProductsService/Models/Product.cs) | MongoDB |
-| `orders-service` | Alta y consulta de [`Orders`](OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP | MySQL |
+| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) | PostgreSQL |
+| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs) | MongoDB |
+| `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP | MySQL |
 | `api-gateway` | Punto de entrada único -nginx- que enruta `/users/`, `/products/` y `/orders/` | — |
 
 La funcionalidad base no cambia entre demos: dar de alta `Users` y `Products`,
@@ -59,8 +59,8 @@ materializadas.
 
 ## Demos de disponibilidad
 
-Escenario: [`Users`](UsersService) o [`Products`](ProductsService) fallan o
-responden lento de forma intermitente. [`Orders`](OrdersService) debe seguir
+Escenario: [`Users`](src/UsersService) o [`Products`](src/ProductsService) fallan o
+responden lento de forma intermitente. [`Orders`](src/OrdersService) debe seguir
 funcionando y el resto del sistema no debe caerse.
 
 Qué se muestra:
@@ -87,9 +87,9 @@ sus propias rutas.
 | ---------- | -------- |
 | `rabbitmq` | Exchange `andis.events`, donde se publican los eventos, y cola `orders.process` con las `Orders` pendientes de procesar. Consola en <http://localhost:15672> -usr: `guest` pwd: `guest`-. |
 | `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`Worker__Enabled=true`-. Consume la cola y confirma o rechaza cada `Order`. |
-| Estado de la [`Order`](OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
-| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](Common/Chaos.cs). |
-| Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](OrdersService/Patterns.cs). |
+| Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
+| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). |
+| Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
 | Observabilidad y carga -opcional- | Perfil `observability` de Docker Compose con Prometheus y un dashboard de Grafana ya configurado, y escenarios de carga con k6 en [k6/](k6). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en el [README](README.md#observabilidad-y-pruebas-de-carga). |
 
 Ejemplo de inyección de fallas:
@@ -132,7 +132,7 @@ reintentan hasta 3 veces con retroceso exponencial -0,5 s, 1 s, 2 s, con
 *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408, 429, errores
 de red y *timeouts*; un 404 no se reintenta. Está en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](OrdersService/Resilience.cs), con
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), con
 `Microsoft.Extensions.Http.Resilience`.
 
 **Cómo funciona:**
@@ -144,7 +144,7 @@ Las esperas crecen: 0,5 s, 1 s y 2 s -`DelayBackoffType.Exponential`-.
 
 **Código:** la estrategia de reintento del *pipeline* de cada dependencia, en
 el método `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](OrdersService/Resilience.cs). `ShouldHandle` decide qué se
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). `ShouldHandle` decide qué se
 reintenta; el `patterns.Retry` permite apagarlo en las demos:
 
 ```csharp
@@ -192,7 +192,7 @@ segundos; después pasa a semiabierto, deja pasar una llamada de prueba y, si
 funciona, se cierra. El detalle de `Orders` no devuelve error: muestra `"no
 disponible [circuito abierto]"` en lugar del nombre: lo arma el método
 `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs).
+[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
 **Cómo funciona:**
 
@@ -203,7 +203,7 @@ de resiliencia", y el estado es el del panel "Estado del circuito de cada
 dependencia".
 
 **Código:** la estrategia del *pipeline* de cada dependencia, en
-[OrdersService/Resilience.cs](OrdersService/Resilience.cs). Va dentro del Retry, así que cada
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). Va dentro del Retry, así que cada
 reintento cuenta como una llamada más para el circuito:
 
 ```csharp
@@ -246,11 +246,11 @@ demás funciones.
 
 **Implementación:** un límite de concurrencia por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](OrdersService/Resilience.cs). Las llamadas que
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). Las llamadas que
 exceden el límite se rechazan de inmediato. Como cada dependencia tiene su
 propio compartimento, la lentitud de `Products` no afecta las llamadas a
 `Users`. Cada compartimento se dimensiona según su dependencia, al llamar a
-`AddResilience` en [OrdersService/Program.cs](OrdersService/Program.cs): `Products` tiene 5
+`AddResilience` en [OrdersService/Program.cs](src/OrdersService/Program.cs): `Products` tiene 5
 llamadas en curso y 5 en espera; `Users`, que responde rápido pero se llama en
 cada consulta, tiene 20 en curso y 5 en espera.
 
@@ -264,8 +264,8 @@ lento se llena su compartimento, pero el de `Users` sigue libre.
 
 **Código:** un `ConcurrencyLimiter` por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](OrdersService/Resilience.cs), y el tamaño de cada compartimento,
-en las llamadas a `AddResilience` de [OrdersService/Program.cs](OrdersService/Program.cs):
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), y el tamaño de cada compartimento,
+en las llamadas a `AddResilience` de [OrdersService/Program.cs](src/OrdersService/Program.cs):
 
 ```csharp
 // Resilience.cs
@@ -309,16 +309,16 @@ sus clientes.
 **Implementación:** `Orders` atiende como máximo 20 consultas de detalle a la
 vez. Las que exceden el límite reciben `503 Service Unavailable` con
 `Retry-After: 2`, en lugar de encolarse. La política `throttling` se define
-con `AddRateLimiter` en [OrdersService/Program.cs](OrdersService/Program.cs), y
+con `AddRateLimiter` en [OrdersService/Program.cs](src/OrdersService/Program.cs), y
 se aplica con el atributo `[EnableRateLimiting("throttling")]` en el método
 `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs).
+[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
 El gateway también aplica Throttling, pero por cliente: cada IP puede crear como
 máximo 1 `Order` por segundo, con una ráfaga de hasta 5. Lo que excede el límite
 recibe `429 Too Many Requests` sin llegar a `orders-service`; las consultas no
 tienen límite. Está en
-[ApiGateway/nginxconf/nginx.conf](ApiGateway/nginxconf/nginx.conf)
+[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
 -`limit_req_zone` y `limit_req`-. Es el límite que respeta el cliente de la
 demo de Rate Limiting.
 
@@ -331,9 +331,9 @@ opuesta: el Bulkhead limita las llamadas que `Orders` hace; el Throttling, las
 solicitudes que `Orders` recibe.
 
 **Código:** la política, con `AddRateLimiter` en
-[OrdersService/Program.cs](OrdersService/Program.cs), y el atributo que la
+[OrdersService/Program.cs](src/OrdersService/Program.cs), y el atributo que la
 aplica, en el método `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs):
+[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs):
 
 ```csharp
 // Program.cs
@@ -469,15 +469,15 @@ sus chequeos como la métrica `service_health`.
 Cada chequeo es una implementación de `IHealthCheck`, registrada con
 `AddHealthChecks` en el `Program.cs` de cada servicio:
 
-- La clase `RabbitMqHealthCheck`, en [Common/RabbitMq.cs](Common/RabbitMq.cs),
+- La clase `RabbitMqHealthCheck`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs),
   y la clase `MongoHealthCheck`, en
-  [ProductsService/MongoHealthCheck.cs](ProductsService/MongoHealthCheck.cs),
+  [ProductsService/MongoHealthCheck.cs](src/ProductsService/MongoHealthCheck.cs),
   implementan el método `CheckHealthAsync`.
 - El método `WriteJson` de la clase `HealthResponse`, en
-  [Common/HealthResponse.cs](Common/HealthResponse.cs), escribe el JSON de
+  [Common/HealthResponse.cs](src/Common/HealthResponse.cs), escribe el JSON de
   `/health`.
 - El método `PublishAsync` de la clase `HealthMetricsPublisher`, en
-  [Common/HealthMetrics.cs](Common/HealthMetrics.cs), publica la métrica.
+  [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
 
 **Cómo verlo:** [demos/06-health.sh](demos/06-health.sh) detiene la base de
 datos de `Products`. `/health/products` pasa a 503 con `"MongoDB no responde"`,
@@ -507,7 +507,7 @@ mensaje a la vez -`prefetch = 1`- y lo confirma -*ack*- recién cuando termina;
 si se cae antes, RabbitMQ entrega el mensaje a otra. Si `Users` o `Products` no
 están disponibles, el *worker* devuelve el mensaje a la cola y lo reintenta 5
 segundos después. Está en la clase `OrderProcessingWorker`, en
-[OrdersService/Messaging/OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs):
+[OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs):
 el método `ExecuteAsync` se suscribe a la cola y confirma o devuelve cada
 mensaje, y el método `ProcessAsync` procesa la `Order`.
 
@@ -550,9 +550,9 @@ inmutable en la tabla `order_events`: `OrderCreated`, `OrderConfirmed` u
 `OrderRejected`. La tabla `orders` es una **proyección**: el estado actual,
 calculado a partir de los eventos. Cada evento es un `OrderEvent`, creado con
 el método `Create` de esa clase, en
-[OrdersService/Models/OrderEvent.cs](OrdersService/Models/OrderEvent.cs); el
+[OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs); el
 método `Replay` de la clase `OrderProjection`, en
-[OrdersService/Models/OrderProjection.cs](OrdersService/Models/OrderProjection.cs),
+[OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs),
 los reproduce para obtener el estado.
 
 - `GET /orders/{id}/events` muestra los eventos de una `Order` y el estado que
@@ -597,11 +597,11 @@ mismo con `order.confirmed` y `order.rejected`. Ninguno de los dos publica en
 RabbitMQ. Lo hacen el método `CreateOrder` de la clase `OrdersController` y el
 método `ProcessAsync` de la clase `OrderProcessingWorker`, con el método
 `Create` de la clase `OutboxMessage`, en
-[OrdersService/Models/OutboxMessage.cs](OrdersService/Models/OutboxMessage.cs).
+[OrdersService/Models/OutboxMessage.cs](src/OrdersService/Models/OutboxMessage.cs).
 
 El *relay* del *outbox* -el método `PublishPendingAsync` de la clase
 `OutboxRelay`, en
-[OrdersService/Messaging/OutboxRelay.cs](OrdersService/Messaging/OutboxRelay.cs)-
+[OrdersService/Messaging/OutboxRelay.cs](src/OrdersService/Messaging/OutboxRelay.cs)-
 corre en `orders-service`. Cada segundo toma hasta 50 mensajes pendientes, en
 orden, los publica en `andis.events` y les completa la fecha de publicación.
 Publica con confirmación de RabbitMQ: solo marca un mensaje cuando RabbitMQ
@@ -675,7 +675,7 @@ fila "Rendimiento: caché, CQRS y outbox".
 | ---------- | -------- |
 | `redis` | Caché de `Products`. |
 | `orders-projector` | La misma imagen que `orders-service`, con el proyector habilitado -`Projector__Enabled=true`-. Mantiene la vista materializada `order_details`. |
-| Exchange `andis.events` | Eventos `order.created`, `order.confirmed`, `order.rejected`, `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](Common/Events.cs). |
+| Exchange `andis.events` | Eventos `order.created`, `order.confirmed`, `order.rejected`, `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación SOAP `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
 | Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de MongoDB, sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
 
@@ -709,9 +709,9 @@ Es la aplicación la que maneja la caché: Redis no sabe nada de MongoDB. Si Red
 no responde, `Products` lee MongoDB directamente; la caché acelera, pero no es
 una dependencia, y por eso no entra en `/health`. Está en los métodos
 `GetOrLoadAsync` e `InvalidateAsync` de la clase `ProductCache`, en
-[ProductsService/ProductCache.cs](ProductsService/ProductCache.cs), que usan los
+[ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs), que usan los
 métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
-[ProductsService/Controllers/ProductsController.cs](ProductsService/Controllers/ProductsController.cs).
+[ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
 
 Se borra la clave en lugar de escribir el valor nuevo: así la caché nunca guarda
 un valor que MongoDB no tiene. El TTL acota cuánto puede durar un dato
@@ -806,7 +806,7 @@ la enlaza con las claves de ruteo que le interesan:
 
 Un mismo `order.created` llega a las dos colas. `Orders` no sabe que existe el
 proyector: agregarlo no cambió el código que publica. La conexión y la
-publicación están en la clase `RabbitMq`, en [Common/RabbitMq.cs](Common/RabbitMq.cs):
+publicación están en la clase `RabbitMq`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs):
 el método `PublishEventAsync` publica un evento, y el método
 `DeclareSubscriberQueueAsync` declara la cola de un suscriptor con sus claves.
 
@@ -843,7 +843,7 @@ responde `200` con el estado mientras la `Order` está `Pending`, también con
 Other` a `/orders/{id}`, y el cliente sigue la redirección para obtener el
 resultado. Está en los métodos `CreateOrder` y `GetOrderStatus` de la clase
 `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs).
+[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
 **Cómo funciona:**
 
@@ -871,13 +871,13 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
 - **Comandos:** `POST /orders/` y el *worker* escriben `orders`, `order_events`
   y `outbox_messages`, en el método `CreateOrder` de la clase
   `OrdersController`, en
-  [OrdersService/Controllers/OrdersController.cs](OrdersService/Controllers/OrdersController.cs),
+  [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs),
   y en el método `ProcessAsync` de la clase `OrderProcessingWorker`, en
-  [OrdersService/Messaging/OrderProcessingWorker.cs](OrdersService/Messaging/OrderProcessingWorker.cs).
+  [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs).
 - **Consultas:** `GET /orders/user/{userId}/details/view` lee solo la vista
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
   `GetOrdersForUser` de la clase `OrdersQueriesController`, en
-  [OrdersService/Controllers/OrdersQueriesController.cs](OrdersService/Controllers/OrdersQueriesController.cs).
+  [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
   Es una consulta a MySQL, sin llamadas a `Users` ni a `Products`, y sin
   Throttling.
 
@@ -919,7 +919,7 @@ detalle sale degradado.
 **Implementación:** la tabla `order_details` guarda el detalle de cada `Order`
 con el nombre del cliente y el nombre del producto ya copiados. La mantiene el
 método `ApplyAsync` de la clase `OrderDetailsProjector`, en
-[OrdersService/Messaging/OrderDetailsProjector.cs](OrdersService/Messaging/OrderDetailsProjector.cs),
+[OrdersService/Messaging/OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs),
 que corre en `orders-projector` y consume la cola `orders.details-view`:
 
 - `order.created`: el método `AddOrderAsync` busca el nombre del cliente y del

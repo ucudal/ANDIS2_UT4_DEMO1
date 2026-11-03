@@ -2,13 +2,13 @@
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrdersService", "OrdersService\OrdersService.csproj", "{222C28A7-CB8E-4DC3-9F9D-310D15299B89}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrdersService", "src\OrdersService\OrdersService.csproj", "{222C28A7-CB8E-4DC3-9F9D-310D15299B89}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UsersService", "UsersService\UsersService.csproj", "{FCE0259C-C826-4F7B-8CDC-5DFA4B4A5FFD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UsersService", "src\UsersService\UsersService.csproj", "{FCE0259C-C826-4F7B-8CDC-5DFA4B4A5FFD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProductsService", "ProductsService\ProductsService.csproj", "{CAD30221-4AFC-4A97-BEAE-861AF65E66E1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProductsService", "src\ProductsService\ProductsService.csproj", "{CAD30221-4AFC-4A97-BEAE-861AF65E66E1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "Common\Common.csproj", "{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "src\Common\Common.csproj", "{DFB69074-5CE7-4F68-9A3E-E34EC3C48552}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
