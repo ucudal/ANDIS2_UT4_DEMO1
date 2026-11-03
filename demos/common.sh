@@ -51,6 +51,15 @@ products_active() {
         | awk '{ total += $NF } END { print total - 1 }'
 }
 
+# Cuántas consultas de detalle está atendiendo Orders en este momento, según sus
+# propias métricas: las que tienen lugar en el Throttling, que las cuenta
+# aunque el patrón esté apagado.
+orders_in_progress() {
+    curl -s "$ORDERS_DIRECT/metrics" \
+        | grep '^aspnetcore_rate_limiting_active_request_leases{' \
+        | awk '{ total += $NF } END { print total + 0 }'
+}
+
 # Cuántas consultas de un Product recibió Products desde que arrancó, sean
 # respuestas buenas o fallas inyectadas, según sus propias métricas. La
 # diferencia entre dos lecturas dice cuántas veces lo llamó Orders entre medio.

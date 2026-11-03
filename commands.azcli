@@ -279,8 +279,8 @@ curl -s -X DELETE http://localhost/users/chaos | jq
 
 # Apagar el patrón Retry -y los demás- y hacer que Products y Users fallen el
 # 30% de las veces. Luego ejecutar varias veces la consulta a
-# orders/user/{id}/detail. Debería aparecer a veces 'no disponible (error HTTP
-# 503)' en lugar del nombre del usuario o de los productos.
+# orders/user/{id}/detail. Debería aparecer a veces 'no disponible [error HTTP
+# 503]' en lugar del nombre del usuario o de los productos.
 
 curl -s -X PUT http://localhost/orders/patterns \
   -H "Content-Type: application/json" \
@@ -324,7 +324,7 @@ curl -s -X DELETE http://localhost/users/chaos
 # tiempo de respuesta:
 # - Con el Retry apagado, cada llamada fallida queda fallida: con las dos Orders
 #   de los datos iniciales, cerca de la mitad de las consultas trae algún
-#   producto "no disponible (error HTTP 503)". Todas responden en milisegundos.
+#   producto "no disponible [error HTTP 503]". Todas responden en milisegundos.
 # - Con el Retry prendido, Orders reintenta cada llamada fallida hasta 3 veces;
 #   como la falla es transitoria, casi siempre funciona y la respuesta trae el
 #   nombre del producto. Si se agotaran los reintentos, diría "no disponible".
@@ -332,7 +332,7 @@ curl -s -X DELETE http://localhost/users/chaos
 #   segundos, con jitter.
 # El Circuit Breaker queda apagado tanto con Retry prendido como con Retry
 # apagado: con 30 % de fallas podría abrirse en una mala racha, y la consulta
-# diría "no disponible (circuito abierto)", lo que mezclaría los dos patrones.
+# diría "no disponible [circuito abierto]", lo que mezclaría los dos patrones.
 
 # Logs de Docker: una línea [RETRY] por reintento, con el número de reintento,
 # la espera y la causa -HTTP 503-, solo en la segunda mitad.
@@ -372,15 +372,15 @@ docker compose logs orders-service | grep '\[RETRY\]'
 ./demos/02-circuit-breaker.sh
 
 # Resultado en consola:
-# - Con el Circuit Breaker apagado, las 6 consultas dicen "no disponible (error
-#   HTTP 503)" en los dos productos, y Products recibe 12 llamadas, 2 por
+# - Con el Circuit Breaker apagado, las 6 consultas dicen "no disponible [error
+#   HTTP 503]" en los dos productos, y Products recibe 12 llamadas, 2 por
 #   consulta: Orders lo sigue llamando aunque falle siempre.
 # - Con el Circuit Breaker prendido, el Retry sigue apagado, así que cada
 #   llamada a Products falla una sola vez y cuenta una vez para el circuito.
-#   Las dos primeras consultas dicen "no disponible (error HTTP 503)": Orders
+#   Las dos primeras consultas dicen "no disponible [error HTTP 503]": Orders
 #   llamó a Products y falló. En la tercera se llega a 5 fallas y el circuito
-#   se abre: su segundo producto ya dice "no disponible (circuito abierto)".
-#   Desde ahí, las consultas dicen "no disponible (circuito abierto)" en los
+#   se abre: su segundo producto ya dice "no disponible [circuito abierto]".
+#   Desde ahí, las consultas dicen "no disponible [circuito abierto]" en los
 #   dos productos: Orders ya no llama a Products, que recibe solo 5 llamadas.
 # Cuando Products se recupera, la respuesta sigue degradada, porque el circuito
 # queda abierto 15 segundos aunque Products ya funcione. Pasado ese tiempo, la
@@ -459,7 +459,7 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 # hay lugar pero queda espacio en la fila, espera; cuando se libera un lugar,
 # entra la primera de la fila. Si los lugares y la fila están llenos, la llamada
 # se rechaza de inmediato, sin llegar a la red, y la respuesta dice "no
-# disponible (bulkhead lleno)" en lugar del nombre. El compartimento es lo
+# disponible [bulkhead lleno]" en lugar del nombre. El compartimento es lo
 # primero que atraviesa cada llamada, antes que Retry y Circuit Breaker: un
 # lugar cubre la llamada completa, reintentos incluidos.
 #
@@ -489,7 +489,7 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 # - 0 segundos: A toma los 5 lugares y B ocupa la fila. C encuentra todo
 #   lleno y se rechaza; su otra llamada también, porque el compartimento sigue
 #   lleno, así que C termina en milisegundos con los dos productos "no
-#   disponible (bulkhead lleno)".
+#   disponible [bulkhead lleno]".
 # - 1.5 segundos: A termina su primera llamada y libera los lugares, que toma
 #   B, la primera en la fila. A pide su segunda llamada y va a la fila.
 # - 3 segundos: B termina su primera llamada; A entra con la segunda y B va a
@@ -560,33 +560,52 @@ docker compose run --rm k6 run /scripts/bulkhead.js
 # es para todo el servicio, sin importar quién pide; el gateway aplica además
 # un Throttling por cliente, que se ve en la demo de Rate Limiting.
 #
-# El siguiente script hace algunas rondas de consultas para que los servicios
-# tengan abiertas sus conexiones, hace que Orders demore 2 segundos en cada
-# consulta para simular que está cargado y lanza 40 consultas de detalle
-# simultáneas.
+# El siguiente script apaga todos los patrones, hace algunas rondas de
+# consultas para que los servicios tengan abiertas sus conexiones, hace que
+# Orders demore 5 segundos en cada consulta para simular que está cargado y
+# lanza 40 consultas de detalle simultáneas. Después prende solo el Throttling y
+# lanza otras 40. Mientras corre cada tanda, mide cuántas consultas atiende
+# Orders a la vez, según las métricas de Orders. Tarda unos 25 segundos.
 
 ./demos/04-throttling.sh
 
-# Resultado en consola: una fila por consulta, en el orden en que se lanzaron,
-# con el tiempo de respuesta, el código HTTP, el encabezado Retry-After, el
-# nombre del cliente y el nombre del producto de cada Order, y un resumen. Las
-# 20 primeras consultas se atienden con 200 en unos 2 segundos, con todos los
-# nombres, y las 20 siguientes se rechazan de inmediato con 503, sin datos: como
-# cada consulta demora 2 segundos, las 20 primeras ocupan todos los lugares
-# mientras llegan las demás. Todas las rechazadas traen Retry-After: 2, y las
-# atendidas no lo traen.
+# Resultado en consola: en cada tanda, una fila por consulta, en el orden en que
+# se lanzaron, con el tiempo de respuesta, el código HTTP, el encabezado
+# Retry-After, el nombre del cliente y el nombre del producto de cada Order, y
+# un resumen.
+# - Con el Throttling apagado, las 40 consultas se atienden con 200 en unos 5
+#   segundos, y Orders llega a atender 40 a la vez: acepta todo lo que recibe.
+#   Con 40 consultas Orders las atiende, pero con 1.000 se quedaría sin hilos,
+#   conexiones o memoria, y se degradaría para todos sus clientes.
+# - Con el Throttling prendido, Orders nunca atiende más de 20 a la vez. Las 20
+#   primeras se atienden con 200 en unos 5 segundos, con todos los nombres, y
+#   las 20 siguientes se rechazan de inmediato con 503, sin datos: como cada
+#   consulta demora 5 segundos, las 20 primeras ocupan todos los lugares
+#   mientras llegan las demás. Todas las rechazadas traen Retry-After: 2, y las
+#   atendidas no lo traen.
 #
 # El Bulkhead está apagado en esta demo. Si estuviera prendido, algunas de las
-# consultas atendidas dirían "no disponible (bulkhead lleno)" en uno o más
-# productos: las 20 esperan los mismos 2 segundos y después llaman a Products
+# consultas atendidas dirían "no disponible [bulkhead lleno]" en uno o más
+# productos: las 20 esperan los mismos 5 segundos y después llaman a Products
 # todas a la vez, con 2 llamadas cada una, y el compartimento de Products
 # admite 5 en curso y 5 en espera. El Throttling protege a Orders de lo que
 # recibe, y el Bulkhead lo protege de lo que llama: cada patrón cubre un riesgo
 # distinto, y en un sistema real actúan a la vez.
-#
-# Logs de Docker: una línea [THROTTLING] por cada consulta rechazada.
+
+# Logs de Docker: una línea [THROTTLING] por cada consulta rechazada, solo en la
+# segunda tanda.
 
 docker compose logs orders-service | grep '\[THROTTLING\]'
+
+# Grafana: entre las dos tandas el script espera 10 segundos, para que se
+# distingan:
+# - "Patrones de resiliencia prendidos en Orders": los cuatro en 0 durante la
+#   primera tanda; en la segunda, throttling sube a 1.
+# - "Throttling en Orders": "en curso" sube a 40 en la primera tanda y solo a 20
+#   en la segunda. "rechazadas" aparece solo en la segunda, con 20. "aceptadas"
+#   suma 40 en la primera, más las rondas para abrir conexiones, y 20 en la
+#   segunda.
+# - "Demora agregada a propósito": orders-service en 5 s durante cada tanda.
 
 # Bajo carga: Orders demora 1 segundo y los usuarios virtuales suben de 0 a 40,
 # se mantienen y bajan, en 60 segundos. Los clientes respetan Retry-After.
@@ -598,8 +617,8 @@ docker compose run --rm k6 run /scripts/throttling.js
 # Resultado en Grafana:
 # - "Patrones de resiliencia prendidos en Orders": solo throttling queda en 1.
 # - "Throttling en Orders": "en curso" sube y se queda en 20 aunque haya 40
-#   usuarios virtuales; aparecen "rechazadas por segundo" mientras la carga
-#   supera el límite.
+#   usuarios virtuales; aparecen "rechazadas", la cantidad de cada intervalo de
+#   5 segundos, mientras la carga supera el límite.
 # - "Solicitudes por segundo, por código HTTP": aparecen los 503 en rojo.
 # - "Demora agregada a propósito": orders-service en 1 s.
 

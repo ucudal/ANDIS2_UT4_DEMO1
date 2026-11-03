@@ -135,7 +135,7 @@ public class OrderProcessingWorker : BackgroundService
 
         if (!user.Available || !product.Available)
         {
-            _logger.LogWarning("Worker {Worker}: la orden {OrderId} vuelve a la cola (usuarios: {Users}, productos: {Products})",
+            _logger.LogWarning("Worker {Worker}: la orden {OrderId} vuelve a la cola [usuarios: {Users}, productos: {Products}]",
                 _workerName, orderId, user.Failure ?? "ok", product.Failure ?? "ok");
             Count("Requeued");
             return false;
@@ -163,7 +163,7 @@ public class OrderProcessingWorker : BackgroundService
         await transaction.CommitAsync(cancellationToken);
 
         _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker}: orden {OrderId} {Status}{Reason}",
-            _workerName, orderId, order.Status, rejection is null ? "" : $" ({rejection})");
+            _workerName, orderId, order.Status, rejection is null ? "" : $" [{rejection}]");
         Count(order.Status.ToString());
         return true;
     }

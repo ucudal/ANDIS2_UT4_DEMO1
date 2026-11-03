@@ -75,7 +75,7 @@ public static class ChaosExtensions
                 if (Random.Shared.NextDouble() < settings.FailureRate)
                 {
                     context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                    await context.Response.WriteAsJsonAsync(new { detail = "Falla simulada (chaos)" });
+                    await context.Response.WriteAsJsonAsync(new { detail = "Falla simulada [chaos]" });
                     return;
                 }
             }

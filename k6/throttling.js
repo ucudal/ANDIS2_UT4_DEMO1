@@ -7,7 +7,8 @@
 //
 // Qué mirar en Grafana: mientras hay menos de 20 consultas en curso todo es
 // 200; cuando "en curso" llega a 20 en "Throttling en Orders", aparecen los 503
-// en rojo y las aceptadas se estabilizan en unas 20 por segundo.
+// en rojo y las aceptadas se estabilizan en unas 100 por intervalo de 5
+// segundos: 20 lugares, cada uno ocupado 1 segundo por consulta.
 import { sleep } from 'k6';
 import { chaos, resetChaos, onlyPattern, resetPatterns, details, checkStatus } from './lib.js';
 

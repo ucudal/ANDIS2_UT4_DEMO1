@@ -154,7 +154,7 @@ public class OrderDetailsProjector : BackgroundService
 
         if (!user.Available || !product.Available)
         {
-            _logger.LogWarning("[MATERIALIZED VIEW] La Order {OrderId} vuelve a la cola (usuarios: {Users}, productos: {Products})",
+            _logger.LogWarning("[MATERIALIZED VIEW] La Order {OrderId} vuelve a la cola [usuarios: {Users}, productos: {Products}]",
                 created.OrderId, user.Failure ?? "ok", product.Failure ?? "ok");
             return false;
         }

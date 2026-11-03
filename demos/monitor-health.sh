@@ -6,7 +6,7 @@ GATEWAY=${GATEWAY:-http://localhost}
 
 while true; do
     clear
-    echo "Salud de los servicios ($(date +%H:%M:%S))"
+    echo "Salud de los servicios [$(date +%H:%M:%S)]"
     echo
     for s in users products orders; do
         response=$(curl -s -m 5 -w ' %{http_code}' "$GATEWAY/health/$s" || echo ' sin respuesta')

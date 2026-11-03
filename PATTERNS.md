@@ -121,15 +121,15 @@ Retry. Se abre si fallan al menos la mitad de las llamadas en 10 segundos, con
 un mínimo de 5 llamadas. Abierto, las llamadas fallan de inmediato durante 15
 segundos; después pasa a semiabierto, deja pasar una llamada de prueba y, si
 funciona, se cierra. El detalle de `Orders` no devuelve error: muestra `"no
-disponible (circuito abierto)"` en lugar del nombre
+disponible [circuito abierto]"` en lugar del nombre
 -[OrdersController.cs](OrdersService/Controllers/OrdersController.cs),
 `GetOrdersForUser`-.
 
 **Cómo verlo:** [demos/02-circuit-breaker.sh](demos/02-circuit-breaker.sh) apaga
 el Retry y hace que `Products` falle en el 100 % de las solicitudes. Sin
 reintentos, cada falla cuenta una vez: las dos primeras consultas dicen "no
-disponible (error HTTP 503)", en la tercera el circuito se abre, y desde ahí
-responden con "no disponible (circuito abierto)" sin llamar a `Products`. Cuando
+disponible [error HTTP 503]", en la tercera el circuito se abre, y desde ahí
+responden con "no disponible [circuito abierto]" sin llamar a `Products`. Cuando
 `Products` se recupera, el circuito sigue abierto hasta que pasan los 15
 segundos. Los *logs* de Docker muestran las transiciones ABIERTO → SEMIABIERTO →
 CERRADO. Con el Retry prendido, la primera consulta tardaría unos 3 segundos,
@@ -153,7 +153,7 @@ cada consulta, tiene 20 en curso y 5 en espera.
 **Cómo verlo:** [demos/03-bulkhead.sh](demos/03-bulkhead.sh) hace que `Products`
 demore 1,5 segundos y lanza 15 consultas simultáneas. 10 entran al
 compartimento de `Products` y traen los nombres de los productos; las otras 5 se
-rechazan de inmediato con `"no disponible (bulkhead lleno)"`. El nombre del
+rechazan de inmediato con `"no disponible [bulkhead lleno]"`. El nombre del
 `User` aparece en todas las respuestas.
 
 #### Throttling

@@ -170,19 +170,19 @@ public class OrdersController : ControllerBase
         if (user.NotFound)
             return NotFound("User not found");
 
-        var customerName = user.Available ? user.Value?.Name : $"no disponible ({user.Failure})";
+        var customerName = user.Available ? user.Value?.Name : $"no disponible [{user.Failure}]";
 
         var productsClient = _httpClientFactory.CreateClient("ProductsService");
 
         var result = new List<object>();
         // Una llamada a Products por Order, de a una. Cada llamada pasa por el
         // compartimento del Bulkhead de Products por separado: si está lleno,
-        // esa Order queda con "no disponible (bulkhead lleno)" y se sigue con la
+        // esa Order queda con "no disponible [bulkhead lleno]" y se sigue con la
         // próxima, que vuelve a intentar conseguir un lugar.
         foreach (var order in orders)
         {
             var product = await Dependencies.GetAsync<ProductDto>(productsClient, $"{order.ProductId}", HttpContext.RequestAborted);
-            var productName = product.Available ? product.Value?.Name : $"no disponible ({product.Failure})";
+            var productName = product.Available ? product.Value?.Name : $"no disponible [{product.Failure}]";
 
             result.Add(new
             {

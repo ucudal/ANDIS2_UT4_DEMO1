@@ -987,7 +987,7 @@
       "type": "timeseries",
       "id": 15,
       "title": "Throttling en Orders [Demo 4]",
-      "description": "Consultas de detalle en curso, con un máximo de 20, y consultas aceptadas y rechazadas por segundo.",
+      "description": "\"en curso\": consultas de detalle que Orders atiende en ese momento, con un máximo de 20 si el Throttling está prendido. \"aceptadas\" y \"rechazadas\": cantidad de consultas en cada intervalo de 5 segundos.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1006,7 +1006,8 @@
             "fillOpacity": 10,
             "showPoints": "never",
             "spanNulls": true
-          }
+          },
+          "decimals": 0
         },
         "overrides": [
           {
@@ -1027,7 +1028,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "aceptadas por segundo"
+              "options": "aceptadas"
             },
             "properties": [
               {
@@ -1042,7 +1043,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "rechazadas por segundo"
+              "options": "rechazadas"
             },
             "properties": [
               {
@@ -1084,8 +1085,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result=\"acquired\"}[$__rate_interval]))",
-          "legendFormat": "aceptadas por segundo",
+          "expr": "sum(clamp_min(aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result=\"acquired\"} - (aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result=\"acquired\"} offset $__interval or aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result=\"acquired\"} * 0), 0))",
+          "legendFormat": "aceptadas",
           "range": true
         },
         {
@@ -1094,11 +1095,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result!=\"acquired\"}[$__rate_interval]))",
-          "legendFormat": "rechazadas por segundo",
+          "expr": "sum(clamp_min(aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result!=\"acquired\"} - (aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result!=\"acquired\"} offset $__interval or aspnetcore_rate_limiting_requests_total{job=\"orders-service\", aspnetcore_rate_limiting_result!=\"acquired\"} * 0), 0))",
+          "legendFormat": "rechazadas",
           "range": true
         }
-      ]
+      ],
+      "interval": "5s"
     },
     {
       "type": "row",
