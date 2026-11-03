@@ -983,7 +983,78 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 # mismo con order.confirmed y order.rejected. Si RabbitMQ no está, los mensajes
 # esperan en la base: no se pierde ninguno, y Orders sigue aceptando Orders.
 #
-# El siguiente script detiene RabbitMQ, crea 5 Orders, muestra los mensajes
+# Ver los últimos mensajes del outbox. Cada Order deja dos: order.created, que
+# guarda Orders al crearla, y order.confirmed, que guarda el worker al
+# procesarla. Todos tienen published_at: el relay ya los publicó, cerca de un
+# segundo después de created_at.
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT id, routing_key, payload, created_at, published_at FROM outbox_messages ORDER BY id DESC LIMIT 6"
+
+# Detener RabbitMQ.
+
+docker compose stop rabbitmq
+
+# Consultar la salud de Orders: queda Degraded, no Unhealthy. Sin RabbitMQ
+# puede seguir aceptando Orders, porque no publica al crearlas: solo las guarda
+# en su base.
+
+curl -s http://localhost/health/orders | jq
+
+# Crear 3 Orders y guardar sus ids en una variable, para usarlos en los
+# comandos siguientes. Cada una muestra su id y el código HTTP: las 3
+# responden 202, aunque RabbitMQ no esté. Sin el outbox, Orders publicaba
+# después de guardar y respondía 503, y la Order quedaba Pending para siempre.
+
+ids=()
+for i in $(seq 3); do
+  response=$(curl -s -w '\n%{http_code}' -X POST http://localhost/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+  id=$(echo "$response" | head -1 | jq .id)
+  ids+=($id)
+  echo "Order $id -> HTTP $(echo "$response" | tail -1)"
+done
+
+# Las 3 Orders quedan Pending: el evento order.created no llegó a RabbitMQ, y
+# ningún worker las procesó.
+
+for id in "${ids[@]}"; do curl -s http://localhost/orders/$id | jq -c '{id, status}'; done
+
+# Los 3 mensajes order.created esperan en el outbox, sin published_at:
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT id, routing_key, payload, created_at FROM outbox_messages WHERE published_at IS NULL"
+
+# En los logs, el relay avisa una vez que RabbitMQ no está disponible y que los
+# mensajes quedan pendientes. Sigue intentando cada segundo, sin repetir el
+# aviso.
+
+docker compose logs orders-service --since 1m | grep '\[OUTBOX\]'
+
+# Volver a levantar RabbitMQ.
+
+docker compose start rabbitmq
+
+# Esperar unos segundos -lo que tarda RabbitMQ en arrancar, el relay en publicar
+# y los workers en reconectarse y procesar- y volver a consultar el outbox: ya
+# no hay mensajes pendientes.
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT id, routing_key, payload, created_at FROM outbox_messages WHERE published_at IS NULL"
+
+# En los logs: una línea por cada order.created publicado, "RabbitMQ volvió" y
+# después una línea por cada order.confirmed, que guardaron los workers en el
+# outbox al procesar las Orders.
+
+docker compose logs orders-service --since 1m | grep '\[OUTBOX\]'
+
+# Las 3 Orders están Confirmed: ningún mensaje se perdió mientras RabbitMQ no
+# estaba.
+
+for id in "${ids[@]}"; do curl -s http://localhost/orders/$id | jq -c '{id, status}'; done
+
+# El siguiente script hace lo mismo con 5 Orders: detiene RabbitMQ, crea 5 Orders, muestra los mensajes
 # pendientes y vuelve a levantar RabbitMQ. Tarda unos 30 segundos.
 
 ./demos/09-transactional-outbox.sh
@@ -999,9 +1070,11 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 docker compose logs orders-service --since 2m | grep '\[OUTBOX\]'
 
 # Para ver el outbox directamente en la base:
+
 docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, routing_key, created_at, published_at FROM outbox_messages ORDER BY id DESC LIMIT 10"
-# Grafana:
+
+# Resultado en Grafana:
 # - "Outbox de Orders": "pendientes" sube a 5 durante los 15 segundos en que
 #   RabbitMQ está detenido y vuelve a 0 cuando se levanta; en ese momento
 #   aparece un pico en "publicados por segundo".
