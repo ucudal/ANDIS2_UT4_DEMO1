@@ -650,26 +650,121 @@ curl -s -L "http://localhost$location" | table
 # ---------------
 # --- 15 CQRS ---
 # ---------------
-# Los comandos -crear y procesar Orders- escriben orders, order_events y
-# outbox_messages. La consulta GET /orders/user/{userId}/details/view lee otra
-# tabla, order_details, que ya tiene la forma de la respuesta: una consulta a
-# MySQL y ninguna llamada a Users ni a Products. La consulta síncrona de las
-# demos 01 a 04, GET /orders/user/{userId}/details, sigue disponible para
-# comparar.
+# CQRS separa las operaciones que cambian datos -comandos- de las que solo los
+# leen -consultas-, y le da a cada lado sus propias tablas.
+# - Comandos: crear una Order -con POST /orders/- y procesarla -con el worker-.
+#   Escriben el estado en 'orders', el evento en 'order_events' y el mensaje
+#   para RabbitMQ en 'outbox_messages'. 'orders' tiene solo ids, sin nombres.
+# - Consulta: GET /orders/user/{userId}/details/view lee 'order_details', que
+#   ningún comando escribe: la mantiene orders-projector a partir de los
+#   eventos -ver Materialized View-. Ya tiene los nombres copiados, así que
+#   responde con una sola consulta a MySQL, sin llamar a Users ni a Products.
+# Para comparar sigue estando la consulta de las demos 01 a 04,
+# GET /orders/user/{userId}/details, que lee 'orders', la tabla de los comandos,
+# y le pide los nombres a Users y a Products en cada consulta.
 #
+# Ver de dónde sale cada consulta en la base de Orders. Del lado de los
+# comandos, la tabla 'orders' tiene solo ids: para armar el detalle hay que
+# pedirle a Users el nombre del cliente y a Products el nombre del producto.
+# Del lado de las consultas, la tabla 'order_details' ya tiene los nombres
+# copiados.
+
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM orders WHERE user_id = 1"
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM order_details WHERE user_id = 1"
+
+# Hacer la misma consulta por los dos lados: la respuesta es la misma.
+
+curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/1/details/view | table
+
+# Hacer que Users y Products demoren 200 ms en responder, como si estuvieran
+# cargados o lejos. Sin esa demora, en esta demo todo corre en la misma máquina
+# y la diferencia entre las dos consultas es de pocos milisegundos.
+
+curl -s -X PUT http://localhost/users/chaos \
+  -H 'Content-Type: application/json' \
+  -d '{"failureRate": 0, "delayMs": 200}' | jq
+curl -s -X PUT http://localhost/products/chaos \
+  -H 'Content-Type: application/json' \
+  -d '{"failureRate": 0, "delayMs": 200}' | jq
+
+# Comparar el tiempo de respuesta, 3 veces cada una: la síncrona demora más de
+# medio segundo, porque llama a Users y a Products por cada Order, y cada
+# llamada demora 200 ms; la vista, pocos milisegundos, porque es una sola
+# consulta a MySQL y no llama a nadie.
+
+for i in 1 2 3; do
+  curl -s -o /dev/null -w 'details:      %{time_total} s\n' http://localhost/orders/user/1/details
+done
+for i in 1 2 3; do
+  curl -s -o /dev/null -w 'details/view: %{time_total} s\n' http://localhost/orders/user/1/details/view
+done
+
+# Hacer que Products falle siempre: la síncrona muestra "no disponible" en
+# lugar del nombre del producto -con "error HTTP 503" o, si el Circuit Breaker
+# ya se abrió, con "circuito abierto"-; la vista sigue mostrando los nombres,
+# porque ya están copiados.
+
+curl -s -X PUT http://localhost/products/chaos \
+  -H 'Content-Type: application/json' \
+  -d '{"failureRate": 1, "delayMs": 0}' | jq
+
+curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/1/details/view | table
+
+# Reparar Users y Products.
+
+curl -s -X DELETE http://localhost/users/chaos | jq
+curl -s -X DELETE http://localhost/products/chaos | jq
+
+# El costo de la vista es la consistencia eventual: 'order_details' la mantiene
+# orders-projector a partir de los eventos, y una Order recién creada tarda en
+# llegar. Para tener tiempo de verlo, detener el proyector.
+
+docker compose stop orders-projector
+
+# Contar las Orders del User 2 por los dos lados, crear una Order y volver a
+# contar: la síncrona ya la tiene, porque lee la tabla 'orders'; la vista no,
+# porque el evento order.created espera en la cola orders.details-view a que
+# vuelva el proyector.
+
+curl -s http://localhost/orders/user/2/details | jq length
+curl -s http://localhost/orders/user/2/details/view | jq length
+
+curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+
+curl -s http://localhost/orders/user/2/details | jq length
+curl -s http://localhost/orders/user/2/details/view | jq length
+
+# Levantar el proyector, esperar unos segundos y volver a contar: la vista se
+# puso al día y las dos consultas devuelven la misma cantidad. Sin detener el
+# proyector la demora es de uno o dos segundos.
+
+docker compose start orders-projector
+
+curl -s http://localhost/orders/user/2/details | jq length
+curl -s http://localhost/orders/user/2/details/view | jq length
+
 # El siguiente script hace la misma consulta por los dos lados, sin fallas y con
 # Products demorando 300 ms, y después muestra la consistencia eventual.
 
 ./demos/15-cqrs.sh
 
-# Resultado: sin fallas, la síncrona demora unos 100 ms y la vista, unos 3. Con
-# Products lento, la síncrona pasa a casi 2 segundos y la vista no cambia. Justo
-# después de crear una Order, la síncrona ya la tiene y la vista todavía no.
+# Resultado en consola: sin fallas, la síncrona demora unos 100 ms y la vista,
+# unos 3. Con Products lento, la síncrona pasa a casi 2 segundos y la vista no
+# cambia. Justo después de crear una Order, la síncrona ya la tiene y la vista
+# todavía no.
 
 # Bajo carga, se corre load.js de las dos formas y se comparan en Grafana:
+
 docker compose run --rm k6 run -e DETAILS=live /scripts/load.js
 docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
-# Grafana, comparando la primera corrida con la segunda:
+
+# Resulado en Grafana, comparando la primera corrida con la segunda:
 # - "Latencia p95 del detalle de Orders: síncrono contra vista": la línea
 #   "orders/user/{userId}/details/view" queda por debajo de la de
 #   "orders/user/{userId}/details". Sin fallas la diferencia es de pocos
@@ -683,11 +778,11 @@ docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
 # ----------------------------
 # --- 16 Materialized View ---
 # ----------------------------
-# order_details guarda el detalle de cada Order con el nombre del cliente y del
-# producto ya copiados. La mantiene orders-projector a partir de los eventos:
-# al recibir order.created busca los nombres una sola vez; con order.confirmed
-# y order.rejected actualiza el estado; con user.updated y product.updated,
-# los nombres.
+# 'order_details' guarda el detalle de cada Order con el nombre del cliente y
+# del producto ya copiados. La mantiene orders-projector a partir de los
+# eventos: al recibir order.created busca los nombres una sola vez; con
+# order.confirmed y order.rejected actualiza el estado; con user.updated y
+# product.updated, los nombres.
 #
 # El siguiente script cambia el nombre de un Product, hace fallar a Products y
 # detiene el proyector mientras se crea una Order.
