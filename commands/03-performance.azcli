@@ -33,10 +33,13 @@ docker compose up -d --wait
 # comandos 'curl' que son JSON como tabla, definir Requiere jq y column; ver los
 # requisitos en README.md. Una lista de objetos se muestra con una columna por
 # campo, y un objeto solo, como pares clave-valor. Para ver el resultado en JSON
-# seleccionar sólo el comando 'curl' hasta antes del pipe '|'.
+# seleccionar sólo el comando 'curl' hasta antes del pipe '|'. Si después del
+# JSON viene un número, como el código HTTP que agrega curl con -w, lo muestra
+# al final, como HTTP 200.
 table() {
   jq -r 'if type == "array"
          then (.[0] | keys_unsorted) as $k | ($k | @tsv), (.[] | [.[$k[]] | tostring] | @tsv)
+         elif type == "number" then "HTTP \(.)"
          else to_entries[] | [.key, (.value | tostring)] | @tsv end' \
   | column -t -s $'\t'
 }
