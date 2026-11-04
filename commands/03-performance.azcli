@@ -594,14 +594,58 @@ docker compose logs users-service products-service --since 2m | grep '\[PUB/SUB\
 # Retry-After: 2. El estado responde 200 mientras la Order está Pending, y 303
 # See Other a la Order cuando un worker la confirmó o la rechazó.
 #
+# Para tener tiempo de ver la Order Pending, detener los workers: mientras no
+# haya ninguno, nadie la procesa.
+
+docker compose stop orders-worker
+
+# Crear una Order. Con -i, curl muestra los encabezados de la respuesta, y con
+# -w, el tiempo que demoró. Orders responde enseguida, aunque no haya ningún
+# worker, con:
+# - 202 Accepted: recibió el pedido, pero todavía no está listo.
+# - Location: dónde consultar el estado, /orders/{id}/status.
+# - Retry-After: cuántos segundos esperar antes de consultarlo, 2.
+# El cliente no queda esperando a que se procese la Order. La respuesta se
+# guarda en una variable, para mostrarla y sacar de ella la dirección de
+# Location, que usan los comandos siguientes.
+
+response=$(curl -s -i -w '\n%{time_total} s' -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+echo "$response"
+location=$(echo "$response" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
+echo "$location"
+
+# Consultar el estado en la dirección de Location, igual que haría un cliente:
+# responde 200 con el estado, Pending, y otra vez Retry-After: el cliente tiene
+# que volver a consultar más tarde. Se puede repetir varias veces: mientras no
+# haya workers, la respuesta es siempre la misma.
+
+curl -s -i "http://localhost$location"
+
+# Levantar los workers. Uno de ellos procesa la Order en unos 2 segundos.
+
+docker compose start orders-worker
+
+# Esperar unos segundos y volver a consultar el estado: ahora responde 303 See
+# Other, sin cuerpo, con Location apuntando a la Order, /orders/{id}. El
+# resultado está ahí.
+
+curl -s -i "http://localhost$location"
+
+# Lo mismo, pero con -L curl sigue la redirección del 303 por su cuenta, como
+# haría un cliente, y muestra directamente la Order, confirmada.
+
+curl -s -L "http://localhost$location" | table
+
 # El siguiente script crea una Order y consulta su estado respetando
 # Retry-After hasta el 303.
 
 ./demos/14-asynchronous-request-reply.sh
 
-# Resultado: el 202 con sus encabezados; dos o tres consultas con 200 Pending,
-# una cada 2 segundos; el 303 con Location: /orders/{id}; y la Order confirmada.
-# Grafana: no hay un panel propio.
+# Resultado en consola: el 202 con sus encabezados; dos o tres consultas con 200
+# Pending, una cada 2 segundos; el 303 con Location: /orders/{id}; y la Order
+# confirmada. Grafana: no hay un panel propio.
 
 # ---------------
 # --- 15 CQRS ---
