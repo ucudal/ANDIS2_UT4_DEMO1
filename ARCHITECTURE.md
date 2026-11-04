@@ -30,11 +30,13 @@ que mejor le sirve.
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
 | `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | PostgreSQL, relacional | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `user.updated` |
-| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio | MongoDB, documentos; Redis como caché | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated` |
+| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio; sus imágenes | MongoDB, documentos; Redis como caché; Azurite para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated`; Azurite, para las imágenes |
 | `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | MySQL, relacional | gateway | `users-service`, `products-service`, RabbitMQ |
 | `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `orders-projector` | Comparte la base de `orders-service`; es el único que escribe la vista del detalle | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
-| `api-gateway` | Nada: solo enruta | — | clientes | los tres servicios |
+| `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y Keycloak |
+| `products-sidecar` | Nada: autoriza las solicitudes a `products-service` | — | gateway, por HTTPS, y cualquier contenedor de la red | `products-service`; Keycloak, para obtener sus claves públicas |
+| `keycloak` | Las identidades: usuarios, contraseñas y roles | Su propia base, en memoria en modo desarrollo | clientes, para iniciar sesión; gateway, para validar tokens | — |
 
 Una `Order` guarda el identificador del `User` y el del `Product`, pero no hay
 clave foránea que los relacione, porque están en bases distintas. El
@@ -311,10 +313,13 @@ disponible el 99,9 % del tiempo, unos 43 minutos sin servicio por mes:
 | Consulta de detalle completa | gateway, `orders-service`, `orders-db`, `users-service`, `users-db`, `products-service`, `products-db` | 99,9 % ^ 7 ≈ 99,3 % | unas 5 horas |
 | Consulta de detalle desde la vista | gateway, `orders-service`, `orders-db` | 99,9 % ^ 3 ≈ 99,7 % | unas 2 horas |
 | Aceptar una `Order` | gateway, `orders-service`, `orders-db` | 99,9 % ^ 3 ≈ 99,7 % | unas 2 horas |
+| Consulta de detalle desde la vista, por la entrada HTTPS | gateway, `keycloak`, `orders-service`, `orders-db` | 99,9 % ^ 4 ≈ 99,6 % | unas 3 horas |
 
 Cada servicio que se agrega a una cadena síncrona baja la disponibilidad de la
-operación, aunque cada servicio por separado sea muy confiable. Hay dos formas de
-romper la cadena, y la aplicación usa las tres:
+operación, aunque cada servicio por separado sea muy confiable. La entrada HTTPS
+agrega Keycloak a todas las operaciones, porque el gateway le pregunta si cada
+token es válido. Hay tres formas de romper la cadena, y la aplicación usa las
+tres:
 
 - **Degradar la respuesta:** la consulta de detalle responde aunque falten
   `Users` o `Products`, con "no disponible" en lugar del nombre. La respuesta
@@ -336,6 +341,10 @@ romper la cadena, y la aplicación usa las tres:
 - ¿Una respuesta con "no disponible" en lugar del nombre del producto cuenta
   como disponible? ¿De qué depende?
 - ¿Qué cambia en la tabla si se agregan tres réplicas de `products-service`?
+- El gateway le pregunta a Keycloak por cada solicitud HTTPS, y el *sidecar*
+  verifica la firma del token con las claves públicas de Keycloak, sin
+  preguntarle. ¿Qué gana y qué pierde cada uno? ¿Cómo quedaría la tabla si el
+  gateway hiciera como el *sidecar*?
 
 ## Consistencia de los datos
 
@@ -423,6 +432,12 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   están sanos, aunque puede funcionar sin ellos. `users-service` y
   `products-service` esperan a que arranque RabbitMQ, pero no a que esté sano:
   pueden atender sin él.
+- **Los claims del token.** `Orders` espera que el gateway le pase el `User` en
+  el encabezado `X-User-Id`, y el gateway lo saca del claim `user_id`, que
+  Keycloak arma a partir de un atributo de cada usuario. Si cambia el nombre del
+  claim, del encabezado o del atributo, `Orders` deja de reconocer a los
+  clientes. El *sidecar*, además, espera los roles en `realm_access.roles`,
+  donde los pone Keycloak.
 - **La ubicación de cada servicio.** Las URL de `Users` y `Products` se pasan a
   `Orders` por variables de entorno, y nginx encuentra cada servicio por su nombre
   en el DNS de Docker. No hay un registro de servicios.
@@ -443,14 +458,18 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 
 | Decisión | Qué se gana | Qué cuesta | Dónde se aborda |
 | -------- | ----------- | ---------- | --------------- |
-| Sin autenticación ni TLS | Simplicidad | Cualquiera puede crear `Orders` o `Users` | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, Federated Identity, Gateway Offloading |
-| Los endpoints de inyección de fallas son accesibles a través del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad) |
+| La entrada HTTP del gateway sigue abierta, sin autenticación ni TLS, junto a la HTTPS | Las demos anteriores funcionan igual, y se compara cada solicitud con y sin los patrones de seguridad | Por HTTP, cualquiera puede crear `Orders` o `Users` sin identificarse | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Federated Identity, Gateway Offloading; en producción quedaría solo la HTTPS |
+| Los endpoints de inyección de fallas son accesibles a través de la entrada HTTP del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, que no los publica por HTTPS |
+| Los puertos de los servicios y de las bases se publican en el host | Se pueden probar sin pasar por el gateway | Cualquiera se saltea los controles del gateway, y puede hacerse pasar por otro usuario mandando los encabezados de identidad | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, con `docker-compose.gatekeeper.yaml` |
+| El gateway valida cada token preguntándole a Keycloak | Se entera enseguida si una sesión se cerró | Una llamada a Keycloak por solicitud; si Keycloak no responde, nadie entra | — |
+| Un solo *sidecar*, sin TLS entre los servicios | Menos infraestructura | El tráfico dentro de la red viaja sin cifrar, y `Orders` y `Users` no tienen *sidecar* | — |
+| Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
 | `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; MongoDB sin réplicas no tiene transacciones | Si RabbitMQ no está, el evento se pierde y la vista queda con el nombre anterior | — |
 | El proyector tiene una sola réplica | Los eventos de cada `Order` se aplican en orden | Si se cae, la vista se atrasa hasta que vuelva | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
 | Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
-| Contraseñas en texto plano en `docker-compose.yaml` | Se levanta con un solo comando | Las credenciales quedan en el repositorio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad) |
+| Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de Azurite y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de Docker, sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 
@@ -461,4 +480,4 @@ producción. Varias se resuelven en las demos siguientes, descritas en
   consecuencias.
 - ¿Qué decisión de la tabla cambiarían primero si la aplicación fuera a
   producción? ¿Por qué?
-- Para las dos filas sin demo, ¿qué patrones o herramientas usarían?
+- Para las filas sin demo, ¿qué patrones o herramientas usarían?

@@ -1,0 +1,21 @@
+@startuml
+!include PlantUML.style
+hide footbox
+actor "Cliente\ncarol" as C
+participant "API Gateway\ny sidecar" as GW
+participant "Products\nProductImages" as P
+database "Azurite\nproduct-images" as S
+
+C ->> GW : POST /products/{id}/image/upload-url
+GW ->> P : rol admin
+P ->> P : firma una SAS con la clave de la cuenta\nun blob, crear y escribir, 2 minutos
+P -->> C : uploadUrl
+C ->> S : PUT uploadUrl\nlos bytes de la imagen
+S -->> C : 201
+note over GW, P : los bytes no pasan\npor el gateway ni por Products
+C ->> GW : GET /products/{id}/image
+GW ->> P
+P -->> C : 302, Location: SAS de lectura
+C ->> S : GET
+S -->> C : 200, la imagen
+@enduml

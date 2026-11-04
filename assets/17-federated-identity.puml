@@ -1,0 +1,20 @@
+@startuml
+!include PlantUML.style
+hide footbox
+actor "Usuario\nen el navegador" as U
+participant "Cliente\nandis-cli" as C
+participant "Keycloak\nrealm andis" as K
+participant "API Gateway\nentrada HTTPS" as GW
+participant "Orders\nCallerIdentity" as O
+
+C ->> K : pide un código\n/auth/device
+K -->> C : user_code y verification_uri_complete
+U ->> K : inicia sesión: usuario y contraseña
+note right of U : la contraseña la recibe\nsolo Keycloak
+K -->> C : token firmado, cuando el cliente lo pide\nclaims: preferred_username, user_id, roles
+C ->> GW : POST /orders/\nAuthorization: Bearer token
+GW ->> K : ¿es válido el token?\n/userinfo
+K -->> GW : 200
+GW ->> O : POST /orders/\nX-User-Name, X-User-Id, X-User-Roles
+O -->> C : 202, la Order es del User del token
+@enduml

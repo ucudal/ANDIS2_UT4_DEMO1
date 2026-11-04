@@ -1,0 +1,21 @@
+@startuml
+!include PlantUML.style
+actor Cliente as C
+rectangle "API Gateway, entrada HTTPS\nnginx" as GW {
+  rectangle "Termina TLS\ncertificado del gateway" as TLS
+  rectangle "Valida el token\nauth_request a Keycloak" as AUTH
+  rectangle "Comprime\ngzip" as GZ
+  rectangle "Throttling por cliente\nlimit_req" as TH
+}
+rectangle "Keycloak" as K
+rectangle "Servicios" as SV {
+  rectangle "Users" as US
+  rectangle "Products\na través del sidecar" as PS
+  rectangle "Orders" as OS
+}
+
+C --> TLS : HTTPS\nAuthorization: Bearer token
+AUTH ..> K : /userinfo
+GW --> SV : HTTP, sin TLS\nX-User-Name, X-User-Id, X-User-Roles
+note bottom of SV : sin certificados\nni código de autenticación
+@enduml

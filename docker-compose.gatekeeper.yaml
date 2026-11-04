@@ -1,0 +1,36 @@
+# Gatekeeper: los servicios solo se pueden alcanzar a través del gateway.
+#
+# docker-compose.yaml publica en el host el puerto de cada servicio y de cada
+# base, para probarlos y para las demos que los llaman directamente. Pero así
+# cualquiera que llegue al host se saltea el gateway: los controles de la
+# entrada HTTPS no sirven si hay otra puerta abierta. Este archivo deja de
+# publicar esos puertos; los servicios siguen hablando entre sí por la red de
+# Docker.
+#
+# Se aplica junto con docker-compose.yaml, y Docker Compose vuelve a crear solo
+# los contenedores que cambian:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --wait
+#
+# Para volver a publicar los puertos, como necesitan las demás demos:
+#
+#   docker compose up -d --wait
+#
+# Siguen publicados el gateway, Keycloak y Azurite, porque los clientes los
+# usan directamente, y las herramientas de las demos: la consola de RabbitMQ,
+# Prometheus y Grafana.
+services:
+  users-service:
+    ports: !reset []
+  products-service:
+    ports: !reset []
+  orders-service:
+    ports: !reset []
+  users-db:
+    ports: !reset []
+  products-db:
+    ports: !reset []
+  orders-db:
+    ports: !reset []
+  redis:
+    ports: !reset []

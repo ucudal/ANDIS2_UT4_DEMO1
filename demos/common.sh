@@ -179,6 +179,69 @@ update_user() {
         -d "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><UpdateUser xmlns=\"http://ucu.edu.uy/andis/users\"><id>$1</id><name>$2</name><email>$3</email></UpdateUser></soap:Body></soap:Envelope>" > /dev/null
 }
 
+# Funciones de los demos de seguridad, de la 17 en adelante. Usan jq.
+
+HTTPS_GATEWAY=${HTTPS_GATEWAY:-https://localhost}
+KEYCLOAK=${KEYCLOAK:-http://localhost:8080}
+
+# El certificado del gateway es autofirmado: se lee del contenedor, para que
+# curl lo verifique en lugar de aceptar cualquiera con -k. Se genera al
+# construir la imagen, así que se vuelve a leer en cada demo.
+GATEWAY_CERT="${TMPDIR:-/tmp}/andis-gateway.crt"
+load_gateway_cert() {
+    docker compose exec -T api-gateway cat /etc/nginx/tls/gateway.crt > "$GATEWAY_CERT"
+}
+
+# token <usuario>: inicia sesión en Keycloak con el usuario y la contraseña
+# -grant type password- y devuelve el token de acceso. Los usuarios de la demo
+# son alice, bob y carol, todos con la contraseña Pa55w0rd.
+token() {
+    curl -s -X POST "$KEYCLOAK/realms/andis/protocol/openid-connect/token" \
+        -d grant_type=password -d client_id=andis-cli -d scope=openid \
+        -d username="$1" -d password=Pa55w0rd | jq -r .access_token
+}
+
+# claims <token>: los claims del token, sin verificar la firma. El token tiene
+# tres partes en base64url separadas por puntos; los claims son la del medio.
+claims() {
+    jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson' <<< "$1"
+}
+
+# tamper <token> <filtro de jq>: cambia los claims del token con el filtro, sin
+# volver a firmarlo, como haría alguien que quiere hacerse pasar por otro. La
+# firma ya no corresponde a los claims, y el token deja de ser válido.
+tamper() {
+    local header signature payload
+    header=${1%%.*}
+    signature=${1##*.}
+    payload=$(claims "$1" | jq -c "$2" | base64 | tr '+/' '-_' | tr -d '=\n')
+    echo "$header.$payload.$signature"
+}
+
+# call <argumentos de curl>: hace la solicitud y muestra en una línea el código
+# HTTP y el comienzo del cuerpo de la respuesta. Si no hubo respuesta, muestra
+# el error de curl.
+call() {
+    local out code error body
+    out=$(curl -s --cacert "$GATEWAY_CERT" -w '\n%{http_code} %{errormsg}' "$@" || true)
+    read -r code error <<< "${out##*$'\n'}"
+    body=$(head -c 110 <<< "${out%$'\n'*}" | tr -d '\n')
+    if [ "$code" = 000 ]; then
+        printf '  sin respuesta: %s\n' "$error"
+    else
+        printf '  HTTP %s  %s\n' "$code" "$body"
+    fi
+}
+
+# call_inside <argumentos de curl>: como call, pero desde adentro de la red de
+# Docker, donde los servicios se llaman por su nombre. Se usa el contenedor del
+# gateway porque tiene curl; podría ser cualquier contenedor de la red.
+call_inside() {
+    local out
+    out=$(docker compose exec -T api-gateway curl -s -w '\n%{http_code}' "$@")
+    printf '  HTTP %s  %s\n' "${out##*$'\n'}" "$(head -c 110 <<< "${out%$'\n'*}" | tr -d '\n')"
+}
+
 # Al terminar, deja los servicios sin fallas simuladas y con todos los patrones
 # prendidos.
 trap 'reset_chaos; reset_patterns' EXIT

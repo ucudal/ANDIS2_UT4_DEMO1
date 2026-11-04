@@ -17,10 +17,12 @@ namespace Ucu.Andis.OrdersService.Controllers;
 public class OrdersQueriesController : ControllerBase
 {
     private readonly OrdersDbContext _db;
+    private readonly ILogger<OrdersQueriesController> _logger;
 
-    public OrdersQueriesController(OrdersDbContext db)
+    public OrdersQueriesController(OrdersDbContext db, ILogger<OrdersQueriesController> logger)
     {
         _db = db;
+        _logger = logger;
     }
 
     // GET /orders/user/{userId}/details/view
@@ -32,6 +34,10 @@ public class OrdersQueriesController : ControllerBase
     [HttpGet("user/{userId}/details/view")]
     public async Task<ActionResult<List<object>>> GetOrdersForUser(int userId)
     {
+        // Federated Identity: un cliente ve solo sus Orders -ver CallerIdentity.cs-.
+        if (CallerIdentity.From(Request) is { } caller && !caller.CanAccess(userId))
+            return this.Forbidden(_logger, $"{caller.Name} no puede ver las Orders del User {userId}");
+
         var details = await _db.OrderDetails
             .Where(d => d.UserId == userId)
             .OrderBy(d => d.OrderId)

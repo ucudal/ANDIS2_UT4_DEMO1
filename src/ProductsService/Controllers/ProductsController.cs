@@ -15,13 +15,16 @@ public class ProductsController : ControllerBase
 
     private readonly IMongoCollection<Product> _productsCollection;
     private readonly ProductCache _cache;
+    private readonly ProductImages _images;
     private readonly RabbitMq _rabbitMq;
     private readonly ILogger<ProductsController> _logger;
 
-    public ProductsController(IMongoCollection<Product> productsCollection, ProductCache cache, RabbitMq rabbitMq, ILogger<ProductsController> logger)
+    public ProductsController(IMongoCollection<Product> productsCollection, ProductCache cache, ProductImages images,
+        RabbitMq rabbitMq, ILogger<ProductsController> logger)
     {
         _productsCollection = productsCollection;
         _cache = cache;
+        _images = images;
         _rabbitMq = rabbitMq;
         _logger = logger;
     }
@@ -89,6 +92,53 @@ public class ProductsController : ControllerBase
 
         return Ok(new { id = productId, msg = "Product updated" });
     }
+
+    // Sin Valet Key: el cliente le manda la imagen a Products, que la sube al
+    // almacenamiento con su propia clave. Todos los bytes pasan por el gateway y
+    // por Products -ver ProductImages.cs-.
+    [HttpPut("{productId}/image")]
+    public async Task<ActionResult<object>> UploadImage(string productId, CancellationToken cancellationToken)
+    {
+        if (!await ProductExistsAsync(productId))
+            return NotFound(new { detail = "Product not found" });
+
+        var bytes = await _images.UploadAsync(productId, Request.Body, Request.ContentType ?? "application/octet-stream", cancellationToken);
+        return Ok(new { id = productId, bytes, msg = "Image uploaded through Products" });
+    }
+
+    // Valet Key: en lugar de recibir la imagen, Products entrega una URL firmada
+    // para que el cliente la suba directamente al almacenamiento, con un PUT y
+    // el encabezado x-ms-blob-type: BlockBlob. Vence a los 2 minutos, o antes
+    // si el cliente lo pide con ?seconds=N.
+    [HttpPost("{productId}/image/upload-url")]
+    public async Task<ActionResult<object>> GetImageUploadUrl(string productId, [FromQuery] int? seconds, CancellationToken cancellationToken)
+    {
+        if (!await ProductExistsAsync(productId))
+            return NotFound(new { detail = "Product not found" });
+
+        var lifetime = seconds is > 0 ? TimeSpan.FromSeconds(seconds.Value) : ProductImages.MaxKeyLifetime;
+        var (url, expiresOn) = await _images.GetUploadKeyAsync(productId, lifetime, cancellationToken);
+        return Ok(new { uploadUrl = url, expiresOn, method = "PUT", headers = new Dictionary<string, string> { ["x-ms-blob-type"] = "BlockBlob" } });
+    }
+
+    // Valet Key: redirige a una URL firmada para leer la imagen. El cliente la
+    // baja directamente del almacenamiento.
+    [HttpGet("{productId}/image")]
+    public async Task<ActionResult> GetImage(string productId, CancellationToken cancellationToken)
+    {
+        if (!MongoDB.Bson.ObjectId.TryParse(productId, out _))
+            return BadRequest(new { detail = "Invalid product id format" });
+
+        var key = await _images.GetDownloadKeyAsync(productId, cancellationToken);
+        if (key is null)
+            return NotFound(new { detail = "Product has no image" });
+
+        return Redirect(key.Value.Url.ToString());
+    }
+
+    private async Task<bool> ProductExistsAsync(string productId) =>
+        MongoDB.Bson.ObjectId.TryParse(productId, out _)
+        && await _productsCollection.Find(p => p.Id == productId).AnyAsync();
 
     // Ajustes de la caché para las demos -ver CacheSettings en ProductCache.cs-.
     [HttpGet("cache")]

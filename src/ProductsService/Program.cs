@@ -39,6 +39,11 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     }));
 builder.Services.AddSingleton<ProductCache>();
 
+// Valet Key: las imágenes de los Products, en Azurite -ver ProductImages.cs-.
+// Como Redis, Azurite no entra en /health: sin él, Products atiende todo lo
+// demás.
+builder.Services.AddSingleton<ProductImages>();
+
 // Publisher/Subscriber: Products publica ProductUpdated en RabbitMQ.
 builder.Services.AddSingleton<RabbitMq>();
 
@@ -48,12 +53,13 @@ builder.Services.AddHealthChecks()
     .AddCheck<MongoHealthCheck>("products-db", timeout: TimeSpan.FromSeconds(5));
 
 // Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más los
-// aciertos de la caché.
-builder.AddObservability(ProductCache.MeterName);
+// aciertos de la caché y las imágenes.
+builder.AddObservability(ProductCache.MeterName, ProductImages.MeterName);
 
 builder.Services.AddControllers();
 
 var app = builder.Build();
+app.Lifetime.ApplicationStarted.Register(ProductImages.StartMetrics);
 app.UseChaos("/products");
 app.MapMetrics();
 app.MapHealthChecks("/health", new() { ResponseWriter = HealthResponse.WriteJson });

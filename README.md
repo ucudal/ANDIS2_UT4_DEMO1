@@ -9,7 +9,8 @@ width="150"/>
 # Demo de patrones de arquitectura en una arquitectura de microservicios
 
 Esta demo es la aplicación base de la UT4, una pequeña aplicación de comercio
-electrónico, con los patrones de disponibilidad y rendimiento implementados.
+electrónico, con los patrones de disponibilidad, rendimiento y seguridad
+implementados.
 
 También es la demo de la [arquitectura de microservicios](ARCHITECTURE.md) en la
 UT5.
@@ -25,9 +26,16 @@ varias réplicas de un *worker* que consumen una cola de RabbitMQ. Los servicios
 publican eventos en RabbitMQ, y un proyector los usa para mantener una vista
 materializada del detalle de las `Orders`. `Products` usa Redis como caché.
 
+El gateway tiene dos entradas: HTTP, sin los patrones de seguridad, y HTTPS,
+con ellos. Por la entrada HTTPS, los usuarios se identifican con un token de
+Keycloak, el proveedor de identidad; el gateway valida cada solicitud antes de
+reenviarla; `Products` tiene un *sidecar* que exige el rol `admin` para
+cambiar el catálogo; y las imágenes de los `Products` se suben y se bajan
+directamente de Azurite, el emulador de Azure Storage, con URL firmadas.
+
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/` | nginx 1.25 | 80 |
+| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina TLS, valida los tokens y las solicitudes, y comprime las respuestas | nginx 1.25 | 80 HTTP, 443 HTTPS |
 | `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por SOAP, con el contrato publicado como WSDL | ASP.NET Core 10 + SoapCore + EF Core | 8002 |
 | `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + MongoDB Driver + StackExchange.Redis | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
@@ -35,11 +43,18 @@ materializada del detalle de las `Orders`. `Products` usa Redis como caché.
 | `orders-projector` | Mantiene la vista materializada del detalle de las `Orders` a partir de los eventos; es la misma imagen que `orders-service` con el proyector habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
 | `rabbitmq` | Exchange `andis.events` y colas `orders.process` y `orders.details-view` | RabbitMQ 4.4 | 5672, 15672 consola |
 | `redis` | Caché de `Products` | Redis 8 | 6379 |
+| `products-sidecar` | Autenticación, autorización y registro de accesos de `Products`, sin cambiar su código; comparte el espacio de red de `products-service` | Envoy 1.40 | — |
+| `keycloak` | Proveedor de identidad: usuarios, contraseñas, roles y tokens | Keycloak 26.8 | 8080 |
+| `azurite` | Imágenes de los `Products` | Azurite 3.37, emulador de Azure Storage | 10000 |
 | `users-db` | Datos de `Users` | PostgreSQL 18 | 5432 |
 | `products-db` | Datos de `Products` | MongoDB 9 | 27017 |
 | `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | MySQL 26 | 3306 |
 
-Endpoints disponibles a través del gateway, en `http://localhost`:
+Endpoints disponibles a través del gateway, en `http://localhost`. Por la
+entrada HTTPS, `https://localhost`, son los mismos, salvo los de
+administración -`/chaos`, `/patterns`, `/cache` y `/orders/projections/rebuild`-,
+y necesitan un token de Keycloak: ver
+[PATTERNS.md](PATTERNS.md#demos-de-seguridad).
 
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
@@ -49,7 +64,10 @@ Endpoints disponibles a través del gateway, en `http://localhost`:
 | `GET` | `/products/{id}` | Obtiene un [`Product`](src/ProductsService/Models/Product.cs) |
 | `POST` | `/products/` | Crea un `Product` |
 | `PUT` | `/products/{id}` | Cambia un `Product`, invalida la caché y publica `product.updated` |
-| `PUT`, `DELETE` | `/products/cache` | Prende o apaga la caché y simula una base lenta, para las pruebas: ver [PATTERNS.md](PATTERNS.md#qué-agrega-a-la-demo-1) |
+| `PUT` | `/products/{id}/image` | Sube la imagen de un `Product` a través de `Products`, sin Valet Key |
+| `POST` | `/products/{id}/image/upload-url` | Entrega una URL firmada para subir la imagen de un `Product` directamente a Azurite: Valet Key |
+| `GET` | `/products/{id}/image` | Redirige a una URL firmada para bajar la imagen de un `Product` |
+| `PUT`, `DELETE` | `/products/cache` | Prende o apaga la caché y simula una base lenta, para las pruebas: ver [PATTERNS.md](PATTERNS.md#qué-agrega-a-las-demos-de-disponibilidad) |
 | `GET` | `/orders/` | Lista las `Orders` con su estado |
 | `GET` | `/orders/{id}` | Obtiene una [`Order`](src/OrdersService/Models/Order.cs) |
 | `POST` | `/orders/` | Crea una `Order` en estado `Pending` y la encola para procesarla; responde `202 Accepted` con `Location` |
@@ -76,7 +94,7 @@ nombres en la vista.
 | `bash` y `curl` | Los comandos de los archivos de [commands/](commands/) y los scripts de [demos/](demos/) | Incluidos | Git Bash[^gitbash] o WSL[^wsl]; PowerShell y `cmd` no sirven, porque los comandos usan sintaxis de `bash` |
 | `jq`[^jq] | Formatear las respuestas JSON y convertirlas en tablas con la función `table` de los archivos de `commands/` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
 | `column` | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
-| `xmllint` | Indentar las respuestas SOAP de `Users` en `commands/01-api-gateway.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
+| `xmllint` | Indentar las respuestas SOAP de `Users` en `commands/01-api-gateway.azcli` y los errores de Azurite en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir los archivos de [commands/](commands/) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
 | Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de MySQL, PostgreSQL, MongoDB y Redis; los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
@@ -111,6 +129,8 @@ Los comandos están en la carpeta [commands/](commands/), en tres archivos:
   patrones de disponibilidad, de la 01 a la 09.
 - [03-performance.azcli](commands/03-performance.azcli): demos de los
   patrones de rendimiento, de la 10 a la 16.
+- [04-security.azcli](commands/04-security.azcli): demos de los patrones de
+  seguridad, de la 17 a la 21.
 
 Cada archivo empieza levantando todos los servicios y termina con el *tear
 down*, así que se puede usar por separado. En resumen:
@@ -149,6 +169,10 @@ contraseña y `admin` como base de autenticación.
 
 Redis no tiene usuario ni contraseña.
 
+La consola de administración de Keycloak está en <http://localhost:8080>, con
+el usuario `admin` y la contraseña `Pa55w0rd`. Los usuarios de la aplicación
+-alice, bob y carol, con la misma contraseña- están en el realm `andis`.
+
 ## Diagrama de despliegue
 
 ```mermaid
@@ -185,6 +209,7 @@ flowchart LR
             direction LR
 
             gw["«container» api-gateway<br/>nginx 1.25<br/>──────────<br/>«artifact» nginx.conf"]
+            kc["«container» keycloak<br/>Keycloak 26.8<br/>──────────<br/>«artifact» andis-realm.json"]
 
             subgraph users["Users"]
                 direction TB
@@ -195,8 +220,10 @@ flowchart LR
             subgraph products["Products"]
                 direction TB
                 ps["«container» products-service<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» ProductsService.dll"]
+                sc["«container» products-sidecar<br/>Envoy 1.40<br/>──────────<br/>«artifact» envoy.yaml"]
                 pdb[("«container» products-db<br/>MongoDB 9<br/>──────────<br/>«artifact» mongoinit.js")]
                 rd[("«container» redis<br/>Redis 8")]
+                az[("«container» azurite<br/>Azurite 3.37")]
             end
 
             subgraph orders["Orders"]
@@ -210,9 +237,16 @@ flowchart LR
         end
     end
 
-    client -- "HTTP :80" --> gw
+    client -- "HTTP :80, HTTPS :443" --> gw
+    client -- "HTTP :8080 inicio de sesión" --> kc
+    client -- "HTTP :10000 URL firmadas" --> az
+    gw -- "HTTP :8080 valida tokens" --> kc
     gw -- "HTTP :8000 /users/" --> us
-    gw -- "HTTP :8000 /products/" --> ps
+    gw -- "HTTP :8000 /products/, por HTTP" --> ps
+    gw -- "HTTP :9000 /products/, por HTTPS" --> sc
+    sc -- "HTTP :8000 127.0.0.1" --> ps
+    sc -- "HTTP :8080 claves públicas" --> kc
+    ps -- "HTTP :10000" --> az
     gw -- "HTTP :8000 /orders/" --> os
     os -- "HTTP :8000" --> us
     os -- "HTTP :8000" --> ps
@@ -237,7 +271,9 @@ Cada nodo `«container»` es un contenedor definido en
 [docker-compose.yaml](docker-compose.yaml). Los servicios escuchan en el puerto
 8000 dentro de la red de Docker; en el host se publican en 8000, 8001 y 8002,
 para probarlos sin pasar por el gateway. Las réplicas de `orders-worker` y
-`orders-projector` no se publican en el host.
+`orders-projector` no se publican en el host. `products-sidecar` no tiene red
+propia: comparte la de `products-service`, y los demás contenedores lo
+encuentran como `products-service:9000`.
 
 ## Patrones implementados
 
@@ -258,11 +294,16 @@ para probarlos sin pasar por el gateway. Las réplicas de `orders-worker` y
 | Asynchronous Request-Reply | Los métodos `CreateOrder` y `GetOrderStatus` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
 | CQRS | Comandos en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), y en el método `ProcessAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs); consultas en el método `GetOrdersForUser` de la clase `OrdersQueriesController`, en [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs) |
 | Materialized View | Tabla `order_details`, mantenida por el método `ApplyAsync` de la clase `OrderDetailsProjector`, en [OrdersService/Messaging/OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs), en `orders-projector` |
+| Federated Identity | Keycloak, con el realm de [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json); `Orders` decide con los claims del token en el registro `CallerIdentity`, en [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs) |
+| Gateway Offloading | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): TLS, `auth_request` a Keycloak, los claims con [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js) y gzip |
+| Gatekeeper | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): rutas, métodos, tipo y tamaño del cuerpo, y encabezados de identidad; [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de publicar los puertos de los servicios |
+| Sidecar | `products-sidecar` en [docker-compose.yaml](docker-compose.yaml), configurado en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) |
+| Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
-está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad)
-y [Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono)
-de PATTERNS.md.
+está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad),
+[Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono)
+y [Demos de seguridad](PATTERNS.md#demos-de-seguridad) de PATTERNS.md.
 
 ## Cómo probar los patrones
 
@@ -271,8 +312,9 @@ lo activa, como un servicio que falla, que está lento o que recibe demasiadas
 solicitudes, y muestra el resultado.
 
 Las instrucciones para ejecutar estos scripts y la explicación de lo que sucede
-en cada uno está en [02-availability.azcli](commands/02-availability.azcli) y
-[03-performance.azcli](commands/03-performance.azcli).
+en cada uno está en [02-availability.azcli](commands/02-availability.azcli),
+[03-performance.azcli](commands/03-performance.azcli) y
+[04-security.azcli](commands/04-security.azcli).
 
 Mientras corren las pruebas, también se puede mirar:
 
@@ -292,7 +334,7 @@ opcional de observabilidad y escenarios de carga con [k6](https://k6.io).
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `prometheus` | Consulta cada 5 s el endpoint `/metrics` de los servicios, de cada réplica de `orders-worker` y de RabbitMQ; recibe las métricas de k6 | Prometheus 3.15 | 9090 |
+| `prometheus` | Consulta cada 5 s el endpoint `/metrics` de los servicios, de cada réplica de `orders-worker`, de RabbitMQ, del *sidecar* de `Products` y de Keycloak; recibe las métricas de k6 | Prometheus 3.15 | 9090 |
 | `grafana` | Dashboard con todo lo anterior, ya configurado y sin login | Grafana 13.2 | 3000 |
 | `k6` | Genera la carga de cada escenario; no queda corriendo | k6 2.3 | — |
 
@@ -330,6 +372,9 @@ código a mano:
 | `orders_patterns_enabled` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
 | `service_health` | La clase `HealthMetricsPublisher`, en [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs) | Salud de cada servicio y de cada uno de sus chequeos, la misma que responde `/health`: 0 Unhealthy, 1 Degraded, 2 Healthy |
 | `orders_circuit_state` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
+| `products_images_received_bytes_total`, `products_images_valet_keys_total` | La clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs) | Bytes de imágenes que recibió `Products`, sin Valet Key, y URL firmadas que entregó, por permiso |
+| `envoy_http_rbac_*`, `envoy_http_jwt_authn_*` | El *sidecar* de `Products` | Solicitudes permitidas y rechazadas por la autorización, y tokens aceptados y rechazados |
+| `keycloak_user_events_total` | Keycloak | Inicios de sesión y validaciones de tokens, con su error si lo hubo |
 | `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
 
 > [!TIP]

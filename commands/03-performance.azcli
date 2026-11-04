@@ -1,6 +1,7 @@
 # Parte 3: demos de los patrones de rendimiento, de la 10 a la 16
 #
-# Las demos de disponibilidad están en 02-availability.azcli.
+# Las demos de disponibilidad están en 02-availability.azcli, y las de
+# seguridad, en 04-security.azcli.
 
 # ---------------------------------------------------------------------------
 # Levantar todos los servicios
@@ -913,6 +914,7 @@ docker compose --profile observability down -v
 
 docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
 docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
+docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest
 docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
 docker image prune -f
 docker volume prune -f

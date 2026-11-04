@@ -36,3 +36,18 @@ scrape_configs:
       family: ["queue_coarse_metrics", "queue_consumer_count"]
     static_configs:
       - targets: ["rabbitmq:15692"]
+
+  # Sidecar de Products: Envoy publica sus estadísticas, entre ellas los tokens
+  # rechazados y las solicitudes que permite o rechaza la autorización. Comparte
+  # el espacio de red de products-service, así que se lo encuentra con ese
+  # nombre.
+  - job_name: products-sidecar
+    metrics_path: /stats/prometheus
+    static_configs:
+      - targets: ["products-service:9901"]
+
+  # Keycloak: inicios de sesión y validaciones de tokens, en el puerto de
+  # administración.
+  - job_name: keycloak
+    static_configs:
+      - targets: ["keycloak:9000"]

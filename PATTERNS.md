@@ -24,6 +24,13 @@
     * [CQRS](#cqrs)
     * [Materialized View](#materialized-view)
 * [Demos de seguridad](#demos-de-seguridad)
+  * [Qué agrega a las demos de rendimiento](#qué-agrega-a-las-demos-de-rendimiento)
+  * [Patrones de seguridad](#patrones-de-seguridad)
+    * [Federated Identity](#federated-identity)
+    * [Gateway Offloading](#gateway-offloading)
+    * [Gatekeeper](#gatekeeper)
+    * [Sidecar](#sidecar)
+    * [Valet Key](#valet-key)
 * [Demos de facilidad de modificación](#demos-de-facilidad-de-modificación)
 * [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
 * [Cobertura](#cobertura)
@@ -981,31 +988,457 @@ en la cola. Al levantar el proyector, la vista se pone al día.
 
 ## Demos de seguridad
 
-Escenario: los usuarios inician sesión con un proveedor de identidad externo. El
-gateway aplica los controles antes de que el tráfico llegue a los servicios.
+**Estado: implementada en este repositorio, sobre las demos de rendimiento.**
+
+Escenario: la aplicación se abre a clientes reales. Cada usuario tiene que
+identificarse, ver solo lo suyo y no poder hacer más de lo que le corresponde,
+y nada tiene que llegar a los servicios sin control.
 
 Qué se muestra:
 
-- Inicio de sesión con un proveedor externo y propagación de tokens.
-- TLS, validación de tokens y limitación de tráfico en el gateway.
-- *Sidecars* que aplican mTLS y políticas junto a cada servicio.
-- Acceso temporal y acotado a almacenamiento desde el cliente.
-
-Patrones cubiertos:
-
-- **Federated Identity**: OIDC con un IdP, por ejemplo Keycloak.
-- **Gatekeeper**: el gateway valida las solicitudes antes de reenviarlas a los
+- Inicio de sesión en un proveedor de identidad externo, y decisiones tomadas
+  con los claims del token.
+- TLS, validación de tokens y compresión en el gateway, sin código en los
   servicios.
-- **Gateway Offloading**: terminación TLS, validación de JWT y limitación de
-  tráfico en el gateway.
-- **Sidecar**: proxy junto a cada servicio para mTLS, autorización y telemetría.
-- **Valet Key**: URL firmada para que el cliente suba la imagen de un `Product`
-  directamente al almacenamiento -MinIO o Azurite- sin pasar por `Products` ni
-  recibir credenciales.
+- Validación y saneamiento de cada solicitud antes de que llegue a un servicio,
+  y servicios que solo se alcanzan a través del gateway.
+- Un proxy junto a `Products` que le agrega autenticación y autorización sin
+  cambiar su código.
+- Acceso directo, temporal y acotado al almacenamiento de las imágenes.
 
-Resultado observable: los servicios no implementan autenticación, las políticas
-son consistentes en el borde y cada acceso a datos tiene el mínimo privilegio
+Resultado observable: por la entrada HTTP del gateway, cualquiera llega a
+cualquier ruta, incluidas las de administración; por la entrada HTTPS, cada
+solicitud necesita un token, los servicios no implementan autenticación ni TLS,
+las políticas se aplican en el borde y cada acceso tiene el mínimo privilegio
 necesario.
+
+### Qué agrega a las demos de rendimiento
+
+| Componente | Para qué |
+| ---------- | -------- |
+| `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
+| Entrada HTTPS del gateway | `https://localhost`, con los patrones de seguridad. La entrada HTTP, `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
+| `products-sidecar` | Envoy, junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al sidecar; la HTTP, directamente a `Products`. Está en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml). |
+| `azurite` | El emulador de Azure Storage, con las imágenes de los `Products`, en <http://localhost:10000>. |
+| Imágenes de los `Products` | `PUT /products/{id}/image` sube la imagen a través de `Products`; `POST /products/{id}/image/upload-url` entrega una URL firmada para subirla directamente a Azurite; `GET /products/{id}/image` redirige a una URL firmada para bajarla. |
+| [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) | Deja de publicar en el host los puertos de los servicios y de las bases: la única entrada a los servicios es el gateway. |
+
+Los usuarios de Keycloak, todos con la contraseña `Pa55w0rd`:
+
+| Usuario | Rol | `User` de la aplicación | Qué puede hacer |
+| ------- | --- | ----------------------- | --------------- |
+| alice | `customer` | 1 | Crear y consultar sus propias `Orders`; leer los `Products` |
+| bob | `customer` | 2 | Lo mismo que alice, con sus `Orders` |
+| carol | `admin` | — | Consultar las `Orders` de todos; cambiar los `Products` y sus imágenes. No es cliente: no crea `Orders` |
+
+Ejemplo de una solicitud por la entrada HTTPS:
+
+```bash
+# El certificado del gateway es autofirmado: se copia del contenedor para que
+# curl lo verifique
+docker compose exec -T api-gateway cat /etc/nginx/tls/gateway.crt > gateway.crt
+
+# alice inicia sesión en Keycloak y recibe un token
+alice=$(curl -s -X POST http://localhost:8080/realms/andis/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=andis-cli -d scope=openid \
+  -d username=alice -d password=Pa55w0rd | jq -r .access_token)
+
+# Las Orders de alice, con el token
+curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
+  https://localhost/orders/user/1/details/view
+```
+
+### Patrones de seguridad
+
+Cada patrón tiene un script en [demos/](demos), del `17` al `21`, y un paso a
+paso en [commands/04-security.azcli](commands/04-security.azcli) que compara la
+misma solicitud por la entrada HTTP, sin el patrón, y por la HTTPS, con él. Los
+*logs* de Docker muestran los eventos con una etiqueta: `[HTTPS]` en
+`api-gateway`, una línea por solicitud; `[FEDERATED IDENTITY]` en
+`orders-service`; `[SIDECAR]` en `products-sidecar`; y `[VALET KEY]` en
+`products-service`.
+
+Los patrones están en el orden en que se apoyan unos en otros, que no es el de
+la lectura: Gateway Offloading y Gatekeeper usan los tokens de Federated
+Identity.
+
+#### Federated Identity
+
+**Problema:** si cada aplicación autentica a sus usuarios, cada una guarda
+contraseñas e implementa el inicio de sesión, la recuperación de contraseñas y
+el bloqueo de cuentas, y el usuario tiene una cuenta distinta en cada una. Una
+falla en cualquiera de ellas expone las contraseñas.
+
+**Implementación:** la autenticación se delega en Keycloak, un proveedor de
+identidad que habla OpenID Connect. El usuario inicia sesión en Keycloak, que
+emite un token firmado -un JWT- con sus claims:
+
+- `preferred_username`: el nombre de usuario, por ejemplo `alice`.
+- `user_id`: el `User` de la aplicación. Keycloak lo agrega a partir de un
+  atributo del usuario, y así vincula la identidad externa con los datos de la
+  aplicación.
+- `realm_access.roles`: los roles, `customer` o `admin`.
+
+La aplicación no guarda contraseñas: la tabla `users` tiene solo el nombre y el
+correo. Confía en la firma de Keycloak y usa los claims:
+
+- El gateway valida el token en cada solicitud por la entrada HTTPS y les pasa
+  los claims a los servicios en los encabezados `X-User-Name`, `X-User-Id` y
+  `X-User-Roles` -ver [Gateway Offloading](#gateway-offloading)-.
+- `Orders` decide con esos claims. Un cliente crea `Orders` solo para él y
+  consulta solo las suyas; un admin consulta las de todos, pero no crea
+  `Orders`, porque no es cliente. Lo hace con el registro `CallerIdentity`, en
+  [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs), que
+  usan los métodos `CreateOrder`, `ListOrders`, `GetOrder`, `GetOrderStatus`,
+  `GetOrderEvents` y `GetOrdersForUser` de la clase `OrdersController`, y el
+  método `GetOrdersForUser` de la clase `OrdersQueriesController`.
+- Una solicitud sin esos encabezados, por la entrada HTTP, es anónima, y
+  `Orders` se comporta como en las demos anteriores.
+
+El cliente `andis-cli` admite dos formas de iniciar sesión. Con el flujo de
+dispositivo -*device authorization grant*-, el que usan las aplicaciones de
+línea de comandos y los televisores, el usuario inicia sesión en el navegador,
+en la página de Keycloak, y la aplicación nunca ve la contraseña: es el que usa
+el paso a paso. Con el *grant type* `password`, la aplicación recibe el usuario
+y la contraseña y se los pasa a Keycloak: es más corto, y lo usan los scripts,
+pero no se usaría en una aplicación real.
+
+**Cómo funciona:**
+
+![Inicio de sesión con el flujo de dispositivo y una solicitud con el
+token](assets/17-federated-identity.svg)
+
+El token dura 15 minutos. Keycloak no interviene en cada decisión: `Orders`
+decide con los claims que trae el token.
+
+**Código:**
+
+![Clases de la identidad en Orders](assets/17-federated-identity-clases.svg)
+
+`Orders` no conoce a Keycloak ni valida tokens: lee los encabezados que arma el
+gateway. Esa confianza depende del [Gatekeeper](#gatekeeper): si alguien llega
+a `Orders` sin pasar por el gateway, puede mandar esos encabezados con
+cualquier valor.
+
+**Cómo verlo:**
+[demos/17-federated-identity.sh](demos/17-federated-identity.sh) crea una
+`Order` para el `User` 2 por la entrada HTTP, sin identificarse. Después bob
+inicia sesión y, por la entrada HTTPS, crea una `Order` sin indicar el `User`:
+es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta sus
+`Orders` y no las de alice, y alice, al revés; carol consulta las de los dos,
+pero no puede crear. Sin token, o con el `user_id` del token cambiado por el de
+alice, el gateway responde 401, porque la firma ya no corresponde a los claims.
+Como en las demás demos, las `Orders` se crean solo para el `User` 2: las del
+`User` 1 son la base de las demos de disponibilidad. En Grafana, el panel
+"Eventos de Keycloak por segundo" muestra los inicios de sesión.
+
+> [!TIP]
+>
+> Consulta [Securing applications with OpenID
+> Connect](https://www.keycloak.org/securing-apps/oidc-layers) para tener más
+> información sobre los flujos que ofrece Keycloak, y [RFC 8628, OAuth 2.0
+> Device Authorization Grant](https://datatracker.ietf.org/doc/html/rfc8628)
+> sobre el flujo de dispositivo.
+
+#### Gateway Offloading
+
+**Problema:** TLS, la validación de tokens y la compresión son funciones
+especializadas, que necesitan configuración y certificados. Si cada servicio
+las implementa, cada uno lo hace a su manera, en su lenguaje, y actualizar un
+certificado o una política obliga a cambiar todos los servicios.
+
+**Implementación:** el gateway se hace cargo de esas funciones en la entrada
+HTTPS, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+
+- **TLS:** el gateway termina TLS con su certificado; los servicios siguen
+  hablando HTTP dentro de la red de Docker, sin certificados. El certificado es
+  autofirmado y se genera al construir la imagen, en
+  [ApiGateway/Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
+  privada en el repositorio; en producción lo emitiría una autoridad de
+  certificación.
+- **Validación de tokens:** antes de reenviar cada solicitud, `auth_request`
+  hace una subsolicitud a `/userinfo` de Keycloak con el token. Si Keycloak
+  responde 200, la solicitud sigue; si no, el gateway responde 401 y la
+  solicitud no llega al servicio. Después, `identity.js`, en
+  [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js), lee
+  los claims del token, ya validado, y el gateway se los pasa al servicio en los
+  encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
+- **Compresión:** el gateway comprime con gzip las respuestas de más de 1 KB,
+  si el cliente lo acepta.
+- **Throttling por cliente:** el de la [demo de Throttling](#throttling), que
+  el gateway ya aplicaba en la entrada HTTP.
+
+El costo es que el gateway le pregunta a Keycloak por cada solicitud: si
+Keycloak no responde, nadie entra. El [sidecar](#sidecar) muestra la
+alternativa: verificar la firma del token con las claves públicas de Keycloak,
+sin preguntarle cada vez, a cambio de no enterarse si se cerró la sesión.
+
+**Cómo funciona:**
+
+![Funciones que el gateway les quita a los
+servicios](assets/18-gateway-offloading.svg)
+
+**Código:** la validación del token, en
+[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+
+```nginx
+auth_request /_auth;
+
+location = /_auth {
+    internal;
+    proxy_pass http://$keycloak/realms/andis/protocol/openid-connect/userinfo;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Authorization $http_authorization;
+}
+
+js_set $user_id identity.userId;
+proxy_set_header X-User-Id $user_id;
+```
+
+**Cómo verlo:**
+[demos/18-gateway-offloading.sh](demos/18-gateway-offloading.sh) muestra que
+`Orders` no habla TLS y que el gateway sí, con su certificado. Sin token, el
+gateway responde 401, y su *log* muestra que la solicitud no llegó a ningún
+servicio; con token, la reenvía. La lista de `Orders` llega unas 15 veces más
+chica por HTTPS que por HTTP, comprimida por el gateway. En Grafana, el panel
+"Eventos de Keycloak por segundo" muestra una validación de token,
+`user_info_request`, por cada solicitud HTTPS.
+
+> [!TIP]
+>
+> Consulta [Authentication Based on Subrequest
+> Result](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-subrequest-authentication/)
+> para tener más información sobre `auth_request`, y la [documentación de
+> njs](https://nginx.org/en/docs/njs/) sobre el JavaScript de nginx que usa
+> `identity.js`.
+
+#### Gatekeeper
+
+**Problema:** si los servicios reciben las solicitudes de los clientes
+directamente, cada uno tiene que defenderse de todo lo que le pueda llegar:
+rutas de administración, métodos inesperados, cuerpos enormes o mal formados,
+encabezados falsos. Una falla en cualquiera de esas defensas deja expuesto al
+servicio y a sus datos.
+
+**Implementación:** en la entrada HTTPS, el gateway es el intermediario entre
+los clientes y los servicios, y valida y sanea cada solicitud antes de
+reenviarla, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+
+- **Rutas:** publica solo las de la aplicación. Las de administración
+  -`/chaos`, `/patterns`, `/cache`, `/orders/projections/rebuild`- y cualquier
+  otra responden 404 sin llegar a los servicios.
+- **Ids:** el de un `Product` tiene 24 caracteres hexadecimales, y el de una
+  `Order` o un `User` es un número; si no, 404.
+- **Métodos:** cada ruta acepta solo los que usa la aplicación; un `DELETE`
+  responde 403.
+- **Cuerpo:** los `POST` y `PUT` tienen que ser JSON -415 si no- y medir hasta
+  64 KB -413 si no-.
+- **Encabezados de identidad:** el gateway arma `X-User-Name`, `X-User-Id` y
+  `X-User-Roles` con los claims del token y reemplaza los que haya mandado el
+  cliente. Un cliente no se puede hacer pasar por otro.
+
+El gateway no tiene credenciales de las bases ni acceso a los datos: si alguien
+lo compromete, no obtiene más que lo que ya podía pedir a través de él.
+
+Para que sirva, los servicios no tienen que poder alcanzarse sin pasar por el
+gateway. [docker-compose.yaml](docker-compose.yaml) publica en el host el
+puerto de cada servicio y de cada base, para las demos anteriores; por ahí,
+cualquiera llega a la administración o manda encabezados de identidad falsos.
+[docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de
+publicarlos: los servicios siguen hablando entre sí por la red de Docker, pero
+desde afuera la única entrada es el gateway. Se aplica junto con el otro
+archivo, y Docker Compose vuelve a crear solo los contenedores que cambian:
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --wait
+```
+
+**Cómo funciona:**
+
+![Controles del gateway antes de reenviar una
+solicitud](assets/19-gatekeeper.svg)
+
+**Código:** las rutas de `Orders` y el saneamiento de los encabezados, en
+[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+
+```nginx
+proxy_set_header X-User-Id    $user_id;
+proxy_set_header X-User-Name  $user_name;
+proxy_set_header X-User-Roles $user_roles;
+
+client_max_body_size 64k;
+
+location ~ ^/orders/(\d+(/status|/events)?|user/\d+/details(/view)?)?$ {
+    limit_except GET POST { deny all; }
+    if ($body_not_json) {
+        return 415 '{"detail": "Gatekeeper: el cuerpo tiene que ser JSON"}\n';
+    }
+    proxy_pass http://$orders_service;
+}
+
+location / {
+    return 404 '{"detail": "Gatekeeper: ruta no publicada"}\n';
+}
+```
+
+**Cómo verlo:** [demos/19-gatekeeper.sh](demos/19-gatekeeper.sh) compara las
+dos entradas. Por HTTP, las rutas de administración responden 200, y los
+métodos, los cuerpos y los ids inválidos llegan a `Orders`, que los rechaza
+después de recibirlos. Por HTTPS, el gateway los rechaza sin llegar a los
+servicios. alice no puede hacerse pasar por bob con encabezados falsos por
+HTTPS, pero sí por el puerto 8000, sin token. Al aplicar
+`docker-compose.gatekeeper.yaml`, el puerto 8000 deja de responder, y la
+entrada HTTPS sigue funcionando. Al terminar, el script vuelve a publicar los
+puertos. En Grafana, el panel "Solicitudes por segundo, por servicio y código
+HTTP" muestra los rechazos de `Orders` por HTTP; los de HTTPS no aparecen,
+porque no llegaron a `Orders`.
+
+> [!TIP]
+>
+> Consulta [Module ngx_http_core_module](https://nginx.org/en/docs/http/ngx_http_core_module.html)
+> para tener más información sobre `location`, `limit_except` y
+> `client_max_body_size`, y [Merge Compose
+> files](https://docs.docker.com/reference/compose-file/merge/) sobre cómo
+> `docker-compose.gatekeeper.yaml` quita los puertos con `!reset`.
+
+#### Sidecar
+
+**Problema:** agregarle a un servicio funciones transversales -autenticación,
+autorización, registro de accesos- obliga a cambiar su código, en su lenguaje,
+y a repetirlo en cada servicio; y un servicio de terceros o legado tal vez no
+se pueda cambiar. Además, el gateway protege solo lo que entra por el gateway:
+dentro de la red, cualquier contenedor llama a cualquier servicio.
+
+**Implementación:** un proxy Envoy, `products-sidecar`, corre junto a
+`products-service`, en su mismo espacio de red -`network_mode:
+service:products-service` en [docker-compose.yaml](docker-compose.yaml)-. Para
+Envoy, `Products` es `127.0.0.1:8000`; para los demás contenedores, el sidecar
+es `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
+configura con [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
+
+- **Autenticación:** el filtro `jwt_authn` verifica la firma del token con las
+  claves públicas de Keycloak, que pide una vez cada 5 minutos, además del
+  emisor y el vencimiento. Un token inválido recibe 401; sin token, la
+  solicitud sigue como anónima.
+- **Autorización:** el filtro `rbac` deja leer a cualquiera -`GET`- y exige el
+  rol `admin` para todo lo demás. Si no, 403.
+- **Registro de accesos:** una línea `[SIDECAR]` por solicitud, con el código,
+  el usuario del token y el motivo del rechazo.
+
+`Products` no cambió: `ProductsController` no verifica roles. La entrada HTTPS
+del gateway le envía `/products/` al sidecar, y la HTTP, directamente a
+`Products`, para comparar. En producción, `Products` escucharía solo en
+`127.0.0.1` y el sidecar sería su única entrada; acá sigue escuchando en el
+puerto 8000 para las demos anteriores.
+
+Una *service mesh*, como Istio o Linkerd, pone un sidecar como este junto a
+cada servicio, y agrega TLS mutuo entre los sidecars; acá hay uno solo, sin TLS
+mutuo.
+
+**Cómo funciona:**
+
+![El sidecar de Products y quién lo llama](assets/20-sidecar.svg)
+
+**Código:** las políticas de autorización, en
+[ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
+
+```yaml
+policies:
+  lecturas:
+    permissions:
+      - header: { name: ":method", string_match: { exact: GET } }
+    principals:
+      - any: true
+  administracion:
+    permissions:
+      - any: true
+    principals:
+      - metadata:
+          filter: envoy.filters.http.jwt_authn
+          path: [{ key: jwt_payload }, { key: realm_access }, { key: roles }]
+          value: { list_match: { one_of: { string_match: { exact: admin } } } }
+```
+
+**Cómo verlo:** [demos/20-sidecar.sh](demos/20-sidecar.sh) cambia el nombre de
+un `Product` por HTTP, sin identificarse. Por HTTPS, alice lo lee pero no lo
+puede cambiar, y carol sí. Desde adentro de la red, `products-service:8000`
+acepta cualquier cambio, y el sidecar, `products-service:9000`, lo rechaza: 403
+sin token, y 401 con un token al que alice se agregó el rol `admin` sin poder
+volver a firmarlo. El registro del sidecar muestra cada decisión. En Grafana,
+el panel "Solicitudes en el sidecar de Products, por resultado" muestra las
+permitidas y las rechazadas.
+
+> [!TIP]
+>
+> Consulta [JWT Authentication](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
+> y [Role Based Access Control
+> -RBAC- Filter](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter)
+> para tener más información sobre los dos filtros de Envoy que usa el sidecar.
+
+#### Valet Key
+
+**Problema:** si los archivos de los clientes -imágenes, documentos- pasan por
+la aplicación, la aplicación gasta red, memoria y tiempo en mover bytes, y el
+gateway tiene que aceptar cuerpos grandes. Si en cambio el cliente accede
+directamente al almacenamiento con las credenciales de la aplicación, puede
+hacer cualquier cosa con todos los datos.
+
+**Implementación:** las imágenes de los `Products` se guardan en Azurite, el
+emulador de Azure Storage. `Products` tiene la clave de la cuenta, pero no la
+entrega: le da al cliente una URL firmada -una SAS, *Shared Access
+Signature*- que permite una sola operación, sobre la imagen de un solo
+`Product`, durante 2 minutos como máximo. Con esa URL, el cliente sube o baja
+la imagen directamente de Azurite, y los bytes no pasan por el gateway ni por
+`Products`:
+
+- `POST /products/{id}/image/upload-url` entrega una URL para crear o reemplazar
+  la imagen. No sirve para leerla, ni para la imagen de otro `Product`, ni
+  después de vencer. El cliente puede pedir que venza antes, con `?seconds=N`.
+- `GET /products/{id}/image` redirige, con 302, a una URL para leer la imagen.
+- `PUT /products/{id}/image` es la forma sin Valet Key, para comparar:
+  `Products` recibe la imagen y la sube él mismo, con su clave. Por la entrada
+  HTTP, el gateway acepta hasta 20 MB en esa ruta; por la HTTPS, el
+  [Gatekeeper](#gatekeeper) no deja pasar más de 64 KB.
+
+Lo hace la clase `ProductImages`, en
+[ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs): el
+método `GetUploadKeyAsync` firma la URL de escritura, `GetDownloadKeyAsync` la
+de lectura, y `UploadAsync` sube la imagen sin Valet Key. Los usan los métodos
+`GetImageUploadUrl`, `GetImage` y `UploadImage` de la clase
+`ProductsController`, en
+[ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
+La firma se calcula con la clave de la cuenta, sin llamar a Azurite, y no
+incluye el host: `Products` llega a Azurite como `azurite:10000`, y la URL que
+entrega dice `localhost:10000`, la dirección que usa el cliente. Como en
+cualquier cambio del catálogo, el sidecar exige el rol `admin` para pedir una
+URL de escritura.
+
+**Cómo funciona:**
+
+![Subida y bajada de una imagen con Valet Key](assets/21-valet-key.svg)
+
+**Código:**
+
+![Clases de las imágenes de Products](assets/21-valet-key-clases.svg)
+
+**Cómo verlo:** [demos/21-valet-key.sh](demos/21-valet-key.sh) sube una imagen
+de 5 MB a través de `Products`, por HTTP; por HTTPS, el gateway la rechaza con
+413. Después carol pide una URL firmada y sube la imagen directamente a
+Azurite. Con esa URL no se puede leer la imagen, ni escribir la de otro
+`Product`, y sin la firma no se puede nada. Una URL que vence a los 5 segundos
+funciona enseguida y no después. Para bajar la imagen, `Products` redirige a
+una URL de lectura. En Grafana, el panel "Bytes de imágenes que recibe
+Products" muestra los 5 MB de la subida sin Valet Key, y el panel "Claves de
+imágenes que entrega Products", las URL firmadas.
+
+> [!TIP]
+>
+> Consulta [Grant limited access to Azure Storage resources using shared access
+> signatures](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview)
+> para tener más información sobre las SAS, y [Create a service SAS for a blob
+> with .NET](https://learn.microsoft.com/en-us/azure/storage/blobs/sas-service-create-dotnet)
+> sobre `GenerateSasUri`, con el que `ProductImages` firma las URL.
 
 ## Demos de facilidad de modificación
 

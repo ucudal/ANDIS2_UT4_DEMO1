@@ -5,8 +5,15 @@ services:
       dockerfile: ./ApiGateway/Dockerfile
     image: api-gateway:latest
     ports:
+      # HTTP, sin los patrones de seguridad, y HTTPS, con ellos -ver
+      # ApiGateway/nginxconf/nginx.conf-.
       - "80:80"
+      - "443:443"
     depends_on:
+      # Solo la entrada HTTPS usa Keycloak, al validar cada token: alcanza con
+      # que arranque.
+      keycloak:
+        condition: service_started
       users-service:
         condition: service_healthy
       products-service:
@@ -180,6 +187,11 @@ services:
       MONGO_PASSWORD: "Pa55w0rd"
       Redis__Host: "redis"
       RabbitMq__Host: "rabbitmq"
+      # Valet Key: la cuenta de almacenamiento de las imágenes. Products la usa
+      # con su clave para firmar las URL que entrega a los clientes, que suben y
+      # bajan las imágenes directamente de Azurite, en localhost:10000.
+      Storage__ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      Storage__PublicBlobEndpoint: "http://localhost:10000/devstoreaccount1"
     ports:
       - "8001:8000"
     healthcheck:
@@ -194,11 +206,77 @@ services:
     depends_on:
       products-db:
         condition: service_healthy
-      # Products atiende sin Redis y sin RabbitMQ: alcanza con que arranquen.
+      # Products atiende sin Redis, sin RabbitMQ y sin Azurite: alcanza con que
+      # arranquen.
       redis:
         condition: service_started
       rabbitmq:
         condition: service_started
+      azurite:
+        condition: service_started
+
+  # Sidecar: un proxy Envoy junto a products-service, que le agrega
+  # autenticación, autorización y un registro de accesos sin cambiar su código
+  # -ver ProductsSidecar/envoy.yaml-. Comparte el espacio de red de
+  # products-service: para Envoy, Products es 127.0.0.1:8000, y para los demás
+  # contenedores el sidecar es products-service:9000. La entrada HTTPS del
+  # gateway le envía /products/ al sidecar; la HTTP, directamente a Products.
+  products-sidecar:
+    image: envoyproxy/envoy:v1.40-latest
+    # El registro de accesos se escribe cada medio segundo; por defecto, cada
+    # 10 segundos, y en las demos las líneas aparecerían tarde.
+    command: ["-c", "/etc/envoy/envoy.yaml", "--file-flush-interval-msec", "500"]
+    network_mode: "service:products-service"
+    volumes:
+      - ./src/ProductsSidecar/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      products-service:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  # Federated Identity: el proveedor de identidad. Los usuarios inician sesión
+  # en Keycloak, que emite los tokens; la aplicación no guarda contraseñas. El
+  # realm andis, con sus usuarios, roles y el cliente andis-cli, se importa al
+  # arrancar desde Keycloak/andis-realm.json. Consola de administración:
+  # http://localhost:8080 -usr: admin pwd: Pa55w0rd-.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "Pa55w0rd"
+      # El emisor de los tokens es siempre http://localhost:8080, la dirección
+      # que usan los clientes, aunque el gateway y el sidecar llamen a Keycloak
+      # por la red de Docker, como keycloak:8080. Si no, un token emitido en
+      # una dirección no sería válido en la otra.
+      KC_HOSTNAME: "http://localhost:8080"
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Métricas para Prometheus, entre ellas los inicios de sesión y las
+      # validaciones de tokens.
+      KC_METRICS_ENABLED: "true"
+      KC_EVENT_METRICS_USER_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src/Keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # La imagen de Keycloak no trae curl: se hace el GET con bash al puerto
+      # de administración, 9000, y se verifica que /health/ready responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Valet Key: el almacenamiento de las imágenes de los Products. Azurite es el
+  # emulador de Azure Storage: las URL firmadas que entrega Products son SAS
+  # -Shared Access Signatures-, como en Azure.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.37.0
+    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--skipApiVersionCheck", "--loose"]
+    ports:
+      - "10000:10000"
 
   users-db:
     image: postgres:18

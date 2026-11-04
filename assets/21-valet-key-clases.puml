@@ -1,0 +1,24 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class ProductsController {
+  +UploadImage(productId)
+  +GetImageUploadUrl(productId, seconds)
+  +GetImage(productId)
+}
+class ProductImages {
+  {static} +MaxKeyLifetime : TimeSpan
+  +UploadAsync(productId, content, contentType) : long
+  +GetUploadKeyAsync(productId, lifetime) : Uri
+  +GetDownloadKeyAsync(productId) : Uri?
+  -IssueKey(productId, permissions, lifetime) : Uri
+}
+class BlobContainerClient
+
+ProductsController --> ProductImages
+ProductImages --> BlobContainerClient : Azurite
+
+note bottom of ProductImages : UploadAsync es la forma sin Valet Key:\nrecibe los bytes y los sube él mismo
+@enduml

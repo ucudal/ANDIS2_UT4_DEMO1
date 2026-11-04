@@ -1,0 +1,20 @@
+@startuml
+!include PlantUML.style
+rectangle "API Gateway\nentrada HTTPS" as GW
+rectangle "API Gateway\nentrada HTTP" as GWH
+rectangle "Otro contenedor\nde la red" as X
+rectangle "Espacio de red de products-service" as NS {
+  rectangle "Sidecar\nEnvoy, puerto 9000" as SC {
+    rectangle "jwt_authn\nverifica la firma del token" as JWT
+    rectangle "rbac\nGET: cualquiera\nlo demás: rol admin" as RBAC
+  }
+  rectangle "Products\nASP.NET Core, puerto 8000" as PS
+}
+rectangle "Keycloak\nclaves públicas" as K
+
+GW --> SC : /products/
+X --> SC : products-service:9000
+JWT ..> K : una vez cada 5 minutos
+SC --> PS : 127.0.0.1:8000
+GWH ..> PS : sin sidecar\nproducts-service:8000
+@enduml

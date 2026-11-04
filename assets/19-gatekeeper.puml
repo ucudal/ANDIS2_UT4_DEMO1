@@ -1,0 +1,30 @@
+@startuml
+!include PlantUML.style
+start
+:Solicitud por la entrada HTTPS;
+if (¿La ruta es de la aplicación\ny el id tiene el formato correcto?) then (no)
+  :404 ruta no publicada;
+  stop
+endif
+if (¿El método está permitido\nen esa ruta?) then (no)
+  :403;
+  stop
+endif
+if (¿El cuerpo es JSON\ny mide hasta 64 KB?) then (no)
+  :415 o 413;
+  stop
+endif
+if (¿El token es válido?\nKeycloak) then (no)
+  :401;
+  stop
+endif
+:Reemplaza X-User-Name, X-User-Id y X-User-Roles
+con los claims del token;
+:Reenvía la solicitud al servicio;
+stop
+note right
+  Los servicios no publican sus puertos en el host:
+  la única entrada es el gateway
+  -docker-compose.gatekeeper.yaml-
+end note
+@enduml

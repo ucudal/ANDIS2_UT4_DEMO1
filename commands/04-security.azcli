@@ -1,0 +1,757 @@
+# Parte 4: demos de los patrones de seguridad, de la 17 a la 21
+#
+# Las demos de disponibilidad están en 02-availability.azcli y las de
+# rendimiento, en 03-performance.azcli.
+
+# ---------------------------------------------------------------------------
+# Levantar todos los servicios
+# ---------------------------------------------------------------------------
+
+# Estos comandos deben ejecutarse desde la raíz del repositorio. Usar el comando
+# 'Azure CLI: Run Line in Terminal'.
+
+# Inicia Docker si no está iniciado
+docker desktop start
+
+# Crear las carpetas que serán montadas como volúmenes para contener las bases
+# de datos
+mkdir -p src/UsersService/pgdata
+mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/OrdersService/mysqldata
+
+# Levantar todos los contenedores
+docker compose build
+docker compose up -d --wait
+
+# ---------------------------------------------------------------------------
+# Funciones auxiliares
+# ---------------------------------------------------------------------------
+
+# Seleccionar y ejecutar esta función en la terminal de la misma forma como se
+# ejecutan los demás comandos de este archivo -o definirla en ~/.zshrc o
+# ~/.bashrc para tenerla siempre-. Es una ayuda para ver las respuestas de los
+# comandos 'curl' que son JSON como tabla, definir Requiere jq y column; ver los
+# requisitos en README.md. Una lista de objetos se muestra con una columna por
+# campo, y un objeto solo, como pares clave-valor. Para ver el resultado en JSON
+# seleccionar sólo el comando 'curl' hasta antes del pipe '|'.
+table() {
+  jq -r 'if type == "array"
+         then (.[0] | keys_unsorted) as $k | ($k | @tsv), (.[] | [.[$k[]] | tostring] | @tsv)
+         else to_entries[] | [.key, (.value | tostring)] | @tsv end' \
+  | column -t -s $'\t'
+}
+
+# Muestra los claims de un token. Un token JWT tiene tres partes separadas por
+# puntos, cada una en base64url: el encabezado, los claims y la firma. Esta
+# función decodifica la del medio; no verifica la firma.
+claims() {
+  jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
+}
+
+# Inicia sesión en Keycloak con el usuario que se le pasa y la contraseña
+# Pa55w0rd, y muestra el token de acceso. Se explica en la demo 17, Federated
+# Identity.
+token() {
+  curl -s -X POST http://localhost:8080/realms/andis/protocol/openid-connect/token \
+    -d grant_type=password -d client_id=andis-cli -d scope=openid \
+    -d username="$1" -d password=Pa55w0rd | jq -r .access_token
+}
+
+# El certificado de la entrada HTTPS del gateway es autofirmado: no lo emitió
+# una autoridad de certificación en la que confíe la computadora. Copiarlo del
+# contenedor a gateway.crt, en la raíz del repositorio; los comandos de este
+# archivo lo usan con --cacert, para que curl verifique que habla con el
+# gateway. Está en .gitignore. Se genera al construir la imagen del gateway: si
+# se vuelve a construir, hay que copiarlo de nuevo.
+
+docker compose exec -T api-gateway cat /etc/nginx/tls/gateway.crt > gateway.crt
+
+# ---------------------------------------------------------------------------
+# Observabilidad -opcional, recomendada para las demos-
+# ---------------------------------------------------------------------------
+
+# Levantar también Prometheus y Grafana. Si la aplicación ya está levantada,
+# solo agrega los dos contenedores nuevos.
+docker compose --profile observability up -d --wait
+
+# Abrir en el navegador el dashboard de Grafana. Tiene los paneles que se
+# mencionan en cada demo:
+#
+#    http://localhost:3000
+#
+# No pide usuario ni contraseña, y el dashboard es la página de inicio de
+# Grafana, así que aparece directamente. Grafana lo carga al arrancar desde
+# observability/grafana/dashboards/andis-demo.json; no hay que importarlo.
+# Conviene dejarlo abierto durante todas las demos; se actualiza cada 5
+# segundos. Los paneles de estas demos están en la fila "Seguridad: identidad,
+# sidecar e imágenes".
+#
+# Al final del título de cada panel, entre corchetes, están las demos que lo
+# usan, por el número de su script en 'demos/': [Demo 20] es 20-sidecar.sh, y
+# [Demos 17, 18] son 17 y 18. En los textos de este archivo los paneles se
+# nombran sin ese agregado.
+#
+# Prometheus y el estado de cada target:
+#
+#     http://localhost:9090/targets
+#
+# Métricas del sidecar de Products, tal como las lee Prometheus. El sidecar
+# comparte el espacio de red de products-service: desde adentro de la red se lo
+# encuentra con ese nombre. Se usa el contenedor del gateway porque tiene curl.
+
+docker compose exec api-gateway curl -s http://products-service:9901/stats/prometheus | grep envoy_http_rbac
+
+# ---------------------------------------------------------------------------
+# Demos de los patrones de seguridad
+# ---------------------------------------------------------------------------
+# Los siguientes patrones agregan a la aplicación un proveedor de identidad,
+# Keycloak; una entrada HTTPS en el gateway; un sidecar de Products, con Envoy;
+# y un almacenamiento para las imágenes de los Products, Azurite, el emulador de
+# Azure Storage.
+#
+# El gateway tiene dos entradas, para comparar cada solicitud con y sin los
+# patrones:
+# - http://localhost, la de las demos anteriores, sin los patrones de
+#   seguridad: cualquiera llega a cualquier ruta sin identificarse.
+# - https://localhost, con los patrones: TLS, tokens de Keycloak, validación de
+#   cada solicitud y el sidecar de Products.
+# En producción quedaría solo la entrada HTTPS, y la HTTP redirigiría a ella.
+#
+# Los usuarios están en Keycloak, en el realm andis, todos con la contraseña
+# Pa55w0rd:
+# - alice: rol customer; es el User 1 de la aplicación.
+# - bob: rol customer; es el User 2.
+# - carol: rol admin; administra el catálogo de Products y no es cliente.
+#
+# La consola de administración de Keycloak está en http://localhost:8080 -usr:
+# admin pwd: Pa55w0rd-. Los usuarios, sus roles y el cliente andis-cli se
+# importan al arrancar desde src/Keycloak/andis-realm.json.
+
+# Cada patrón tiene un script en la carpeta 'demos/' que lo muestra paso a paso;
+# la evidencia en los logs de Docker se ve con los comandos de este archivo. Los
+# scripts dejan los datos como estaban al terminar.
+
+# Mientras corren, se puede tener abierto en otras terminales los logs de Docker
+# del gateway, de Orders, del sidecar y de Products, donde cada patrón deja su
+# etiqueta: [HTTPS], [FEDERATED IDENTITY], [SIDECAR] y [VALET KEY]
+
+    docker compose logs -f --since 1s api-gateway orders-service products-sidecar products-service
+
+# -----------------------------
+# --- 17 Federated Identity ---
+# -----------------------------
+# La aplicación no autentica a los usuarios: lo hace Keycloak, un proveedor de
+# identidad externo. El usuario inicia sesión en Keycloak, que le entrega un
+# token firmado con sus claims: quién es, qué roles tiene y cuál es su User en
+# la aplicación. La aplicación no guarda contraseñas: confía en la firma de
+# Keycloak y usa los claims para decidir qué puede hacer cada usuario.
+#
+# Como en las demás demos, las Orders se crean para el User 2, bob: las del
+# User 1, alice, son la base de las demos de disponibilidad.
+#
+# Sin el patrón, por la entrada HTTP, nadie se identifica: crear una Order para
+# bob. Orders cree el userId del cuerpo; cualquiera puede crear Orders a nombre
+# de cualquier User.
+
+curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+
+# La misma solicitud por la entrada HTTPS: el gateway responde 401, porque falta
+# el token.
+
+curl -s --cacert gateway.crt -X POST https://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+
+# bob inicia sesión con el flujo de dispositivo -device authorization grant-,
+# el que usan las aplicaciones de línea de comandos y los televisores: la
+# aplicación le pide a Keycloak un código, y el usuario inicia sesión en el
+# navegador, en la página de Keycloak. La contraseña la recibe solo Keycloak.
+#
+# Pedir el código. La respuesta trae user_code, el código que va a ver el
+# usuario, y verification_uri_complete, la dirección donde iniciar sesión.
+
+device=$(curl -s -X POST http://localhost:8080/realms/andis/protocol/openid-connect/auth/device \
+  -d client_id=andis-cli -d scope=openid)
+echo "$device" | jq
+
+# Abrir en el navegador la dirección de verification_uri_complete, que muestra
+# el siguiente comando. Keycloak pide usuario y contraseña: bob y Pa55w0rd.
+# Después pregunta si se le da acceso a andis-cli, la aplicación de línea de
+# comandos de las demos: responder Yes. Keycloak muestra "Device Login
+# Successful". El código vence a los 10 minutos.
+
+echo "$device" | jq -r .verification_uri_complete
+
+# Mientras tanto, la aplicación le pregunta a Keycloak, cada 5 segundos, si el
+# usuario ya inició sesión. Si se ejecuta antes de terminar en el navegador, la
+# respuesta es authorization_pending: repetirlo. Cuando el usuario terminó, la
+# respuesta trae el token de acceso, que se guarda en la variable bob.
+
+response=$(curl -s -X POST http://localhost:8080/realms/andis/protocol/openid-connect/token \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code -d client_id=andis-cli \
+  -d device_code=$(echo "$device" | jq -r .device_code))
+echo "$response" | jq '{error, token_type, expires_in, scope}'
+bob=$(echo "$response" | jq -r .access_token)
+
+# Los claims del token. Los que usa la aplicación:
+# - iss: quién lo emitió, Keycloak, en el realm andis.
+# - exp: cuándo vence, en segundos desde 1970; dura 15 minutos.
+# - preferred_username: bob.
+# - user_id: 2, el User de bob en la aplicación. Lo agrega Keycloak a partir de
+#   un atributo del usuario.
+# - realm_access.roles: customer.
+
+echo "$bob" | claims
+
+# Users no guarda contraseñas: la tabla 'users' tiene solo el nombre y el
+# correo. Las contraseñas están en Keycloak.
+
+docker compose exec users-db psql -U usersusr -d usersdb -c "SELECT * FROM users"
+
+# Por HTTPS, con el token de bob, crear una Order sin userId en el cuerpo.
+# Orders lo toma del token: la Order es de bob.
+
+id=$(curl -s --cacert gateway.crt -X POST https://localhost/orders/ \
+  -H "Authorization: Bearer $bob" \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq .id)
+echo "$id"
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $bob" https://localhost/orders/$id | jq
+
+# Crear una Order para el User 1 con el token de bob: Orders responde 403.
+
+curl -s --cacert gateway.crt -X POST https://localhost/orders/ \
+  -H "Authorization: Bearer $bob" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 1, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+
+# bob consulta sus Orders y las del User 1: las suyas sí, las otras no.
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $bob" \
+  https://localhost/orders/user/2/details/view | table
+curl -s --cacert gateway.crt -H "Authorization: Bearer $bob" \
+  https://localhost/orders/user/1/details/view | jq
+
+# Para no pasar por el navegador en cada usuario, el resto de las demos usa la
+# función token, definida al principio de este archivo. Usa el grant type
+# password: la aplicación recibe el usuario y la contraseña, y se los pasa a
+# Keycloak. Es más corto, pero la aplicación ve la contraseña; en una aplicación
+# real se usa el navegador, como con bob.
+#
+# alice lista las Orders: ve solo las suyas, las del User 1. Por HTTP, sin
+# identidad, la misma lista trae las de todos.
+
+alice=$(token alice)
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost/orders/ | table
+curl -s http://localhost/orders/ | jq length
+
+# carol tiene el rol admin: ve las Orders de cualquier User, pero no es cliente
+# -su token no tiene user_id-, así que no puede crear Orders.
+
+carol=$(token carol)
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $carol" \
+  https://localhost/orders/user/2/details/view | table
+curl -s --cacert gateway.crt -X POST https://localhost/orders/ \
+  -H "Authorization: Bearer $carol" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+
+# ¿Y si bob cambia el user_id de su token por el de alice? Se arma un token con
+# el mismo encabezado y la misma firma, y los claims cambiados. bob no puede
+# volver a firmarlo, porque no tiene la clave privada de Keycloak.
+
+forged=$(echo "$bob" | cut -d. -f1).$(echo "$bob" | claims | jq -c '.user_id = 1' \
+  | base64 | tr '+/' '-_' | tr -d '=\n').$(echo "$bob" | cut -d. -f3)
+echo "$forged" | claims | jq '{preferred_username, user_id}'
+
+# La firma ya no corresponde a los claims: el gateway responde 401.
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $forged" \
+  https://localhost/orders/user/1/details/view | jq
+
+# Las decisiones que tomó Orders con los claims, en su log.
+
+docker compose logs orders-service | grep --color=always '\[FEDERATED IDENTITY\]' | tail -4
+
+# El siguiente script repite lo anterior, iniciando sesión con la función
+# token, sin pasar por el navegador.
+
+./demos/17-federated-identity.sh
+
+# Resultado en consola: por HTTP cualquiera crea una Order para cualquier User.
+# Por HTTPS, bob crea Orders solo para él y ve solo las suyas; alice, las
+# suyas; carol, las de todos, pero no puede crear. Sin token, o con un token
+# alterado, 401. Logs de Docker:
+
+docker compose logs orders-service --since 2m | grep '\[FEDERATED IDENTITY\]'
+
+# Resultado en Grafana:
+# - "Eventos de Keycloak por segundo": login, cada inicio de sesión con la
+#   función token; oauth2_device_verify_user_code y
+#   oauth2_device_code_to_token, el inicio de sesión de bob en el navegador;
+#   user_info_request, cada solicitud por la entrada HTTPS, porque el gateway
+#   le pregunta a Keycloak si el token es válido -ver la demo 18-; con
+#   invalid_token, los tokens alterados.
+# - "Solicitudes por segundo, por servicio y código HTTP": orders-service con
+#   403, las que rechazó Orders por los claims. Los 401 no aparecen: el
+#   gateway los respondió sin llegar a Orders.
+
+# -----------------------------
+# --- 18 Gateway Offloading ---
+# -----------------------------
+# El gateway se hace cargo de funciones que de otro modo tendría que
+# implementar cada servicio, y que necesitan configuración especializada: en la
+# entrada HTTPS termina TLS, valida los tokens con Keycloak y comprime las
+# respuestas. También aplica el Throttling por cliente de la demo 05, en las dos
+# entradas. Los servicios no tienen certificados ni código de autenticación.
+#
+# TLS: Orders solo habla HTTP. Por HTTPS, curl no puede establecer la conexión;
+# por HTTP, responde 200.
+
+curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' https://localhost:8000/orders/
+curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' http://localhost:8000/orders/
+
+# El gateway termina TLS con su certificado. Sin --cacert, curl no confía en
+# él, porque es autofirmado; con --cacert gateway.crt, sí. Se muestran el
+# protocolo, a quién pertenece el certificado, quién lo emitió y cuándo vence.
+
+curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' https://localhost/health/orders
+
+curl -sv --cacert gateway.crt -o /dev/null https://localhost/health/orders 2>&1 \
+  | grep -E 'SSL connection|subject:|issuer:|expire date:'
+
+# El certificado y su clave privada están solo en el gateway. Renovarlo es
+# cambiarlo en un solo lugar.
+
+docker compose exec api-gateway ls -l /etc/nginx/tls
+
+# Autenticación: sin token, el gateway responde 401 y la solicitud no llega a
+# Orders. Con token, la reenvía y le pasa a Orders el usuario, el id del User y
+# los roles en los encabezados X-User-Name, X-User-Id y X-User-Roles. Orders no
+# valida tokens: lee esos encabezados -ver OrdersService/CallerIdentity.cs-.
+
+curl -s --cacert gateway.crt https://localhost/orders/user/1/details/view | jq
+
+alice=$(token alice)
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $alice" \
+  https://localhost/orders/user/1/details/view | table
+
+# En el log del gateway, una línea por solicitud HTTPS, con el código, el
+# usuario y la dirección del servicio que la atendió. La del 401 no tiene ni
+# usuario ni servicio: el gateway la respondió sin llegar a Orders.
+
+docker compose logs api-gateway | grep --color=always '\[HTTPS\]' | tail -2
+
+# Para validar el token, el gateway le pregunta a Keycloak por cada solicitud,
+# con el endpoint userinfo: si el token es válido, Keycloak responde 200 con
+# los datos del usuario; si no, 401. Es la misma pregunta que hace el gateway.
+
+curl -s -H "Authorization: Bearer $alice" \
+  http://localhost:8080/realms/andis/protocol/openid-connect/userinfo | jq
+
+# Compresión: la lista de Orders, con --compressed, que le dice al servidor que
+# el cliente acepta gzip. Por HTTP llega sin comprimir; por HTTPS, comprimida
+# por el gateway. Se muestran los bytes que llegaron.
+
+carol=$(token carol)
+
+curl -s --compressed -o /dev/null -w '%{size_download} bytes\n' http://localhost/orders/
+curl -s --compressed -o /dev/null -w '%{size_download} bytes\n' --cacert gateway.crt \
+  -H "Authorization: Bearer $carol" https://localhost/orders/
+
+# El encabezado Content-Encoding: gzip de la respuesta HTTPS lo agregó el
+# gateway: Orders responde igual en los dos casos.
+
+curl -s --compressed -D - -o /dev/null --cacert gateway.crt \
+  -H "Authorization: Bearer $carol" https://localhost/orders/ | grep -i content-encoding
+
+# El siguiente script repite lo anterior.
+
+./demos/18-gateway-offloading.sh
+
+# Resultado en consola: Orders no habla TLS; el gateway sí, con su
+# certificado. Sin token, 401 del gateway, sin llegar a Orders. La lista de
+# Orders llega comprimida por HTTPS: unas 15 veces más chica. Logs de Docker:
+
+docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
+
+# Resultado en Grafana:
+# - "Eventos de Keycloak por segundo": user_info_request sube con cada
+#   solicitud HTTPS, porque el gateway valida cada token con Keycloak; con
+#   invalid_token, las rechazadas.
+
+# ---------------------
+# --- 19 Gatekeeper ---
+# ---------------------
+# El gateway es el intermediario entre los clientes y los servicios: en la
+# entrada HTTPS valida y sanea cada solicitud antes de reenviarla. Publica solo
+# las rutas de la aplicación, con los métodos que usa cada una; exige JSON en
+# los POST y PUT; limita el cuerpo a 64 KB; valida el formato de los ids; y
+# reemplaza los encabezados de identidad con los claims del token. Para que
+# sirva, los servicios no tienen que poder alcanzarse sin pasar por él.
+#
+# Por HTTP, las rutas de administración responden: cualquiera puede ver qué
+# patrones están prendidos, o apagarlos, o hacer fallar un servicio.
+
+curl -s http://localhost/orders/patterns | jq
+
+# Por HTTPS, aun con un token válido, el gateway responde 404: esas rutas no
+# están publicadas, y la solicitud no llega a Orders.
+
+alice=$(token alice)
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost/orders/patterns | jq
+
+# El código HTTP de otras rutas que no son de la aplicación, por cada entrada.
+# Por HTTP responden los servicios: 200 las de administración, y 400 los ids
+# mal formados, después de recibirlos. Por HTTPS, 404 del gateway en todos los
+# casos.
+
+for route in /orders/chaos /products/cache "/orders/user/1%20OR%201=1/details" /products/no-es-un-id; do
+  echo "$route HTTP $(curl -s -o /dev/null -w '%{http_code}' http://localhost$route)" \
+    "HTTPS $(curl -s -o /dev/null -w '%{http_code}' --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost$route)"
+done
+
+# Métodos: DELETE no es una operación de la aplicación. Por HTTP, la recibe
+# Orders y responde 405; por HTTPS, el gateway responde 403.
+
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE http://localhost/orders/1
+curl -s --cacert gateway.crt -X DELETE -H "Authorization: Bearer $alice" https://localhost/orders/1 | jq
+
+# Tipo del cuerpo: un POST con texto en lugar de JSON. Por HTTP, lo rechaza
+# Orders con 415, después de recibirlo; por HTTPS, el gateway.
+
+curl -s -X POST http://localhost/orders/ -H "Content-Type: text/plain" -d 'hola' | jq
+curl -s --cacert gateway.crt -X POST https://localhost/orders/ \
+  -H "Authorization: Bearer $alice" -H "Content-Type: text/plain" -d 'hola' | jq
+
+# Tamaño del cuerpo: 100 KB de JSON inválido. Por HTTP, Orders recibe los
+# 100 KB y recién ahí descubre que no son una Order: 400. Por HTTPS, el gateway
+# responde 413 sin recibirlos.
+
+head -c 100000 /dev/zero | tr '\0' 'a' | curl -s -o /dev/null -w '%{http_code}\n' \
+  -X POST http://localhost/orders/ -H "Content-Type: application/json" --data-binary @-
+head -c 100000 /dev/zero | tr '\0' 'a' | curl -s --cacert gateway.crt \
+  -X POST https://localhost/orders/ -H "Authorization: Bearer $alice" \
+  -H "Content-Type: application/json" --data-binary @- | jq
+
+# Encabezados de identidad: alice manda X-User-Id y X-User-Name diciendo ser
+# bob. El gateway los reemplaza con los claims del token: para Orders, sigue
+# siendo alice, y responde 403.
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $alice" \
+  -H "X-User-Id: 2" -H "X-User-Name: bob" -H "X-User-Roles: customer" \
+  https://localhost/orders/user/2/details/view | jq
+
+# Pero los servicios también están publicados en el host, en los puertos 8000,
+# 8001 y 8002, y por ahí no hay Gatekeeper. Sin token, cualquiera llega a la
+# administración, o crea una Order diciendo ser bob con los mismos encabezados.
+
+curl -s http://localhost:8000/orders/patterns | jq
+
+curl -s -X POST http://localhost:8000/orders/ \
+  -H "X-User-Id: 2" -H "X-User-Name: bob" -H "X-User-Roles: customer" \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+
+# En el log, Orders cree que la Order es "según el token de bob", aunque no hubo
+# ningún token: nadie reemplazó los encabezados.
+
+docker compose logs orders-service | grep --color=always '\[FEDERATED IDENTITY\]' | tail -1
+
+# Dejar de publicar los puertos de los servicios y de las bases, con
+# docker-compose.gatekeeper.yaml. Docker Compose vuelve a crear solo los
+# contenedores que cambian; tarda unos 15 segundos.
+
+docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --wait
+
+# Ahora el puerto 8000 no responde: la única entrada es el gateway. Los
+# servicios siguen hablando entre sí por la red de Docker.
+
+curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' http://localhost:8000/orders/
+
+docker compose ps --format '{{.Name}}\t{{.Ports}}'
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $alice" \
+  https://localhost/orders/user/1/details/view | table
+
+# Volver a publicar los puertos, como los necesitan las demás demos.
+
+docker compose up -d --wait
+
+# El siguiente script repite lo anterior. Al terminar, vuelve a publicar los
+# puertos.
+
+./demos/19-gatekeeper.sh
+
+# Resultado en consola: por HTTP, las rutas de administración, los métodos, los
+# cuerpos y los ids inválidos llegan a los servicios; por HTTPS, el gateway los
+# rechaza. Los encabezados de identidad falsos no pasan por HTTPS, pero sí por
+# el puerto 8000, hasta que se deja de publicar. Logs de Docker:
+
+docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
+
+# Resultado en Grafana:
+# - "Solicitudes por segundo, por servicio y código HTTP": orders-service con
+#   405, 415 y 400, los rechazos de lo que llegó por HTTP. Los de HTTPS no
+#   aparecen: el gateway los respondió sin llegar a Orders.
+# - "Salud de los servicios": los servicios en gris por unos segundos, mientras
+#   Docker Compose los vuelve a crear sin los puertos, y otra vez al volver a
+#   publicarlos.
+
+# ------------------
+# --- 20 Sidecar ---
+# ------------------
+# Un proxy Envoy corre junto a products-service, en su mismo espacio de red, y
+# le agrega autenticación, autorización y un registro de accesos sin cambiar su
+# código. Cualquiera puede leer los Products, pero para cambiarlos hace falta
+# un token con el rol admin. La entrada HTTPS del gateway le envía /products/ al
+# sidecar, products-service:9000; la HTTP, directamente a Products,
+# products-service:8000. La configuración está en
+# src/ProductsSidecar/envoy.yaml.
+#
+# El sidecar no tiene red propia: comparte la de products-service.
+
+docker inspect -f '{{.HostConfig.NetworkMode}}' $(docker compose ps -q products-sidecar)
+docker compose ps -q products-service
+
+# Sin sidecar, por HTTP, cualquiera cambia el nombre del Product
+# 60f7c2b5e1d3c2a1b8e4d125 de "Zapatos" a "Zapatillas", sin identificarse.
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Content-Type: application/json" -d '{"name": "Zapatillas", "price": 3500.75}' | jq
+
+# Con sidecar, por HTTPS: alice tiene el rol customer. Puede leer el Product,
+# pero no cambiarlo: Envoy responde 403, "RBAC: access denied", sin llegar a
+# Products.
+
+alice=$(token alice)
+
+curl -s --cacert gateway.crt -H "Authorization: Bearer $alice" \
+  https://localhost/products/60f7c2b5e1d3c2a1b8e4d125 | jq
+curl -s --cacert gateway.crt -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Authorization: Bearer $alice" \
+  -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'; echo
+
+# carol tiene el rol admin: le devuelve al Product el nombre "Zapatos".
+
+carol=$(token carol)
+
+curl -s --cacert gateway.crt -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Authorization: Bearer $carol" \
+  -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}' | jq
+
+# El gateway protege lo que entra por el gateway, pero no lo que circula
+# adentro de la red: cualquier contenedor puede llamar a Products. Desde el
+# contenedor del gateway, que tiene curl, cambiar el Product directamente en
+# products-service:8000, sin token: responde 200. Se le pone el mismo nombre
+# que tiene, "Zapatos", para no alterar los datos.
+
+docker compose exec api-gateway curl -s -X PUT http://products-service:8000/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'; echo
+
+# Lo mismo a través del sidecar, products-service:9000: 403. El sidecar
+# protege a Products de cualquier llamador, no solo de lo que entra por el
+# gateway. En producción, Products escucharía solo en 127.0.0.1, y el sidecar
+# sería su única entrada.
+
+docker compose exec api-gateway curl -s -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'; echo
+
+# Envoy también verifica la firma del token, con las claves públicas de
+# Keycloak, sin preguntarle por cada solicitud. Si alice se agrega el rol admin
+# en su token, sin poder volver a firmarlo, Envoy responde 401.
+
+forged=$(echo "$alice" | cut -d. -f1).$(echo "$alice" | claims | jq -c '.realm_access.roles = ["admin"]' \
+  | base64 | tr '+/' '-_' | tr -d '=\n').$(echo "$alice" | cut -d. -f3)
+
+docker compose exec api-gateway curl -s -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -H "Authorization: Bearer $forged" \
+  -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'; echo
+
+# El registro de accesos del sidecar: una línea por solicitud, con el código,
+# el usuario del token y el motivo. via_upstream: llegó a Products;
+# rbac_access_denied: rechazada por la autorización; jwt_authn_access_denied:
+# token inválido. Las solicitudes por HTTP y a products-service:8000 no
+# aparecen: no pasaron por el sidecar.
+
+docker compose logs products-sidecar | grep --color=always '\[SIDECAR\]' | tail -5
+
+# Products no tiene ninguna verificación de roles: ProductsController.cs no
+# cambió. Lo que agrega el sidecar es configuración de Envoy.
+#
+# Las estadísticas de Envoy: solicitudes permitidas y rechazadas por la
+# autorización, y tokens aceptados y rechazados.
+
+docker compose exec api-gateway curl -s http://products-service:9901/stats/prometheus \
+  | grep -E '^envoy_http_(rbac|jwt_authn)_(allowed|denied)'
+
+# El siguiente script repite lo anterior. Al terminar, le devuelve al Product
+# 60f7c2b5e1d3c2a1b8e4d125 el nombre "Zapatos".
+
+./demos/20-sidecar.sh
+
+# Resultado en consola: por HTTP, cualquiera cambia el Product; por HTTPS, alice
+# lo lee pero no lo cambia, y carol sí. Desde adentro de la red,
+# products-service:8000 acepta cualquier cambio, y products-service:9000, el
+# sidecar, lo rechaza: 403 sin token y 401 con un token alterado. Logs de
+# Docker:
+
+docker compose logs products-sidecar --since 2m | grep '\[SIDECAR\]'
+
+# Resultado en Grafana:
+# - "Solicitudes en el sidecar de Products, por resultado": permitidas, las
+#   lecturas y los cambios de carol; sin rol admin, 403, los cambios de alice y
+#   sin token; token inválido, 401, el token alterado.
+
+# --------------------
+# --- 21 Valet Key ---
+# --------------------
+# Las imágenes de los Products se guardan en Azurite, el emulador de Azure
+# Storage. Products tiene la clave de la cuenta de almacenamiento, pero no la
+# entrega: le da al cliente una URL firmada -una SAS, Shared Access Signature-
+# que permite una sola operación, sobre la imagen de un solo Product, durante 2
+# minutos como máximo. Con esa URL, el cliente sube o baja la imagen
+# directamente de Azurite, en localhost:10000, y los bytes no pasan por el
+# gateway ni por Products.
+#
+# Crear una "imagen" de 5 MB con bytes al azar, para que no se pueda comprimir.
+
+image=$(mktemp)
+head -c 5000000 /dev/urandom > "$image"
+
+# Sin Valet Key, por HTTP: la imagen pasa por el gateway y por Products, que la
+# sube a Azurite con su propia clave. Para eso el gateway acepta hasta 20 MB en
+# esta ruta.
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
+  -H "Content-Type: image/jpeg" --data-binary @"$image" | jq
+
+# Products recibió los 5 MB y los tuvo en memoria mientras los subía.
+
+docker compose logs products-service | grep --color=always '\[VALET KEY\]' | tail -1
+
+# Por HTTPS, el Gatekeeper no deja pasar más de 64 KB: subir imágenes a través
+# de Products obligaría a abrir el límite.
+
+carol=$(token carol)
+
+curl -s --cacert gateway.crt -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
+  -H "Authorization: Bearer $carol" -H "Content-Type: image/jpeg" --data-binary @"$image" | jq
+
+# Con Valet Key: carol le pide a Products una URL para subir la imagen. Como es
+# un cambio en el catálogo, el sidecar exige el rol admin. La respuesta trae la
+# URL, cuándo vence, el método y el encabezado que hay que usar.
+
+response=$(curl -s --cacert gateway.crt -X POST \
+  -H "Authorization: Bearer $carol" \
+  https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image/upload-url)
+echo "$response" | jq
+url=$(echo "$response" | jq -r .uploadUrl)
+
+# Los parámetros de la firma, en la URL:
+# - sr=b: vale para un solo blob, la imagen de este Product.
+# - sp=cw: permite crear y escribir, no leer.
+# - se: cuándo vence.
+# - sig: la firma, calculada con la clave de la cuenta. Sin la clave no se
+#   puede calcular otra, así que ninguno de los parámetros se puede cambiar.
+
+echo "$url" | tr '?&' '\n\n'
+
+# carol sube la imagen directamente a Azurite, sin pasar por el gateway ni por
+# Products: 201 Created.
+
+curl -s -o /dev/null -w '%{http_code}, %{size_upload} bytes\n' -X PUT "$url" \
+  -H "x-ms-blob-type: BlockBlob" -H "Content-Type: image/jpeg" --data-binary @"$image"
+
+# La clave sirve solo para eso. Leer la imagen con ella: 403, con el código de
+# error AuthorizationPermissionMismatch, porque no tiene permiso de lectura.
+
+curl -s "$url" | xmllint --format -
+
+# Escribir la imagen de otro Product con la misma clave: 403,
+# AuthorizationFailure, porque la firma era para otro blob.
+
+curl -s -X PUT "${url/60f7c2b5e1d3c2a1b8e4d124/60f7c2b5e1d3c2a1b8e4d125}" \
+  -H "x-ms-blob-type: BlockBlob" --data-binary 'x' | xmllint --format -
+
+# La misma dirección sin la firma: 403. El almacenamiento no es público.
+
+curl -s "${url%%\?*}" | xmllint --format -
+
+# El cliente puede pedir una clave que venza antes, con ?seconds=N; nunca
+# después de los 2 minutos. Pedir una de 10 segundos, y usarla enseguida: 201.
+
+short=$(curl -s --cacert gateway.crt -X POST \
+  -H "Authorization: Bearer $carol" \
+  "https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image/upload-url?seconds=10" | jq -r .uploadUrl)
+
+curl -s -o /dev/null -w '%{http_code}\n' -X PUT "$short" \
+  -H "x-ms-blob-type: BlockBlob" -H "Content-Type: image/jpeg" --data-binary @"$image"
+
+# Esperar 10 segundos y volver a usarla: 403. Si alguien obtiene la URL, puede
+# usarla solo por poco tiempo, y solo para esa imagen.
+
+curl -s -X PUT "$short" -H "x-ms-blob-type: BlockBlob" --data-binary 'x' | xmllint --format -
+
+# Para bajar la imagen, Products responde 302 y redirige a una URL firmada de
+# lectura, sp=r. Con -L, curl sigue la redirección y la baja de Azurite.
+
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' --cacert gateway.crt \
+  -H "Authorization: Bearer $carol" https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image
+
+curl -s -L -o /dev/null -w '%{http_code}, %{size_download} bytes\n' --cacert gateway.crt \
+  -H "Authorization: Bearer $carol" https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image
+
+# Lo que hizo Products, en su log: sin Valet Key, recibió los 5 MB; con Valet
+# Key, solo firmó claves. Sus métricas cuentan los bytes que recibió y las
+# claves que entregó.
+
+docker compose logs products-service | grep --color=always '\[VALET KEY\]' | tail -5
+
+curl -s http://localhost:8001/metrics | grep -E '^products_images'
+
+rm -f "$image"
+
+# El siguiente script repite lo anterior, con una clave que vence a los 5
+# segundos.
+
+./demos/21-valet-key.sh
+
+# Resultado en consola: sin Valet Key, la imagen pasa por Products por HTTP, y
+# no pasa por HTTPS. Con Valet Key, la imagen va directamente a Azurite; la
+# clave no sirve para leer, ni para otro Product, ni después de vencer. Logs de
+# Docker:
+
+docker compose logs products-service --since 2m | grep '\[VALET KEY\]'
+
+# Resultado en Grafana:
+# - "Bytes de imágenes que recibe Products": sube solo con la subida sin Valet
+#   Key; con Valet Key queda en cero.
+# - "Claves de imágenes que entrega Products": write, las URL para subir; read,
+#   las de las redirecciones para bajar.
+
+# ---------------------------------------------------------------------------
+# Tear down
+# ---------------------------------------------------------------------------
+
+docker compose --profile observability down -v
+
+docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
+docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
+docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest
+docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
+docker image prune -f
+docker volume prune -f
+docker builder prune -f
+
+rm -rf ./src/OrdersService/mysqldata
+rm -rf ./src/ProductsService/mongodbdata
+rm -rf ./src/UsersService/pgdata
+rm -f gateway.crt

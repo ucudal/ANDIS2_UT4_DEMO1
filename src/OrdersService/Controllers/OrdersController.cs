@@ -13,11 +13,13 @@ public class OrdersController : ControllerBase
 {
     private readonly OrdersDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<OrdersController> _logger;
 
-    public OrdersController(OrdersDbContext db, IHttpClientFactory httpClientFactory)
+    public OrdersController(OrdersDbContext db, IHttpClientFactory httpClientFactory, ILogger<OrdersController> logger)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _logger = logger;
     }
 
     // POST /orders
@@ -29,9 +31,22 @@ public class OrdersController : ControllerBase
     // Asynchronous Request-Reply: responde 202 Accepted, porque la orden todavía
     // no se procesó, con Location para consultar su estado y Retry-After para
     // indicar cada cuánto.
+    // Federated Identity: si la solicitud viene con identidad, la Order es del
+    // User del token. El cuerpo puede omitir userId; si trae otro, se rechaza.
     [HttpPost]
     public async Task<ActionResult<object>> CreateOrder([FromBody] Order order)
     {
+        var caller = CallerIdentity.From(Request);
+        if (caller is not null)
+        {
+            if (caller.UserId is null)
+                return this.Forbidden(_logger, $"{caller.Name} no es cliente: no puede crear Orders");
+            if (order.UserId != 0 && order.UserId != caller.UserId)
+                return this.Forbidden(_logger, $"{caller.Name} no puede crear Orders para el User {order.UserId}");
+            order.UserId = caller.UserId.Value;
+            _logger.LogInformation("[FEDERATED IDENTITY] Order para el User {UserId}, según el token de {Name}", order.UserId, caller.Name);
+        }
+
         order.Status = OrderStatus.Pending;
 
         await using (var transaction = await _db.Database.BeginTransactionAsync())
@@ -61,6 +76,8 @@ public class OrdersController : ControllerBase
         var order = await _db.Orders.FindAsync(id);
         if (order is null)
             return NotFound();
+        if (CallerIdentity.From(Request) is { } caller && !caller.CanAccess(order.UserId))
+            return this.Forbidden(_logger, $"{caller.Name} no puede ver la Order {id}");
 
         if (order.Status != OrderStatus.Pending)
         {
@@ -73,10 +90,16 @@ public class OrdersController : ControllerBase
     }
 
     // GET /orders
+    // Federated Identity: un cliente ve solo sus Orders; un admin, o una
+    // solicitud anónima, todas.
     [HttpGet]
     public async Task<ActionResult<List<object>>> ListOrders()
     {
+        var caller = CallerIdentity.From(Request);
+        var onlyUserId = caller is { IsAdmin: false } ? caller.UserId ?? -1 : (int?)null;
+
         var orders = await _db.Orders
+            .Where(o => onlyUserId == null || o.UserId == onlyUserId)
             .Select(o => new
             {
                 id = o.Id,
@@ -97,6 +120,8 @@ public class OrdersController : ControllerBase
         var order = await _db.Orders.FindAsync(id);
         if (order is null)
             return NotFound();
+        if (CallerIdentity.From(Request) is { } caller && !caller.CanAccess(order.UserId))
+            return this.Forbidden(_logger, $"{caller.Name} no puede ver la Order {id}");
 
         return Ok(new { id = order.Id, user_id = order.UserId, product_id = order.ProductId, quantity = order.Quantity, status = order.Status });
     }
@@ -116,6 +141,8 @@ public class OrdersController : ControllerBase
             return NotFound();
 
         var state = OrderProjection.Replay(events);
+        if (CallerIdentity.From(Request) is { } caller && state is not null && !caller.CanAccess(state.UserId))
+            return this.Forbidden(_logger, $"{caller.Name} no puede ver la Order {id}");
         return Ok(new
         {
             order_id = id,
@@ -157,6 +184,10 @@ public class OrdersController : ControllerBase
     [EnableRateLimiting("throttling")]
     public async Task<ActionResult<List<object>>> GetOrdersForUser(int userId)
     {
+        // Federated Identity: un cliente ve solo sus Orders -ver CallerIdentity.cs-.
+        if (CallerIdentity.From(Request) is { } caller && !caller.CanAccess(userId))
+            return this.Forbidden(_logger, $"{caller.Name} no puede ver las Orders del User {userId}");
+
         var orders = await _db.Orders
             .Where(o => o.UserId == userId)
             .ToListAsync();

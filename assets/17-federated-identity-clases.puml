@@ -1,0 +1,28 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class OrdersController {
+  +CreateOrder(order)
+  +ListOrders()
+  +GetOrder(id)
+  +GetOrdersForUser(userId)
+}
+class OrdersQueriesController {
+  +GetOrdersForUser(userId)
+}
+class CallerIdentity <<record>> {
+  +Name : string
+  +UserId : int?
+  +Roles : string[]
+  +IsAdmin : bool
+  +CanAccess(userId) : bool
+  {static} +From(request) : CallerIdentity?
+}
+
+OrdersController --> CallerIdentity : decide con los claims
+OrdersQueriesController --> CallerIdentity : decide con los claims
+
+note bottom of CallerIdentity : From lee X-User-Name, X-User-Id y X-User-Roles;\nnull si la solicitud es anónima, por la entrada HTTP
+@enduml

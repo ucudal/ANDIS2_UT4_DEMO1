@@ -1,7 +1,7 @@
 # Parte 1: probar los servicios a través del API Gateway
 #
-# Las demos de los patrones están en 02-availability.azcli y
-# 03-performance.azcli.
+# Las demos de los patrones están en 02-availability.azcli,
+# 03-performance.azcli y 04-security.azcli.
 
 # ---------------------------------------------------------------------------
 # Levantar todos los servicios
@@ -186,6 +186,12 @@ curl -s http://localhost/health/orders | jq .
 # - http://localhost:8000/orders/
 # - http://localhost:8001/products/
 # - http://localhost:8002/users/UserService.svc?wsdl
+#
+# Los comandos de este archivo usan la entrada HTTP del gateway,
+# http://localhost. El gateway también tiene una entrada HTTPS,
+# https://localhost, con los patrones de seguridad: pide un token de Keycloak
+# en cada solicitud y publica solo las rutas de la aplicación. Se usa en
+# 04-security.azcli.
 
 # ---------------------------------------------------------------------------
 # Tear down
@@ -195,6 +201,7 @@ docker compose --profile observability down -v
 
 docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
 docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
+docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest
 docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
 docker image prune -f
 docker volume prune -f
