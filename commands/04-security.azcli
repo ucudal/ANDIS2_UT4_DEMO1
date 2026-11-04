@@ -166,8 +166,8 @@ curl -sS -w '%{http_code}\n' -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
   -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
 
-# La misma solicitud por la entrada HTTPS: el gateway responde 401, porque falta
-# el token.
+# La misma solicitud por la entrada HTTPS: el gateway responde 401 Unauthorized,
+# porque falta el token.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orders/ \
   -H "Content-Type: application/json" \
@@ -233,7 +233,8 @@ echo "$id"
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $bob" https://localhost/orders/$id | jq
 
-# Crear una Order para el User 1 con el token de 'bob': Orders responde 403.
+# Crear una Order para el User 1 con el token de 'bob': Orders responde 403
+# Forbidden.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orders/ \
   -H "Authorization: Bearer $bob" \
@@ -323,7 +324,7 @@ docker compose logs orders-service --since 2m | grep '\[FEDERATED IDENTITY\]'
 # entradas. Los servicios no tienen certificados ni código de autenticación.
 #
 # TLS: Orders solo habla HTTP. Por HTTPS, curl no puede establecer la conexión;
-# por HTTP, responde 200.
+# por HTTP, responde 200 OK.
 
 curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' https://localhost:8000/orders/
 curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' http://localhost:8000/orders/
@@ -342,10 +343,11 @@ curl -sSv --cacert gateway.crt -o /dev/null https://localhost/health/orders 2>&1
 
 docker compose exec api-gateway ls -l /etc/nginx/tls
 
-# Autenticación: sin token, el gateway responde 401 y la solicitud no llega a
-# Orders. Con token, la reenvía y le pasa a Orders el usuario, el id del User y
-# los roles en los encabezados X-User-Name, X-User-Id y X-User-Roles. Orders no
-# valida tokens: lee esos encabezados -ver OrdersService/CallerIdentity.cs-.
+# Autenticación: sin token, el gateway responde 401 Unauthorized y la solicitud
+# no llega a Orders. Con token, la reenvía y le pasa a Orders el usuario, el id
+# del User y los roles en los encabezados X-User-Name, X-User-Id y X-User-Roles.
+# Orders no valida tokens: lee esos encabezados -ver
+# OrdersService/CallerIdentity.cs-.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt https://localhost/orders/user/1/details/view | jq
 
@@ -402,7 +404,7 @@ docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
 # --- 19 Gatekeeper ---
 # ---------------------
 # El gateway es el intermediario entre los clientes y los servicios: en la
-# entrada HTTPS valida y sanea cada solicitud antes de reenviarla. Publica solo
+# entrada HTTPS valida y limpia cada solicitud antes de reenviarla. Publica solo
 # las rutas de la aplicación, con los métodos que usa cada una; exige JSON en
 # los POST y PUT; limita el cuerpo a 64 KB; valida el formato de los ids; y
 # reemplaza los encabezados de identidad con los claims del token. Para que
@@ -413,31 +415,44 @@ docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
 
 curl -sS -w '%{http_code}\n' http://localhost/orders/patterns | jq
 
-# Por HTTPS, aun con un token válido, el gateway responde 404: esas rutas no
-# están publicadas, y la solicitud no llega a Orders.
+# Por HTTPS, aun con un token válido, el gateway responde 404 Not Found: esas
+# rutas no están publicadas, y la solicitud no llega a Orders.
 
 alice=$(token alice)
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost/orders/patterns | jq
 
-# El código HTTP de otras rutas que no son de la aplicación, por cada entrada.
-# Por HTTP responden los servicios: 200 las de administración, y 400 los ids
-# mal formados, después de recibirlos. Por HTTPS, 404 del gateway en todos los
-# casos.
+# Lo mismo con otras rutas de administración: la inyección de fallas de Orders y
+# los ajustes de la caché de Products. Por HTTP responden 200 OK con sus valores
+# actuales; por HTTPS, 404 del gateway.
 
-for route in /orders/chaos /products/cache "/orders/user/1%20OR%201=1/details" /products/no-es-un-id; do
-  echo "$route HTTP $(curl -sS -o /dev/null -w '%{http_code}' http://localhost$route)" \
-    "HTTPS $(curl -sS -o /dev/null -w '%{http_code}' --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost$route)"
-done
+curl -sS -w '%{http_code}\n' http://localhost/orders/chaos | jq
+curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost/orders/chaos | jq
+
+curl -sS -w '%{http_code}\n' http://localhost/products/cache | jq
+curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost/products/cache | jq
+
+# Ids mal formados: un User que no es un número, con un intento de inyección SQL
+# -%20 es un espacio-, y un Product que no tiene 24 caracteres hexadecimales.
+# Por HTTP, la solicitud llega al servicio, que la rechaza con 400 Bad Request
+# después de recibirla; por HTTPS, el gateway responde 404 sin reenviarla.
+
+curl -sS -w '%{http_code}\n' "http://localhost/orders/user/1%20OR%201=1/details" | jq
+curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" "https://localhost/orders/user/1%20OR%201=1/details" | jq
+
+curl -sS -w '%{http_code}\n' http://localhost/products/no-es-un-id | jq
+curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" https://localhost/products/no-es-un-id | jq
 
 # Métodos: DELETE no es una operación de la aplicación. Por HTTP, la recibe
-# Orders y responde 405; por HTTPS, el gateway responde 403.
+# Orders y responde 405 Method Not Allowed; por HTTPS, el gateway responde 403
+# Forbidden.
 
 curl -sS -o /dev/null -w '%{http_code}\n' -X DELETE http://localhost/orders/1
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X DELETE -H "Authorization: Bearer $alice" https://localhost/orders/1 | jq
 
 # Tipo del cuerpo: un POST con texto en lugar de JSON. Por HTTP, lo rechaza
-# Orders con 415, después de recibirlo; por HTTPS, el gateway.
+# Orders con 415 Unsupported Media Type, después de recibirlo; por HTTPS, el
+# gateway.
 
 curl -sS -w '%{http_code}\n' -X POST http://localhost/orders/ -H "Content-Type: text/plain" -d 'hola' | jq
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orders/ \
@@ -445,7 +460,7 @@ curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orde
 
 # Tamaño del cuerpo: 100 KB de JSON inválido. Por HTTP, Orders recibe los
 # 100 KB y recién ahí descubre que no son una Order: 400. Por HTTPS, el gateway
-# responde 413 sin recibirlos.
+# responde 413 Content Too Large sin recibirlos.
 
 head -c 100000 /dev/zero | tr '\0' 'a' | curl -sS -o /dev/null -w '%{http_code}\n' \
   -X POST http://localhost/orders/ -H "Content-Type: application/json" --data-binary @-
@@ -522,8 +537,8 @@ docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
 # ------------------
 # Un proxy Envoy corre junto a products-service, en su mismo espacio de red, y
 # le agrega autenticación, autorización y un registro de accesos sin cambiar su
-# código. Cualquiera puede leer los Products, pero para cambiarlos hace falta
-# un token con el rol admin. La entrada HTTPS del gateway le envía /products/ al
+# código. Cualquiera puede leer los Products, pero para cambiarlos hace falta un
+# token con el rol admin. La entrada HTTPS del gateway le envía /products/ al
 # sidecar, products-service:9000; la HTTP, directamente a Products,
 # products-service:8000. La configuración está en
 # src/ProductsSidecar/envoy.yaml.
@@ -540,8 +555,8 @@ curl -sS -w '%{http_code}\n' -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8
   -H "Content-Type: application/json" -d '{"name": "Zapatillas", "price": 3500.75}' | jq
 
 # Con sidecar, por HTTPS: alice tiene el rol customer. Puede leer el Product,
-# pero no cambiarlo: Envoy responde 403, "RBAC: access denied", sin llegar a
-# Products.
+# pero no cambiarlo: Envoy responde 403 Forbidden, "RBAC: access denied", sin
+# llegar a Products.
 
 alice=$(token alice)
 
@@ -562,10 +577,11 @@ curl -sS -w '%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/produ
 # El gateway protege lo que entra por el gateway, pero no lo que circula
 # adentro de la red: cualquier contenedor puede llamar a Products. Desde el
 # contenedor del gateway, que tiene curl, cambiar el Product directamente en
-# products-service:8000, sin token: responde 200. Se le pone el mismo nombre
+# products-service:8000, sin token: responde 200 OK. Se le pone el mismo nombre
 # que tiene, "Zapatos", para no alterar los datos.
 
-docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' -X PUT http://products-service:8000/products/60f7c2b5e1d3c2a1b8e4d125 \
+docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
+  -X PUT http://products-service:8000/products/60f7c2b5e1d3c2a1b8e4d125 \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
 # Lo mismo a través del sidecar, products-service:9000: 403. El sidecar
@@ -573,17 +589,19 @@ docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' -X PUT http://pro
 # gateway. En producción, Products escucharía solo en 127.0.0.1, y el sidecar
 # sería su única entrada.
 
-docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
+docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
+  -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
 # Envoy también verifica la firma del token, con las claves públicas de
 # Keycloak, sin preguntarle por cada solicitud. Si alice se agrega el rol admin
-# en su token, sin poder volver a firmarlo, Envoy responde 401.
+# en su token, sin poder volver a firmarlo, Envoy responde 401 Unauthorized.
 
 forged=$(echo "$alice" | cut -d. -f1).$(echo "$alice" | claims | jq -c '.realm_access.roles = ["admin"]' \
   | base64 | tr '+/' '-_' | tr -d '=\n').$(echo "$alice" | cut -d. -f3)
 
-docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
+docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
+  -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
   -H "Authorization: Bearer $forged" \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
@@ -682,8 +700,9 @@ echo "$url" | tr '?&' '\n\n'
 curl -sS -o /dev/null -w '%{http_code}, %{size_upload} bytes\n' -X PUT "$url" \
   -H "x-ms-blob-type: BlockBlob" -H "Content-Type: image/jpeg" --data-binary @"$image"
 
-# La clave sirve solo para eso. Leer la imagen con ella: 403, con el código de
-# error AuthorizationPermissionMismatch, porque no tiene permiso de lectura.
+# La clave sirve solo para eso. Leer la imagen con ella: 403 Forbidden, con el
+# código de error AuthorizationPermissionMismatch, porque no tiene permiso de
+# lectura.
 
 curl -sS -w '<!-- HTTP %{http_code} -->' "$url" | xmllint --format -
 
@@ -712,8 +731,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X PUT "$short" \
 
 curl -sS -w '<!-- HTTP %{http_code} -->' -X PUT "$short" -H "x-ms-blob-type: BlockBlob" --data-binary 'x' | xmllint --format -
 
-# Para bajar la imagen, Products responde 302 y redirige a una URL firmada de
-# lectura, sp=r. Con -L, curl sigue la redirección y la baja de Azurite.
+# Para bajar la imagen, Products responde 302 Found y redirige a una URL firmada
+# de lectura, sp=r. Con -L, curl sigue la redirección y la baja de Azurite.
 
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' --cacert gateway.crt \
   -H "Authorization: Bearer $carol" https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image
