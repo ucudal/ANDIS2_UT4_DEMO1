@@ -90,8 +90,11 @@ curl -s -X POST http://localhost/users/UserService.svc \
         </soap:Body>
       </soap:Envelope>' | xmllint --format -
 
-# Cambiar un usuario. Users publica el evento user.updated, y la vista
-# materializada de Orders actualiza el nombre del cliente.
+# Cambiar el nombre y el correo del User 1 a "alice" y "alice@example.com".
+# Son los que ya tiene, para no alterar los datos de ejemplo: para ver el
+# efecto, cambiar los valores de <name> y <email>. Users publica el evento
+# user.updated, y la vista materializada de Orders actualiza el nombre del
+# cliente.
 curl -s -X POST http://localhost/users/UserService.svc \
   -H "Content-Type: text/xml; charset=utf-8" \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
@@ -117,8 +120,10 @@ curl -s -X POST http://localhost/products/ \
 # las siguientes, durante 60 segundos, lo lee de Redis -Cache-Aside-.
 curl -s http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 | jq
 
-# Cambiar un producto. Products borra el producto de Redis y publica el evento
-# product.updated.
+# Cambiar el nombre y el precio del Product 60f7c2b5e1d3c2a1b8e4d123 a
+# "Camisa" y 1200.50. Son los que ya tiene, para no alterar los datos de
+# ejemplo: para ver el efecto, cambiar los valores de name y price. Products
+# borra el Product de Redis y publica el evento product.updated.
 curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
   -H "Content-Type: application/json" \
   -d '{"name": "Camisa", "price": 1200.50}' | jq

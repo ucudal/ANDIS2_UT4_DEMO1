@@ -773,13 +773,13 @@ curl -s http://localhost/orders/$id | table
 # worker al procesarla. Los eventos nunca se modifican ni se borran: cada
 # cambio agrega uno nuevo.
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, order_id, type, data, occurred_at FROM order_events WHERE order_id = $id"
 
 # Ver la Order en la tabla 'orders'. Tiene solo el estado actual, Confirmed: no
 # dice que antes estuvo Pending ni cuándo cambió.
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM orders WHERE id = $id"
 
 # Pedirle a Orders los eventos de la Order y el estado que resulta de
@@ -794,7 +794,7 @@ curl -s http://localhost/orders/$id/events | jq .replayed_state | table
 # Simular que se pierde la proyección: borrar todas las filas de la tabla
 # 'orders' directamente en MySQL.
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "DELETE FROM orders"
 
 # Ahora Orders no tiene ninguna Order: la lista viene vacía y la Order creada
@@ -835,7 +835,7 @@ curl -s http://localhost/orders/$id | table
 #
 # Para ver la tabla de eventos directamente en la base:
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, order_id, type, occurred_at FROM order_events ORDER BY id DESC LIMIT 10"
 
 # Resulado en Grafana: no hay un panel propio; en "Orders procesadas por
@@ -856,7 +856,7 @@ docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
 # procesarla. Todos tienen published_at: el relay ya los publicó, cerca de un
 # segundo después de created_at.
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, routing_key, payload, created_at, published_at FROM outbox_messages ORDER BY id DESC LIMIT 6"
 
 # Detener RabbitMQ.
@@ -891,7 +891,7 @@ for id in "${ids[@]}"; do curl -s http://localhost/orders/$id | jq -c '{id, stat
 
 # Los 3 mensajes order.created esperan en el outbox, sin published_at:
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, routing_key, payload, created_at FROM outbox_messages WHERE published_at IS NULL"
 
 # En los logs, el relay avisa una vez que RabbitMQ no está disponible y que los
@@ -908,7 +908,7 @@ docker compose start rabbitmq
 # y los workers en reconectarse y procesar- y volver a consultar el outbox: ya
 # no hay mensajes pendientes.
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, routing_key, payload, created_at FROM outbox_messages WHERE published_at IS NULL"
 
 # En los logs: una línea por cada order.created publicado, "RabbitMQ volvió" y
@@ -939,7 +939,7 @@ docker compose logs orders-service --since 2m | grep '\[OUTBOX\]'
 
 # Para ver el outbox directamente en la base:
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT id, routing_key, created_at, published_at FROM outbox_messages ORDER BY id DESC LIMIT 10"
 
 # Resultado en Grafana:

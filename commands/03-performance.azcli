@@ -164,9 +164,9 @@ docker compose exec redis redis-cli TTL product:60f7c2b5e1d3c2a1b8e4d123
 
 docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
 
-# Cambiar el nombre del Product. Products lo guarda en MongoDB y borra su
-# clave de Redis, para que nadie lea el nombre viejo: la clave ya no existe
-# -EXISTS devuelve 0-.
+# Cambiar el nombre del Product de "Camisa" a "Camisa de lino". Products lo
+# guarda en MongoDB y borra su clave de Redis, para que nadie lea el nombre
+# viejo: la clave ya no existe -EXISTS devuelve 0-.
 
 curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
   -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
@@ -200,8 +200,8 @@ curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d
 
 docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
 
-# Volver a levantar Redis, devolverle al Product su nombre y dejar la caché
-# con sus valores por defecto: prendida y sin demora.
+# Volver a levantar Redis, devolverle al Product el nombre "Camisa" y dejar la
+# caché con sus valores por defecto: prendida y sin demora.
 
 docker compose start redis
 
@@ -211,7 +211,8 @@ curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
 curl -s -X DELETE http://localhost/products/cache | jq
 
 # El siguiente script simula una base que demora 200 ms, lee el mismo Product
-# varias veces, le cambia el nombre y detiene Redis.
+# varias veces, le cambia el nombre de "Camisa" a "Camisa de lino" y detiene
+# Redis. Al terminar, le devuelve el nombre "Camisa".
 
 ./demos/10-cache-aside.sh
 
@@ -480,7 +481,8 @@ docker compose logs -t orders-worker orders-projector \
   | grep --color=always -E '\[PUB/SUB\]|\[COMPETING CONSUMERS\]' \
   | sort -k3 | tail -4 | sed -E 's/ [0-9T:.-]+Z / /'
 
-# Cambiar el nombre de un Product.
+# Cambiar el nombre del Product 60f7c2b5e1d3c2a1b8e4d125 de "Zapatos" a
+# "Zapatillas".
 
 curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
   -H "Content-Type: application/json" -d '{"name": "Zapatillas", "price": 3500.75}' | jq
@@ -513,8 +515,9 @@ curl -s -o /dev/null -w '%{http_code}\n' -u guest:guest -X POST http://localhost
 curl -s -u guest:guest http://localhost:15672/api/exchanges/%2F/andis.events/bindings/source \
   | jq '[.[] | {cola: .destination, clave: .routing_key}]' | table
 
-# Generar eventos de los tres publicadores: crear una Order, cambiar el nombre
-# de un Product y cambiar el nombre de un User -Users es SOAP-.
+# Generar eventos de los tres publicadores: crear una Order, devolverle al
+# Product el nombre "Zapatos" y cambiar el nombre del User 2 de "bob" a
+# "roberto" -Users es SOAP-.
 
 curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
@@ -549,7 +552,7 @@ curl -s -u guest:guest -X POST http://localhost:15672/api/queues/%2F/spy/get \
   -d '{"count": 20, "ackmode": "ack_requeue_false", "encoding": "auto"}' \
   | jq '[.[] | {clave: .routing_key, mensaje: .payload}]' | table
 
-# Borrar la cola spy -responde 204- y devolverle al User su nombre.
+# Borrar la cola spy -responde 204- y devolverle al User 2 el nombre "bob".
 
 curl -s -o /dev/null -w '%{http_code}\n' -u guest:guest -X DELETE http://localhost:15672/api/queues/%2F/spy
 
@@ -566,8 +569,10 @@ curl -s -X POST http://localhost/users/UserService.svc \
         </soap:Body>
       </soap:Envelope>' | xmllint --format -
 
-# El siguiente script muestra los enlaces, crea una Order y cambia el nombre de
-# un Product y de un User, mostrando qué suscriptor recibe cada evento.
+# El siguiente script muestra los enlaces, crea una Order y cambia el nombre
+# del Product 60f7c2b5e1d3c2a1b8e4d125 de "Zapatos" a "Zapatillas" y el del
+# User 2 de "bob" a "roberto", mostrando qué suscriptor recibe cada evento. Al
+# terminar, les devuelve sus nombres.
 
 ./demos/13-publisher-subscriber.sh
 
@@ -669,9 +674,9 @@ curl -s -L "http://localhost$location" | table
 # Del lado de las consultas, la tabla 'order_details' ya tiene los nombres
 # copiados.
 
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM orders WHERE user_id = 1"
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM order_details WHERE user_id = 1"
 
 # Hacer la misma consulta por los dos lados: la respuesta es la misma.
@@ -784,23 +789,113 @@ docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
 # order.confirmed y order.rejected actualiza el estado; con user.updated y
 # product.updated, los nombres.
 #
-# El siguiente script cambia el nombre de un Product, hace fallar a Products y
-# detiene el proyector mientras se crea una Order.
+# Ver las filas del User 1 en 'order_details': cada una tiene el nombre del
+# cliente y el del producto, y updated_at, la última vez que el proyector la
+# cambió.
+
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM order_details WHERE user_id = 1"
+
+# Cambiar el nombre del Product 60f7c2b5e1d3c2a1b8e4d123 de "Camisa" a
+# "Camisa de lino". Products publica product.updated, y el proyector actualiza
+# el nombre en todas las filas de 'order_details' que tienen ese Product.
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+  -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
+
+# En el último log del proyector: en cuántas filas actualizó el nombre.
+
+docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\]' | tail -1
+
+# En 'order_details' la Order 1 ya dice "Camisa de lino", con un updated_at
+# nuevo; la Order 3, de otro Product, no cambió.
+
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM order_details WHERE user_id = 1"
+
+# Cambiar el nombre del User 1 de "alice" a "alicia" -Users es SOAP-. Users
+# publica user.updated, y el proyector actualiza el nombre del cliente en todas
+# sus filas.
+
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>1</id>
+            <name>alicia</name>
+            <email>alice@example.com</email>
+          </UpdateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\]' | tail -1
+
+# La consulta que lee la vista ya trae los nombres nuevos, sin haberle
+# preguntado nada a Users ni a Products.
+
+curl -s http://localhost/orders/user/1/details/view | table
+
+# Crear una Order para el User 2 y guardar su id en una variable. El proyector
+# recibe order.created, le pide a Users y a Products los nombres una sola vez
+# y agrega la fila; después recibe order.confirmed y actualiza solo el estado.
+
+id=$(curl -s -X POST http://localhost/orders/ \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+echo "$id"
+
+# Esperar unos 3 segundos y ver los dos últimos logs del proyector: la fila
+# agregada con los nombres, y el cambio de estado.
+
+docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\]' | tail -2
+
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT * FROM order_details WHERE order_id = $id"
+
+# Devolverle al Product el nombre "Camisa" y al User 1 el nombre "alice". El
+# proyector vuelve a actualizar la vista.
+
+curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+  -H "Content-Type: application/json" -d '{"name": "Camisa", "price": 1200.50}' | jq
+
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+        <soap:Body>
+          <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
+            <id>1</id>
+            <name>alice</name>
+            <email>alice@example.com</email>
+          </UpdateUser>
+        </soap:Body>
+      </soap:Envelope>' | xmllint --format -
+
+# Qué pasa con la vista cuando Users o Products fallan, y cuando el proyector
+# está detenido, se vio en la demo 15, CQRS. El siguiente script lo repite.
+#
+# El siguiente script cambia el nombre del Product 60f7c2b5e1d3c2a1b8e4d123 de
+# "Camisa" a "Camisa de lino", hace fallar a Products y detiene el proyector
+# mientras se crea una Order. Al terminar, le devuelve el nombre "Camisa".
 
 ./demos/16-materialized-view.sh
 
-# Resultado: la vista refleja el nombre nuevo. Con Products fallando, la
-# consulta síncrona responde "no disponible" y la vista, con los nombres. Con el
-# proyector detenido, la Order se confirma pero no aparece en la vista, y sus
-# eventos esperan en la cola; al levantarlo, la vista se pone al día.
-# Logs de Docker:
+# Resultado en consola: la vista refleja el nombre nuevo. Con Products fallando,
+# la consulta síncrona responde "no disponible" y la vista, con los nombres. Con
+# el proyector detenido, la Order se confirma pero no aparece en la vista, y sus
+# eventos esperan en la cola; al levantarlo, la vista se pone al día. Logs de
+# Docker:
 
 docker compose logs orders-projector --since 2m | grep '\[MATERIALIZED VIEW\]'
 
 # Para ver la vista directamente en la base:
-docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+
+docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM order_details ORDER BY order_id DESC LIMIT 10"
-# Grafana:
+
+# Resulado en Grafana:
 # - "Cola orders.details-view": durante los 15 segundos en que el proyector está
 #   detenido, "consumidores" baja a 0 y "esperando" sube a 2, los eventos
 #   order.created y order.confirmed de la Order nueva; al levantarlo, vuelven a
