@@ -8,16 +8,17 @@ tienen costos. Cada sección termina con preguntas para el análisis.
 Cómo ejecutar la aplicación está en el [README.md](README.md), y los patrones
 que implementa están en [PATTERNS.md](PATTERNS.md).
 
-- [Servicios y datos](#servicios-y-datos)
-- [Comunicación entre servicios](#comunicación-entre-servicios)
-  - [Consulta de detalle: síncrona](#consulta-de-detalle-síncrona)
-  - [Creación de una Order: asíncrona](#creación-de-una-order-asíncrona)
-  - [Consulta de detalle desde la vista: eventos](#consulta-de-detalle-desde-la-vista-eventos)
-  - [Comparación](#comparación)
-- [Disponibilidad compuesta](#disponibilidad-compuesta)
-- [Consistencia de los datos](#consistencia-de-los-datos)
-- [Acoplamiento](#acoplamiento)
-- [Decisiones abiertas a discusión](#decisiones-abiertas-a-discusión)
+* [Servicios y datos](#servicios-y-datos)
+* [Comunicación entre servicios](#comunicación-entre-servicios)
+  * [Consulta de detalle: síncrona](#consulta-de-detalle-síncrona)
+  * [Creación de una Order: asíncrona](#creación-de-una-order-asíncrona)
+  * [Consulta de detalle desde la vista: eventos](#consulta-de-detalle-desde-la-vista-eventos)
+  * [Comparación](#comparación)
+* [Disponibilidad compuesta](#disponibilidad-compuesta)
+* [Consistencia de los datos](#consistencia-de-los-datos)
+* [Acoplamiento](#acoplamiento)
+* [Seguridad](#seguridad)
+* [Decisiones abiertas a discusión](#decisiones-abiertas-a-discusión)
 
 ## Servicios y datos
 
@@ -51,12 +52,31 @@ configuración, y comparten la base de `Orders`.
 
 **Para analizar:**
 
-- ¿Qué se gana y qué se pierde al tener tres bases de tres tecnologías
+* ¿Qué se gana y qué se pierde al tener tres bases de tres tecnologías
   distintas, en lugar de una sola base compartida?
-- ¿Por qué no hay clave foránea entre una `Order` y su `User`? ¿Qué garantías
+  <!-- → Se gana que cada servicio usa el modelo que le conviene -relacional con
+  transacciones para Orders, documentos para el catálogo-, que una base caída no
+  tira a los demás servicios, y que ningún servicio depende del esquema de otro,
+  así que cada uno cambia su base sin coordinar. Se pierden las transacciones y
+  los joins entre servicios: los datos que cruzan servicios se piden por HTTP o
+  se copian, como en `order_details`, y quedan eventualmente consistentes.
+  Además hay tres tecnologías que operar, respaldar y monitorear. -->
+* ¿Por qué no hay clave foránea entre una `Order` y su `User`? ¿Qué garantías
   perdemos sin ella y quién se hace cargo de esas garantías?
-- `orders-service`, `orders-worker` y `orders-projector` comparten código y
+  <!-- → Porque están en bases distintas, y una clave foránea no puede cruzar
+  bases. Se pierde la integridad referencial: puede existir una Order de un User
+  que no existe, o borrarse un User que tiene Orders. Se hace cargo la
+  aplicación: el worker verifica que el User exista y, si no, rechaza la Order.
+  Para un borrado haría falta un evento, como user.deleted, al que Orders
+  reaccione. -->
+* `orders-service`, `orders-worker` y `orders-projector` comparten código y
   base. ¿Son un servicio o tres? ¿Qué criterio usarían para decidirlo?
+  <!-- → Son un servicio con tres procesos. El criterio es la propiedad de los
+  datos y el despliegue independiente: comparten la base y la imagen, y un
+  cambio en el modelo de Orders obliga a desplegar los tres juntos. Que escalen
+  distinto -tres réplicas del worker, una del proyector- no los vuelve servicios
+  distintos. Serían tres si cada uno tuviera sus propios datos y se pudiera
+  cambiar y desplegar por separado. -->
 
 ## Comunicación entre servicios
 
@@ -291,15 +311,41 @@ recién cambiado, en actualizarse.
 
 **Para analizar:**
 
-- ¿Por qué la consulta de detalle es síncrona y la creación asíncrona? ¿Podría
+* ¿Por qué la consulta de detalle es síncrona y la creación asíncrona? ¿Podría
   ser al revés? ¿Qué cambiaría para el cliente?
-- ¿Qué servicios tienen que estar funcionando para que un cliente pueda crear una
+  <!-- → La consulta es una lectura sin efectos, y el cliente necesita el
+  resultado en ese momento. La creación implica verificar el User y el Product
+  en otros servicios, que pueden demorar o fallar: aceptarla y procesarla
+  después hace que crear una Order no dependa de ellos. Al revés, una creación
+  síncrona le diría al cliente en la misma respuesta si la Order se confirmó,
+  pero lo haría esperar y fallaría si Users o Products no responden. Una
+  consulta asíncrona tiene sentido si es muy cara, como un informe: el cliente
+  lo pide y vuelve a buscarlo, con Asynchronous Request-Reply. -->
+* ¿Qué servicios tienen que estar funcionando para que un cliente pueda crear una
   `Order`? ¿Y para que la `Order` quede confirmada?
-- La consulta de detalle hace una llamada a `Products` por cada `Order`. ¿Qué
+  <!-- → Para crearla: el gateway, orders-service y orders-db; RabbitMQ no,
+  gracias al outbox, y por la entrada HTTPS, también Keycloak. Para que quede
+  confirmada, además: RabbitMQ, al menos una réplica de orders-worker,
+  users-service con users-db, y products-service con products-db -o Redis, si el
+  Product está en la caché-. -->
+* La consulta de detalle hace una llamada a `Products` por cada `Order`. ¿Qué
   pasa con un `User` que tiene 100 `Orders`? La vista lo resuelve: ¿qué se
   paga a cambio?
-- La aplicación tiene las dos consultas de detalle. Si tuvieran que dejar una
+  <!-- → Con 100 Orders hace 100 llamadas a Products, una después de otra: la
+  latencia se suma, las llamadas llenan el compartimento del Bulkhead y es más
+  probable que alguna falle. Se podría pedir cada Product distinto una sola vez,
+  o todos juntos con un endpoint que acepte varios ids. La vista lo resuelve con
+  una sola consulta a MySQL, y a cambio se paga consistencia eventual, datos
+  duplicados, un proyector que mantener y la necesidad de repararla si se pierde
+  un evento. -->
+* La aplicación tiene las dos consultas de detalle. Si tuvieran que dejar una
   sola, ¿cuál dejarían? ¿Depende de quién la usa?
+  <!-- → Depende de quién la usa. Para un cliente que mira su historial, la
+  vista: es rápida, no depende de Users ni de Products, y unos segundos de
+  atraso no le importan. Para quien necesita el dato al instante, como un
+  operador que acaba de corregir un nombre, la síncrona. Una opción común es
+  dejar la vista y, justo después de crear una Order, mostrar la que devolvió la
+  creación. -->
 
 ## Disponibilidad compuesta
 
@@ -321,30 +367,55 @@ agrega Keycloak a todas las operaciones, porque el gateway le pregunta si cada
 token es válido. Hay tres formas de romper la cadena, y la aplicación usa las
 tres:
 
-- **Degradar la respuesta:** la consulta de detalle responde aunque falten
+* **Degradar la respuesta:** la consulta de detalle responde aunque falten
   `Users` o `Products`, con "no disponible" en lugar del nombre. La respuesta
   completa sigue en 99,3 %, pero una respuesta útil depende solo de gateway,
   `orders-service` y `orders-db`.
-- **Comunicarse de forma asíncrona:** aceptar una `Order` no depende de `Users`
+* **Comunicarse de forma asíncrona:** aceptar una `Order` no depende de `Users`
   ni de `Products`; si no están, la `Order` se confirma más tarde. Gracias al
   *outbox*, tampoco depende de RabbitMQ: si no está, el evento se publica
   cuando vuelve.
-- **Leer una copia:** la consulta desde la vista no depende de `Users` ni de
+* **Leer una copia:** la consulta desde la vista no depende de `Users` ni de
   `Products`, porque los nombres ya están copiados. Del mismo modo, una lectura
   de `Products` que sale de Redis no depende de MongoDB, mientras el dato esté
   en la caché.
 
 **Para analizar:**
 
-- Hoy hay una sola instancia de cada componente, salvo `orders-worker`. ¿Cuáles
+* Hoy hay una sola instancia de cada componente, salvo `orders-worker`. ¿Cuáles
   son puntos únicos de falla? ¿Cuál sacarían primero de esa lista?
-- ¿Una respuesta con "no disponible" en lugar del nombre del producto cuenta
+  <!-- → El gateway, Keycloak para la entrada HTTPS, cada servicio, cada base y
+  RabbitMQ. Redis no lo es: sin él, Products sigue respondiendo, más lento.
+  orders-projector tampoco del todo: si se cae, la vista se atrasa pero sigue
+  respondiendo. Primero sacaría el gateway, porque todo pasa por él y, como no
+  tiene estado, es fácil de replicar; las bases son más importantes, pero
+  replicarlas es más difícil. -->
+* ¿Una respuesta con "no disponible" en lugar del nombre del producto cuenta
   como disponible? ¿De qué depende?
-- ¿Qué cambia en la tabla si se agregan tres réplicas de `products-service`?
-- El gateway le pregunta a Keycloak por cada solicitud HTTPS, y el *sidecar*
+  <!-- → Depende de para qué la usa el usuario y de cómo se define el objetivo
+  de disponibilidad. Si quiere ver sus Orders y su estado, la respuesta
+  degradada le sirve y cuenta como disponible. Si necesita el nombre del
+  producto, por ejemplo para una factura, no. El objetivo de nivel de servicio
+  tiene que decir qué es una respuesta exitosa. -->
+* ¿Qué cambia en la tabla si se agregan tres réplicas de `products-service`?
+  <!-- → products-service deja de ser un eslabón débil: con tres réplicas
+  independientes, falla solo si fallan las tres, y su disponibilidad pasa a ser
+  casi del 100 %. La consulta de detalle completa queda con seis componentes de
+  99,9 %, unos 99,4 %, y el punto único de falla de Products pasa a ser
+  products-db, que sigue siendo una sola instancia. -->
+* El gateway le pregunta a Keycloak por cada solicitud HTTPS, y el *sidecar*
   verifica la firma del token con las claves públicas de Keycloak, sin
   preguntarle. ¿Qué gana y qué pierde cada uno? ¿Cómo quedaría la tabla si el
   gateway hiciera como el *sidecar*?
+  <!-- → Preguntándole a Keycloak, el gateway se entera enseguida si una sesión
+  se cerró o un usuario se bloqueó, pero cada solicitud espera a Keycloak y
+  depende de que responda. Verificando la firma, el sidecar no llama a Keycloak
+  salvo para renovar las claves cada 5 minutos: es más rápido y no depende de
+  Keycloak, pero acepta un token hasta que vence aunque se haya revocado; por
+  eso los tokens duran poco. Si el gateway hiciera lo mismo, Keycloak saldría de
+  la cadena de cada operación: la consulta desde la vista por HTTPS volvería a
+  gateway, orders-service y orders-db, unos 99,7 %, y Keycloak haría falta solo
+  para iniciar sesión. -->
 
 ## Consistencia de los datos
 
@@ -352,50 +423,67 @@ No hay transacciones que abarquen más de un servicio. Cada servicio confirma su
 propios cambios, y la aplicación acepta que, por un tiempo, los datos de
 distintos servicios no coincidan.
 
-- **Una `Order` puede existir con un `User` que no existe.** `POST /orders/` no
+* **Una `Order` puede existir con un `User` que no existe.** `POST /orders/` no
   lo verifica: lo hace el *worker* después. Mientras tanto, la `Order` está
   `Pending`; si el `User` no existe, termina `Rejected`. Es consistencia
   eventual: el sistema llega a un estado correcto, pero no de inmediato.
-- **Guardar y publicar es atómico en `Orders`, pero no en `Users` ni en
+* **Guardar y publicar es atómico en `Orders`, pero no en `Users` ni en
   `Products`.** `Orders` guarda el evento en el *outbox* en la misma
   transacción que el cambio, y el *relay* lo publica después: ver
   Transactional Outbox en [PATTERNS.md](PATTERNS.md#transactional-outbox).
   `Users` y `Products` guardan el cambio y después publican: si RabbitMQ no
   está, el evento se pierde.
-- **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
+* **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
   el mismo evento, si se cae entre publicar y marcarlo. Los suscriptores son
   idempotentes: aplicar el mismo evento dos veces deja el mismo resultado.
-- **Los nombres se piden o se copian.** La consulta síncrona los pide cada vez:
+* **Los nombres se piden o se copian.** La consulta síncrona los pide cada vez:
   siempre están al día, pero dependen de que `Users` y `Products` respondan. La
   vista los copia una vez y los actualiza con los eventos: no depende de nadie,
   pero puede estar atrasada, y si se pierde un `product.updated`, queda con el
   nombre anterior hasta que el `Product` vuelva a cambiar.
-- **La caché de `Products` se invalida al escribir.** Un cambio borra la clave
+* **La caché de `Products` se invalida al escribir.** Un cambio borra la clave
   de Redis; si Redis no está en ese momento, el dato viejo puede volver a
   leerse hasta que venza, a los 60 segundos.
-- **El precio no se guarda en la `Order`.** Si cambia el precio de un `Product`,
+* **El precio no se guarda en la `Order`.** Si cambia el precio de un `Product`,
   no queda registro de cuánto valía cuando se creó la `Order`.
-- **Los eventos son la fuente de verdad de `Orders`.** Cada cambio de una `Order`
+* **Los eventos son la fuente de verdad de `Orders`.** Cada cambio de una `Order`
   se guarda como un evento, y la tabla de `Orders` se puede reconstruir a partir
   de ellos: ver Event Sourcing en [PATTERNS.md](PATTERNS.md#event-sourcing).
 
 **Para analizar:**
 
-- Si se pierde un `product.updated`, ¿cómo se repararía la vista? `POST
+* Si se pierde un `product.updated`, ¿cómo se repararía la vista? `POST
   /orders/projections/rebuild` reconstruye `orders`, pero no `order_details`.
   ¿Qué haría falta para reconstruirla?
-- La vista copia el nombre del cliente y lo actualiza cuando cambia. ¿Debería
+  <!-- → No se puede volver a publicar el evento, porque Products no tiene
+  outbox. Haría falta reconstruir `order_details` a partir de la fuente:
+  recorrer `order_events` y pedir a Users y a Products los nombres actuales,
+  como hace el proyector, en una tabla nueva que después reemplace a la vista; o
+  una tarea periódica que compare los nombres de la vista con los de Users y
+  Products y corrija las diferencias. Para que no vuelva a pasar, Users y
+  Products tendrían que publicar con outbox. -->
+* La vista copia el nombre del cliente y lo actualiza cuando cambia. ¿Debería
   hacer lo mismo con el precio del producto, o el precio de una `Order` es el
   que tenía cuando se creó?
-- Si se agregara un endpoint para borrar un `Product`, ¿qué debería pasar con
+  <!-- → Lo habitual es que el precio de una Order sea el que tenía al crearse:
+  es lo que el cliente aceptó pagar. Por eso se guarda en la Order al crearla y
+  no se actualiza; hoy la Order ni siquiera lo guarda. El nombre del cliente, en
+  cambio, es un dato de referencia, y conviene mostrar el actual. -->
+* Si se agregara un endpoint para borrar un `Product`, ¿qué debería pasar con
   las `Orders` que lo referencian? ¿Quién se entera del borrado y cómo?
+  <!-- → Lo más común es no borrarlo, sino marcarlo como discontinuado: las
+  Orders siguen apuntando a un Product que existe. Si se borra, Products publica
+  product.deleted; el proyector mantiene el nombre copiado en la vista, y el
+  worker podría rechazar las Orders pendientes de ese Product. Impedir el
+  borrado mientras haya Orders obligaría a Products a preguntarle a Orders, y
+  eso los acopla. -->
 
 ## Acoplamiento
 
 Los microservicios buscan que cada servicio se pueda cambiar y desplegar sin
 coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
 
-- **La biblioteca [Common](src/Common/).** Los tres servicios la referencian. Tiene
+* **La biblioteca [Common](src/Common/).** Los tres servicios la referencian. Tiene
   código transversal -inyección de fallas, métricas, la respuesta de salud- y
   también los contratos que `Orders` usa para leer las respuestas de `Users` y
   `Products`: los registros `UserDto`, en [Common/UserDto.cs](src/Common/UserDto.cs),
@@ -405,17 +493,17 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   eventos, en la clase `Events` y sus registros, en
   [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a recompilar y
   redesplegar los tres servicios.
-- **Los contratos de los eventos.** El proyector espera que `product.updated`
+* **Los contratos de los eventos.** El proyector espera que `product.updated`
   traiga el identificador y el nombre del `Product`. Publisher/Subscriber
   desacopla en el tiempo y en el conocimiento: `Products` no sabe quién recibe
   sus eventos, ni necesita que esté funcionando. Pero no desacopla del
   contrato: si `Products` cambia la forma del evento, el proyector deja de
   entenderlo, y `Products` no se entera.
-- **Los contratos HTTP.** `Orders` espera que `GET /products/{id}` devuelva un
+* **Los contratos HTTP.** `Orders` espera que `GET /products/{id}` devuelva un
   JSON con el nombre. Si `Products` lo renombra, `Orders` deja de mostrar el
   nombre del producto, y nada lo detecta hasta que se ejecuta. No hay versiones
   en las rutas.
-- **El contrato SOAP de `Users`.** `Users` no es REST: expone SOAP y publica su
+* **El contrato SOAP de `Users`.** `Users` no es REST: expone SOAP y publica su
   contrato como WSDL en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
   sobre de `GetUser` y lee el XML de la respuesta -ver el método `GetUserAsync`
   de la clase `Dependencies`, en
@@ -427,28 +515,177 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   SOAP Fault viaja como HTTP 500, que el Retry y el Circuit Breaker tratan como
   falla transitoria. Por eso `GetUser` responde sin resultado, y no con un
   Fault, cuando el `User` no existe.
-- **El orden de arranque.** En [docker-compose.yaml](docker-compose.yaml),
+* **El orden de arranque.** En [docker-compose.yaml](docker-compose.yaml),
   `orders-service` no arranca hasta que `users-service` y `products-service`
   están sanos, aunque puede funcionar sin ellos. `users-service` y
   `products-service` esperan a que arranque RabbitMQ, pero no a que esté sano:
   pueden atender sin él.
-- **Los claims del token.** `Orders` espera que el gateway le pase el `User` en
+* **Los claims del token.** `Orders` espera que el gateway le pase el `User` en
   el encabezado `X-User-Id`, y el gateway lo saca del claim `user_id`, que
   Keycloak arma a partir de un atributo de cada usuario. Si cambia el nombre del
   claim, del encabezado o del atributo, `Orders` deja de reconocer a los
   clientes. El *sidecar*, además, espera los roles en `realm_access.roles`,
   donde los pone Keycloak.
-- **La ubicación de cada servicio.** Las URL de `Users` y `Products` se pasan a
+* **La ubicación de cada servicio.** Las URL de `Users` y `Products` se pasan a
   `Orders` por variables de entorno, y nginx encuentra cada servicio por su nombre
   en el DNS de Docker. No hay un registro de servicios.
 
 **Para analizar:**
 
-- ¿Qué debería estar en `Common` y qué no? ¿Dónde pondrían `ProductDto`?
-- ¿Cómo detectarían, antes de desplegar, que un cambio en `Products` rompe a
+* ¿Qué debería estar en `Common` y qué no? ¿Dónde pondrían `ProductDto`?
+  <!-- → En Common, el código transversal que no es del dominio: la inyección de
+  fallas, la observabilidad, la respuesta de salud y la conexión a RabbitMQ. No
+  los contratos de un servicio. ProductDto describe lo que Orders necesita leer
+  de Products, así que debería estar en Orders; la alternativa es un paquete de
+  contratos que publique y versione Products. Con los contratos de los eventos
+  pasa lo mismo: los publica y versiona quien los emite. -->
+* ¿Cómo detectarían, antes de desplegar, que un cambio en `Products` rompe a
   `Orders`? Busquen *consumer-driven contracts*.
-- ¿Hace falta que `orders-service` espere a `Users` y `Products` para arrancar?
+  <!-- → Con pruebas de contrato dirigidas por el consumidor, por ejemplo con
+  Pact: Orders publica lo que espera de GET /products/{id} y de product.updated,
+  y el pipeline de Products verifica esos contratos antes de desplegar; si un
+  cambio los rompe, el despliegue se detiene. También ayudan las versiones en
+  las rutas y un registro de esquemas para los eventos. -->
+* ¿Hace falta que `orders-service` espere a `Users` y `Products` para arrancar?
   ¿Qué pasaría si se quita esa dependencia?
+  <!-- → No: Orders funciona sin ellos, degradado. Si se quita la dependencia,
+  orders-service arranca antes y no queda esperando si Users o Products no
+  levantan; las primeras consultas de detalle responden "no disponible" y los
+  workers devuelven los mensajes a la cola hasta que vuelvan. Además, el orden
+  de arranque deja de ocultar que el servicio tolera la falta de sus
+  dependencias. -->
+
+## Seguridad
+
+La entrada HTTPS del gateway aplica los patrones de seguridad -ver [Demos de
+seguridad](PATTERNS.md#demos-de-seguridad)-: valida el token de cada solicitud,
+publica solo las rutas de la aplicación y le pasa a cada servicio la identidad
+del usuario en encabezados. Esos controles sirven solo si el tráfico no puede
+llegar a los servicios por otro camino. En producción eso se aseguraría en dos
+capas que se complementan. La demo implementa una parte de cada una; el resto
+queda afuera porque complicaría levantarla y compararla con las demos
+anteriores.
+
+**La red: desde afuera, solo se llega al gateway.**
+
+En un centro de datos propio -*on premises*- la red se separa en zonas, con
+VLANs o subredes, y entre una zona y otra hay un firewall que decide quién se
+conecta con quién:
+
+* **Zona perimetral -DMZ-:** la única que se alcanza desde Internet. Ahí está el
+  gateway: un *reverse proxy* o un *load balancer*, que termina TLS y puede
+  filtrar solicitudes con un WAF.
+* **Zona de aplicación:** aquí están los servicios, que son inaccesibles desde
+  Internet: el firewall de esta zona deja entrar solo el tráfico que viene del
+  gateway.
+* **Zona de datos:** aquí están las bases, la caché y el broker de mensajes; el
+  firewall de esta zona solo permite el tráfico que llega de la zona de
+  aplicación.
+
+Dentro de cada zona, el firewall de cada servidor -`iptables` o `nftables` en
+Linux- o una herramienta de segmentación, limita además qué servidores se hablan
+entre sí. El firewall entre zonas y el gateway se complementan: el firewall
+decide quién se puede conectar; el gateway, decide qué hacer con cada solicitud
+que le llega.
+
+En la nube, las mismas ideas se implementan con los servicios de cada
+proveedor:
+
+* **Solo el gateway tiene dirección pública.** Los servicios, las bases, la
+  caché y el broker de mensajes están en redes privadas; el único con dirección
+  pública es el gateway.
+* **Reglas de quién se conecta con quién.** Las reglas de la red dejan entrar a
+  un servicio solo el tráfico que viene del gateway o de los servicios que lo
+  llaman, y a cada base, solo el de su servicio. En Azure son los *Network
+  Security Groups*; en AWS, los *security groups*; en Kubernetes, las
+  `NetworkPolicies`.
+* **Servicios administrados con entrada interna.** En Azure, Container Apps
+  admite una entrada interna, que solo se alcanza desde la red virtual, y App
+  Service admite restricciones de acceso y *private endpoints*. El gateway, por
+  ejemplo Azure API Management o Application Gateway, se despliega en la misma
+  red virtual que los servicios. En AWS, los servicios corren en ECS o Fargate
+  en subredes privadas, detrás de un *Application Load Balancer* interno, y el
+  gateway, Amazon API Gateway, llega a ellos con un *VPC link*.
+* **En Kubernetes**, los servicios son de tipo `ClusterIP`: no tienen dirección
+  fuera del clúster. Solo se expone el *ingress controller*, que cumple el
+  papel del gateway.
+
+En la demo, [docker-compose.yaml](docker-compose.yaml) publica en el host los
+puertos de los servicios y de las bases, para probarlos directamente y para las
+demos que los usan.
+[docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) muestra el
+efecto de dejar de publicarlos. Dentro de la red de Docker no hay reglas:
+cualquier contenedor llega a cualquier otro.
+
+**La identidad: cada servicio verifica quién lo llama.**
+
+La red sola no alcanza. Si un atacante compromete un contenedor de la red, llega
+a todos los servicios: es lo que muestra la demo del *sidecar* cuando un
+contenedor llama a `products-service:8000`. El enfoque *zero trust* parte de que
+estar adentro de la red no prueba nada:
+
+* **TLS mutuo entre el gateway y los servicios, y entre servicios.** Cada parte
+  presenta un certificado, y un servicio acepta solo a los llamadores en cuyo
+  certificado confía. Una *service mesh*, como Istio o Linkerd, lo hace sin
+  cambiar el código, con un *sidecar* en cada servicio.
+* **Cada servicio verifica el token, él o su *sidecar*.** El gateway le pasa el
+  token al servicio, que verifica la firma con las claves públicas del
+  proveedor de identidad, en lugar de confiar en encabezados que cualquiera
+  podría mandar.
+* **Identidades administradas y un almacén de secretos.** Cada servicio tiene
+  una identidad que le da la plataforma, como *Managed Identity* en Azure o un
+  rol de IAM en AWS, y las contraseñas que todavía hagan falta están en un
+  almacén de secretos, como Azure Key Vault o AWS Secrets Manager, y no en la
+  configuración.
+
+En la demo, solo `Products` tiene *sidecar*, que verifica la firma del token.
+`Orders` confía en los encabezados `X-User-Id`, `X-User-Name` y
+`X-User-Roles` que arma el gateway: es el punto débil del diseño, y es seguro
+solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
+
+| Control | En la demo | En producción |
+| ------- | ---------- | ------------- |
+| Entrada al gateway | HTTP y HTTPS abiertas, para comparar con y sin los patrones | Solo HTTPS; HTTP redirige a HTTPS |
+| Certificado del gateway | Autofirmado, generado al construir la imagen | Emitido por una autoridad de certificación y renovado automáticamente |
+| Puertos de los servicios y de las bases | Publicados en el host; `docker-compose.gatekeeper.yaml` los quita | Sin dirección pública, con reglas de red |
+| Tráfico entre servicios | HTTP sin cifrar; cualquier contenedor llega a cualquier otro | TLS mutuo y reglas de red |
+| Identidad en los servicios | `Orders` confía en los encabezados del gateway; el *sidecar* de `Products` verifica la firma | Cada servicio, o su *sidecar*, verifica el token |
+| Secretos | En texto plano en `docker-compose.yaml` y en `andis-realm.json` | En un almacén de secretos, o reemplazados por identidades administradas |
+| Keycloak | Modo desarrollo, sin base propia; el cliente de las demos acepta usuario y contraseña | Con su propia base y varias réplicas; los clientes inician sesión en el navegador |
+
+**Para analizar:**
+
+* Si un atacante compromete `orders-worker`, ¿a qué puede llegar hoy? ¿Y si
+  hubiera reglas de red? ¿Y si hubiera TLS mutuo?
+  <!-- → Hoy llega a todo: con sus credenciales lee y escribe la base de Orders,
+  incluido el outbox, desde donde podría publicar eventos falsos; con el usuario
+  guest de RabbitMQ lee y publica en cualquier cola; y por la red llega a
+  cualquier contenedor, por ejemplo a products-service:8000 para cambiar
+  Products sin pasar por el sidecar, o a orders-service con encabezados de
+  identidad falsos. Con reglas de red llega solo a lo que necesita -orders-db,
+  RabbitMQ, Users y Products-, pero a Users y a Products con cualquier método.
+  Con TLS mutuo, Users y Products saben que quien llama es orders-worker y
+  pueden permitirle solo leer, y orders-worker ya no puede hacerse pasar por el
+  gateway. Su propia base y su cola siguen expuestas. -->
+* ¿Por qué no alcanzan las reglas de red sin TLS mutuo? ¿Y el TLS mutuo sin
+  reglas de red?
+  <!-- → Las reglas de red deciden por la dirección IP: quien comprometa un
+  contenedor permitido usa su dirección, y el tráfico va sin cifrar, así que se
+  puede espiar dentro de la red. El TLS mutuo sin reglas de red rechaza a quien
+  no tiene un certificado válido, pero el servicio sigue recibiendo conexiones
+  de cualquiera, expuesto a fallas propias o del TLS antes de rechazarlas, y a
+  que lo saturen. Cada capa cubre lo que la otra no: es defensa en profundidad.
+  -->
+* `Orders` confía en los encabezados del gateway. ¿Qué cambiaría si verificara
+  el token? ¿Qué cuesta, y quién debería hacerlo: `Orders` o un *sidecar*?
+  <!-- → Los encabezados falsos dejarían de servir, y Orders ya no dependería de
+  que nadie más pueda llegar a él. Cuesta configurar la validación de JWT,
+  obtener y renovar las claves públicas de Keycloak, que el gateway reenvíe el
+  token, y repetir todo en cada servicio, en su lenguaje. Un sidecar lo hace con
+  la misma configuración para todos los servicios y sin cambiar el código, a
+  cambio de un contenedor más por servicio. Lo razonable es que el sidecar
+  autentique y que Orders siga decidiendo con los claims qué puede hacer cada
+  usuario: esa regla es del negocio. -->
 
 ## Decisiones abiertas a discusión
 
@@ -475,9 +712,35 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 
 **Para analizar:**
 
-- Elijan una decisión de la tabla y escriban un registro de decisión de
+* Elijan una decisión de la tabla y escriban un registro de decisión de
   arquitectura -ADR-: contexto, decisión, alternativas consideradas y
   consecuencias.
-- ¿Qué decisión de la tabla cambiarían primero si la aplicación fuera a
+  <!-- → Por ejemplo, para "Users y Products publican sus eventos sin outbox":
+  contexto, eventos que se pierden si RabbitMQ no está y una vista que queda
+  desactualizada; decisión, publicar después de guardar, sin outbox;
+  alternativas, outbox en PostgreSQL, MongoDB con réplicas para tener
+  transacciones, o captura de cambios de la base con Debezium; consecuencias,
+  simplicidad a cambio de eventos perdidos y una vista que hay que reparar a
+  mano. -->
+* ¿Qué decisión de la tabla cambiarían primero si la aplicación fuera a
   producción? ¿Por qué?
-- Para las filas sin demo, ¿qué patrones o herramientas usarían?
+  <!-- → No hay una única respuesta; importa la justificación. Una razonable:
+  cerrar la entrada HTTP, dejar de publicar los puertos y sacar las contraseñas
+  del repositorio, porque exponen los datos y son baratos de corregir; después,
+  los puntos únicos de falla, empezando por las bases y RabbitMQ. -->
+* Para las filas sin demo, ¿qué patrones o herramientas usarían?
+  <!-- → El gateway que pregunta a Keycloak: verificar la firma del token con
+  las claves públicas, como el sidecar, o guardar las respuestas un tiempo
+  corto. Un solo sidecar sin TLS: una service mesh, como Istio o Linkerd.
+  Keycloak en modo desarrollo: modo producción, con PostgreSQL y varias
+  réplicas. Las dos consultas de detalle: elegir una y retirar la otra, o un
+  feature flag mientras se migra. Users y Products sin outbox: Transactional
+  Outbox o captura de cambios con Debezium. El proyector con una sola réplica:
+  varias réplicas que reciban los eventos de una misma Order en orden, por
+  ejemplo particionando por Order, o single active consumer de RabbitMQ para
+  tener una de respaldo. El cliente que consulta el estado: webhooks, WebSockets
+  o Server-Sent Events. Las contraseñas: un almacén de secretos, como Azure Key
+  Vault, AWS Secrets Manager o HashiCorp Vault. Una sola instancia de RabbitMQ y
+  de cada base: clústeres y réplicas, como colas quorum de RabbitMQ y réplicas
+  de PostgreSQL, MySQL y MongoDB. Sin trazas: trazas distribuidas con
+  OpenTelemetry y Jaeger o Grafana Tempo. -->

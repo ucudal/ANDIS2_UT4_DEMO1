@@ -10,7 +10,7 @@
     * [Throttling](#throttling)
     * [Rate Limiting](#rate-limiting)
     * [Health Endpoint Monitoring](#health-endpoint-monitoring)
-    * [Competing Consumers](#competing-consumers)
+    * [Competing Consumers para disponibilidad](#competing-consumers-para-disponibilidad)
     * [Event Sourcing](#event-sourcing)
     * [Transactional Outbox](#transactional-outbox)
 * [Demos de rendimiento y procesamiento asíncrono](#demos-de-rendimiento-y-procesamiento-asíncrono)
@@ -18,7 +18,7 @@
   * [Patrones de rendimiento](#patrones-de-rendimiento)
     * [Cache-Aside](#cache-aside)
     * [Queue-Based Load Leveling](#queue-based-load-leveling)
-    * [Competing Consumers](#competing-consumers-1)
+    * [Competing Consumers para rendimiento](#competing-consumers-para-rendimiento)
     * [Publisher/Subscriber](#publishersubscriber)
     * [Asynchronous Request-Reply](#asynchronous-request-reply)
     * [CQRS](#cqrs)
@@ -72,16 +72,16 @@ funcionando y el resto del sistema no debe caerse.
 
 Qué se muestra:
 
-- Aislamiento de recursos para que la lentitud de un servicio no agote los
+* Aislamiento de recursos para que la lentitud de un servicio no agote los
   recursos que usan los demás.
-- Degradación controlada del detalle de `Orders` cuando `Products` o `Users` no
+* Degradación controlada del detalle de `Orders` cuando `Products` o `Users` no
   responden.
-- Protección contra el exceso de solicitudes, tanto en el borde como en el
+* Protección contra el exceso de solicitudes, tanto en el borde como en el
   servicio.
-- Monitoreo activo de la salud de cada servicio.
-- Procesamiento de `Orders` en segundo plano, repartido entre varias réplicas.
-- Historial inmutable de eventos de cada `Order`.
-- Mensajes que no se pierden aunque RabbitMQ no esté disponible.
+* Monitoreo activo de la salud de cada servicio.
+* Procesamiento de `Orders` en segundo plano, repartido entre varias réplicas.
+* Historial inmutable de eventos de cada `Order`.
+* Mensajes que no se pierden aunque RabbitMQ no esté disponible.
 
 Resultado observable: si `Products` se cae, el circuito se abre, `Orders` deja
 de esperar *timeouts* y el detalle devuelve las `Orders` con "no disponible
@@ -146,7 +146,7 @@ de red y *timeouts*; un 404 no se reintenta. Está en el método
 
 ![Secuencia de un reintento de Orders a Products](assets/01-retry.svg)
 
-Si fallan los 3 reintentos, la consulta dice "no disponible [error HTTP 503]".
+Si fallan los 3 reintentos, la consulta dice `"no disponible [error HTTP 503]"`.
 Las esperas crecen: 0,5 s, 1 s y 2 s -`DelayBackoffType.Exponential`-.
 
 **Código:** la estrategia de reintento del *pipeline* de cada dependencia, en
@@ -231,9 +231,9 @@ pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
 que `Products` falle en el 100 % de las solicitudes y consulta el detalle 6
 veces con todos los patrones apagados y 6 con solo el Circuit Breaker prendido.
 Sin el circuito, `Products` recibe 12 llamadas, aunque falle siempre; con el
-circuito, 5. Sin reintentos, cada falla cuenta una vez: las dos primeras consultas dicen "no
-disponible [error HTTP 503]", en la tercera el circuito se abre, y desde ahí
-responden con "no disponible [circuito abierto]" sin llamar a `Products`. Cuando
+circuito, 5. Sin reintentos, cada falla cuenta una vez: las dos primeras consultas dicen `"no
+disponible [error HTTP 503]"`, en la tercera el circuito se abre, y desde ahí
+responden con `"no disponible [circuito abierto]"` sin llamar a `Products`. Cuando
 `Products` se recupera, el circuito sigue abierto hasta que pasan los 15
 segundos. Los *logs* de Docker muestran las transiciones ABIERTO → SEMIABIERTO →
 CERRADO. Con el Retry prendido, la primera consulta tardaría unos 3 segundos,
@@ -446,9 +446,9 @@ detecta cuando un usuario se queja.
 dependencias y devuelve un JSON con el resultado de cada chequeo -200 si está
 sano, 503 en caso contrario-:
 
-- `users-service`: conexión a PostgreSQL.
-- `products-service`: *ping* a MongoDB.
-- `orders-service`: conexión a MySQL y a RabbitMQ. Si RabbitMQ no está, queda
+* `users-service`: conexión a PostgreSQL.
+* `products-service`: *ping* a MongoDB.
+* `orders-service`: conexión a MySQL y a RabbitMQ. Si RabbitMQ no está, queda
   `Degraded` y responde 200, porque gracias al [Transactional
   Outbox](#transactional-outbox) sigue aceptando `Orders`. `orders-worker` y
   `orders-projector` quedan `Unhealthy`, porque sin RabbitMQ no reciben nada.
@@ -476,14 +476,14 @@ sus chequeos como la métrica `service_health`.
 Cada chequeo es una implementación de `IHealthCheck`, registrada con
 `AddHealthChecks` en el `Program.cs` de cada servicio:
 
-- La clase `RabbitMqHealthCheck`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs),
+* La clase `RabbitMqHealthCheck`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs),
   y la clase `MongoHealthCheck`, en
   [ProductsService/MongoHealthCheck.cs](src/ProductsService/MongoHealthCheck.cs),
   implementan el método `CheckHealthAsync`.
-- El método `WriteJson` de la clase `HealthResponse`, en
+* El método `WriteJson` de la clase `HealthResponse`, en
   [Common/HealthResponse.cs](src/Common/HealthResponse.cs), escribe el JSON de
   `/health`.
-- El método `PublishAsync` de la clase `HealthMetricsPublisher`, en
+* El método `PublishAsync` de la clase `HealthMetricsPublisher`, en
   [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
 
 **Cómo verlo:** [demos/06-health.sh](demos/06-health.sh) detiene la base de
@@ -500,7 +500,7 @@ mientras la base está detenida.
 > Core](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/health-checks?view=aspnetcore-10.0)
 > para tener más información sobre cómo está implementado el chequeo de salud.
 
-#### Competing Consumers
+#### Competing Consumers para disponibilidad
 
 **Problema:** un solo proceso que atiende una cola es un cuello de botella y un
 punto único de falla.
@@ -562,9 +562,9 @@ método `Replay` de la clase `OrderProjection`, en
 [OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs),
 los reproduce para obtener el estado.
 
-- `GET /orders/{id}/events` muestra los eventos de una `Order` y el estado que
+* `GET /orders/{id}/events` muestra los eventos de una `Order` y el estado que
   resulta de reproducirlos.
-- `POST /orders/projections/rebuild` borra la tabla `orders` y la reconstruye a
+* `POST /orders/projections/rebuild` borra la tabla `orders` y la reconstruye a
   partir de los eventos.
 
 **Cómo funciona:**
@@ -666,9 +666,9 @@ latencias bajas y absorber la carga.
 
 Qué se muestra:
 
-- Lecturas rápidas con caché y vistas materializadas.
-- Creación de `Orders` encolada, con consumidores en competencia.
-- Eventos pub/sub para desacoplar los servicios.
+* Lecturas rápidas con caché y vistas materializadas.
+* Creación de `Orders` encolada, con consumidores en competencia.
+* Eventos pub/sub para desacoplar los servicios.
 
 Resultado observable: latencias de lectura estables durante el pico, *backlog*
 absorbido por la cola y throughput que crece al agregar *workers*. El pico se
@@ -762,15 +762,15 @@ hacen los *workers* desde la cola `orders.process`, a su propio ritmo. La cola
 absorbe el pico: `Users` y `Products` reciben como máximo una llamada por
 réplica del *worker*, sin importar cuántas `Orders` lleguen. Ya estaba en las
 demos de disponibilidad, como base de [Competing
-Consumers](#competing-consumers); las demos de rendimiento lo muestra bajo un
-pico.
+Consumers](#competing-consumers-para-disponibilidad); las demos de rendimiento lo
+muestra bajo un pico.
 
 **Cómo funciona:**
 
 ![La cola absorbe un pico de Orders](assets/11-queue-based-load-leveling.svg)
 
 El pico se acumula en la cola, no en `Users` ni en `Products`. El código es el
-de [Competing Consumers](#competing-consumers).
+de [Competing Consumers](#competing-consumers-para-disponibilidad).
 
 **Cómo verlo:** [demos/11-queue-based-load-leveling.sh](demos/11-queue-based-load-leveling.sh)
 crea 30 `Orders` a la vez, directamente en `orders-service`: el Throttling por
@@ -780,17 +780,19 @@ segundos hasta vaciarse. [k6/load-leveling.js](k6/load-leveling.js) envía 10
 `POST` por segundo durante 10 segundos: la latencia de `create order` se
 mantiene baja y la cola crece durante el pico y se vacía después.
 
-#### Competing Consumers
+#### Competing Consumers para rendimiento
 
 **Problema:** un solo consumidor procesa la cola a un ritmo fijo; si el pico
 dura mucho, la cola crece sin límite.
 
 **Implementación:** la misma de la [demo de
-disponibilidad](#competing-consumers). Visto como patrón de rendimiento, el
-throughput crece agregando réplicas de `orders-worker`, sin cambiar el código.
+disponibilidad](#competing-consumers-para-disponibilidad). Visto como patrón de
+rendimiento, el throughput crece agregando réplicas de `orders-worker`, sin
+cambiar el código.
 
 **Cómo funciona:** el mismo diagrama de la [demo de
-disponibilidad](#competing-consumers), con 6 réplicas en lugar de 3.
+disponibilidad](#competing-consumers-para-disponibilidad), con 6 réplicas en
+lugar de 3.
 
 **Cómo verlo:**
 [demos/12-competing-consumers-scaling.sh](demos/12-competing-consumers-scaling.sh)
@@ -806,13 +808,13 @@ tiene que conocerlos a todos, y cada interesado nuevo obliga a cambiarlo.
 exchange `andis.events`, de tipo *topic*. En RabbitMQ, un exchange y una cola
 son piezas distintas:
 
-- Un **exchange** es donde se publica. No guarda mensajes: según la clave de
+* Un **exchange** es donde se publica. No guarda mensajes: según la clave de
   ruteo de cada mensaje, por ejemplo `order.created`, pone una copia en cada
   cola enlazada con esa clave. Si ninguna cola está enlazada, el mensaje se
   descarta. En un exchange de tipo *topic*, las claves de los enlaces admiten
   comodines: `order.*` recibe `order.created`, `order.confirmed` y
   `order.rejected`.
-- Una **cola** es donde los mensajes esperan hasta que un consumidor los toma.
+* Una **cola** es donde los mensajes esperan hasta que un consumidor los toma.
   Cada mensaje de una cola lo procesa un solo consumidor.
 
 Cada suscriptor tiene su propia cola y la enlaza con las claves de ruteo que le
@@ -831,9 +833,9 @@ el método `PublishEventAsync` publica un evento, y el método
 
 El exchange y las colas corresponden a dos patrones distintos. Entre colas,
 Publisher/Subscriber: cada suscriptor recibe su propia copia de cada evento.
-Dentro de una cola, [Competing Consumers](#competing-consumers-1): las réplicas
-de `orders-worker` comparten `orders.process`, y cada mensaje lo procesa una
-sola.
+Dentro de una cola, [Competing
+Consumers](#competing-consumers-para-rendimiento): las réplicas de
+`orders-worker` comparten `orders.process`, y cada mensaje lo procesa una sola.
 
 **Cómo funciona:**
 
@@ -895,13 +897,13 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
 
 **Implementación:** los comandos y las consultas usan modelos distintos.
 
-- **Comandos:** `POST /orders/` y el *worker* escriben `orders`, `order_events`
+* **Comandos:** `POST /orders/` y el *worker* escriben `orders`, `order_events`
   y `outbox_messages`, en el método `CreateOrder` de la clase
   `OrdersController`, en
   [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs),
   y en el método `ProcessAsync` de la clase `OrderProcessingWorker`, en
   [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs).
-- **Consultas:** `GET /orders/user/{userId}/details/view` lee solo la vista
+* **Consultas:** `GET /orders/user/{userId}/details/view` lee solo la vista
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
   `GetOrdersForUser` de la clase `OrdersQueriesController`, en
   [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
@@ -949,13 +951,13 @@ método `ApplyAsync` de la clase `OrderDetailsProjector`, en
 [OrdersService/Messaging/OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs),
 que corre en `orders-projector` y consume la cola `orders.details-view`:
 
-- `order.created`: el método `AddOrderAsync` busca el nombre del cliente y del
+* `order.created`: el método `AddOrderAsync` busca el nombre del cliente y del
   producto **una vez**, con los mismos `HttpClient` y la misma resiliencia de la
   demo de disponibilidad, y agrega la fila. Si `Users` o `Products` no
   responden, el mensaje vuelve a la cola.
-- `order.confirmed` y `order.rejected`: el método `SetStatusAsync` actualiza el
+* `order.confirmed` y `order.rejected`: el método `SetStatusAsync` actualiza el
   estado.
-- `user.updated` y `product.updated`: actualizan el nombre en todas las filas
+* `user.updated` y `product.updated`: actualizan el nombre en todas las filas
   de ese `User` o `Product`.
 
 Corre con una sola réplica, para que los eventos de una misma `Order` se
@@ -996,15 +998,15 @@ y nada tiene que llegar a los servicios sin control.
 
 Qué se muestra:
 
-- Inicio de sesión en un proveedor de identidad externo, y decisiones tomadas
+* Inicio de sesión en un proveedor de identidad externo, y decisiones tomadas
   con los claims del token.
-- TLS, validación de tokens y compresión en el gateway, sin código en los
+* TLS, validación de tokens y compresión en el gateway, sin código en los
   servicios.
-- Validación y saneamiento de cada solicitud antes de que llegue a un servicio,
+* Validación y saneamiento de cada solicitud antes de que llegue a un servicio,
   y servicios que solo se alcanzan a través del gateway.
-- Un proxy junto a `Products` que le agrega autenticación y autorización sin
+* Un proxy junto a `Products` que le agrega autenticación y autorización sin
   cambiar su código.
-- Acceso directo, temporal y acotado al almacenamiento de las imágenes.
+* Acceso directo, temporal y acotado al almacenamiento de las imágenes.
 
 Resultado observable: por la entrada HTTP del gateway, cualquiera llega a
 cualquier ruta, incluidas las de administración; por la entrada HTTPS, cada
@@ -1073,26 +1075,26 @@ falla en cualquiera de ellas expone las contraseñas.
 identidad que habla OpenID Connect. El usuario inicia sesión en Keycloak, que
 emite un token firmado -un JWT- con sus claims:
 
-- `preferred_username`: el nombre de usuario, por ejemplo `alice`.
-- `user_id`: el `User` de la aplicación. Keycloak lo agrega a partir de un
+* `preferred_username`: el nombre de usuario, por ejemplo `alice`.
+* `user_id`: el `User` de la aplicación. Keycloak lo agrega a partir de un
   atributo del usuario, y así vincula la identidad externa con los datos de la
   aplicación.
-- `realm_access.roles`: los roles, `customer` o `admin`.
+* `realm_access.roles`: los roles, `customer` o `admin`.
 
 La aplicación no guarda contraseñas: la tabla `users` tiene solo el nombre y el
 correo. Confía en la firma de Keycloak y usa los claims:
 
-- El gateway valida el token en cada solicitud por la entrada HTTPS y les pasa
+* El gateway valida el token en cada solicitud por la entrada HTTPS y les pasa
   los claims a los servicios en los encabezados `X-User-Name`, `X-User-Id` y
   `X-User-Roles` -ver [Gateway Offloading](#gateway-offloading)-.
-- `Orders` decide con esos claims. Un cliente crea `Orders` solo para él y
+* `Orders` decide con esos claims. Un cliente crea `Orders` solo para él y
   consulta solo las suyas; un admin consulta las de todos, pero no crea
   `Orders`, porque no es cliente. Lo hace con el registro `CallerIdentity`, en
   [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs), que
   usan los métodos `CreateOrder`, `ListOrders`, `GetOrder`, `GetOrderStatus`,
   `GetOrderEvents` y `GetOrdersForUser` de la clase `OrdersController`, y el
   método `GetOrdersForUser` de la clase `OrdersQueriesController`.
-- Una solicitud sin esos encabezados, por la entrada HTTP, es anónima, y
+* Una solicitud sin esos encabezados, por la entrada HTTP, es anónima, y
   `Orders` se comporta como en las demos anteriores.
 
 El cliente `andis-cli` admite dos formas de iniciar sesión. Con el flujo de
@@ -1150,22 +1152,22 @@ certificado o una política obliga a cambiar todos los servicios.
 **Implementación:** el gateway se hace cargo de esas funciones en la entrada
 HTTPS, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
-- **TLS:** el gateway termina TLS con su certificado; los servicios siguen
+* **TLS:** el gateway termina TLS con su certificado; los servicios siguen
   hablando HTTP dentro de la red de Docker, sin certificados. El certificado es
   autofirmado y se genera al construir la imagen, en
   [ApiGateway/Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
   privada en el repositorio; en producción lo emitiría una autoridad de
   certificación.
-- **Validación de tokens:** antes de reenviar cada solicitud, `auth_request`
+* **Validación de tokens:** antes de reenviar cada solicitud, `auth_request`
   hace una subsolicitud a `/userinfo` de Keycloak con el token. Si Keycloak
   responde 200, la solicitud sigue; si no, el gateway responde 401 y la
   solicitud no llega al servicio. Después, `identity.js`, en
   [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js), lee
   los claims del token, ya validado, y el gateway se los pasa al servicio en los
   encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
-- **Compresión:** el gateway comprime con gzip las respuestas de más de 1 KB,
+* **Compresión:** el gateway comprime con gzip las respuestas de más de 1 KB,
   si el cliente lo acepta.
-- **Throttling por cliente:** el de la [demo de Throttling](#throttling), que
+* **Throttling por cliente:** el de la [demo de Throttling](#throttling), que
   el gateway ya aplicaba en la entrada HTTP.
 
 El costo es que el gateway le pregunta a Keycloak por cada solicitud: si
@@ -1225,16 +1227,16 @@ servicio y a sus datos.
 los clientes y los servicios, y valida y sanea cada solicitud antes de
 reenviarla, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
-- **Rutas:** publica solo las de la aplicación. Las de administración
+* **Rutas:** publica solo las de la aplicación. Las de administración
   -`/chaos`, `/patterns`, `/cache`, `/orders/projections/rebuild`- y cualquier
   otra responden 404 sin llegar a los servicios.
-- **Ids:** el de un `Product` tiene 24 caracteres hexadecimales, y el de una
+* **Ids:** el de un `Product` tiene 24 caracteres hexadecimales, y el de una
   `Order` o un `User` es un número; si no, 404.
-- **Métodos:** cada ruta acepta solo los que usa la aplicación; un `DELETE`
+* **Métodos:** cada ruta acepta solo los que usa la aplicación; un `DELETE`
   responde 403.
-- **Cuerpo:** los `POST` y `PUT` tienen que ser JSON -415 si no- y medir hasta
+* **Cuerpo:** los `POST` y `PUT` tienen que ser JSON -415 si no- y medir hasta
   64 KB -413 si no-.
-- **Encabezados de identidad:** el gateway arma `X-User-Name`, `X-User-Id` y
+* **Encabezados de identidad:** el gateway arma `X-User-Name`, `X-User-Id` y
   `X-User-Roles` con los claims del token y reemplaza los que haya mandado el
   cliente. Un cliente no se puede hacer pasar por otro.
 
@@ -1317,13 +1319,13 @@ Envoy, `Products` es `127.0.0.1:8000`; para los demás contenedores, el sidecar
 es `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
 configura con [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
 
-- **Autenticación:** el filtro `jwt_authn` verifica la firma del token con las
+* **Autenticación:** el filtro `jwt_authn` verifica la firma del token con las
   claves públicas de Keycloak, que pide una vez cada 5 minutos, además del
   emisor y el vencimiento. Un token inválido recibe 401; sin token, la
   solicitud sigue como anónima.
-- **Autorización:** el filtro `rbac` deja leer a cualquiera -`GET`- y exige el
+* **Autorización:** el filtro `rbac` deja leer a cualquiera -`GET`- y exige el
   rol `admin` para todo lo demás. Si no, 403.
-- **Registro de accesos:** una línea `[SIDECAR]` por solicitud, con el código,
+* **Registro de accesos:** una línea `[SIDECAR]` por solicitud, con el código,
   el usuario del token y el motivo del rechazo.
 
 `Products` no cambió: `ProductsController` no verifica roles. La entrada HTTPS
@@ -1390,13 +1392,15 @@ entrega: le da al cliente una URL firmada -una SAS, *Shared Access
 Signature*- que permite una sola operación, sobre la imagen de un solo
 `Product`, durante 2 minutos como máximo. Con esa URL, el cliente sube o baja
 la imagen directamente de Azurite, y los bytes no pasan por el gateway ni por
-`Products`:
+`Products`. En AWS, el equivalente de una SAS es una URL prefirmada de Amazon
+S3 -*presigned URL*-, que también permite una operación sobre un objeto
+durante un tiempo acotado:
 
-- `POST /products/{id}/image/upload-url` entrega una URL para crear o reemplazar
+* `POST /products/{id}/image/upload-url` entrega una URL para crear o reemplazar
   la imagen. No sirve para leerla, ni para la imagen de otro `Product`, ni
   después de vencer. El cliente puede pedir que venza antes, con `?seconds=N`.
-- `GET /products/{id}/image` redirige, con 302, a una URL para leer la imagen.
-- `PUT /products/{id}/image` es la forma sin Valet Key, para comparar:
+* `GET /products/{id}/image` redirige, con 302, a una URL para leer la imagen.
+* `PUT /products/{id}/image` es la forma sin Valet Key, para comparar:
   `Products` recibe la imagen y la sube él mismo, con su clave. Por la entrada
   HTTP, el gateway acepta hasta 20 MB en esa ruta; por la HTTPS, el
   [Gatekeeper](#gatekeeper) no deja pasar más de 64 KB.
@@ -1447,21 +1451,21 @@ integrarse con un sistema legado y migrar funcionalidad de un monolito.
 
 Qué se muestra:
 
-- Una copia completa de la aplicación por región o cliente, con enrutamiento
+* Una copia completa de la aplicación por región o cliente, con enrutamiento
   dirigido.
-- Configuración central con recarga dinámica.
-- Un puente de mensajería entre la aplicación y un sistema legado simulado.
-- Migración progresiva de rutas desde un monolito.
+* Configuración central con recarga dinámica.
+* Un puente de mensajería entre la aplicación y un sistema legado simulado.
+* Migración progresiva de rutas desde un monolito.
 
 Patrones cubiertos:
 
-- **Deployment Stamps**: dos copias de la aplicación; el gateway elige una según
+* **Deployment Stamps**: dos copias de la aplicación; el gateway elige una según
   un encabezado de región o cliente.
-- **External Configuration Store**: URLs, límites y *feature flags* en un
+* **External Configuration Store**: URLs, límites y *feature flags* en un
   almacén central que se recarga sin redesplegar.
-- **Messaging Bridge**: traduce los eventos de `Orders` al formato de un ERP
+* **Messaging Bridge**: traduce los eventos de `Orders` al formato de un ERP
   legado simulado, y viceversa.
-- **Strangler Fig**: un monolito que atiende `Users`, `Products` y `Orders`; el
+* **Strangler Fig**: un monolito que atiende `Users`, `Products` y `Orders`; el
   gateway desvía ruta por ruta hacia los microservicios hasta reemplazarlo.
 
 Resultado observable: despliegues independientes por región, cambios de
@@ -1474,22 +1478,22 @@ con riesgo controlado y medir su impacto.
 
 Qué se muestra:
 
-- Dos entornos vivos y conmutación inmediata.
-- Reemplazo de instancias por lotes.
-- Una fracción del tráfico derivada a la versión nueva.
-- Experimentos por segmento de usuarios.
+* Dos entornos vivos y conmutación inmediata.
+* Reemplazo de instancias por lotes.
+* Una fracción del tráfico derivada a la versión nueva.
+* Experimentos por segmento de usuarios.
 
 Patrones y estrategias cubiertos:
 
-- **Arquitectura de microservicios**: el estilo común sobre el que se apoyan
+* **Arquitectura de microservicios**: el estilo común sobre el que se apoyan
   todas las demos.
-- **Blue/Green Deployment**: dos versiones de `Products` detrás del gateway, con
+* **Blue/Green Deployment**: dos versiones de `Products` detrás del gateway, con
   cambio y *rollback* inmediatos.
-- **Rolling Upgrade**: varias réplicas que se reemplazan por lotes, verificando
+* **Rolling Upgrade**: varias réplicas que se reemplazan por lotes, verificando
   su salud.
-- **Canary Testing**: entre 1 % y 10 % del tráfico a la versión nueva, por
+* **Canary Testing**: entre 1 % y 10 % del tráfico a la versión nueva, por
   ejemplo con `split_clients` de nginx.
-- **A/B Testing**: segmentos por usuario, con cookie o encabezado, y comparación
+* **A/B Testing**: segmentos por usuario, con cookie o encabezado, y comparación
   de métricas.
 
 Resultado observable: despliegues frecuentes con impacto acotado y decisiones
@@ -1498,7 +1502,7 @@ basadas en métricas.
 ## Cobertura
 
 | Categoría | Patrones | Demo |
-|---|---|---|
+| --------- | -------- | ---- |
 | Disponibilidad | Bulkhead, Circuit Breaker, Competing Consumers, Event Sourcing, Health Endpoint Monitoring, Rate Limiting, Retry, Throttling, Transactional Outbox | 1 |
 | Rendimiento | Cache-Aside, Queue-Based Load Leveling, Competing Consumers, Publisher/Subscriber, Asynchronous Request-Reply, CQRS, Materialized View | 2 |
 | Seguridad | Gatekeeper, Federated Identity, Gateway Offloading, Sidecar, Valet Key | 3 |

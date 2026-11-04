@@ -115,21 +115,21 @@ En Windows conviene usar WSL, porque se comporta igual que Linux y macOS. Si Git
 no tiene `column`, la función `table` falla con `column: command not found`.
 En ese caso hay dos opciones:
 
-- Quitar `| column -t -s $'\t'` de la función: se ven los mismos datos, con las
+* Quitar `| column -t -s $'\t'` de la función: se ven los mismos datos, con las
   columnas separadas por tabuladores pero sin alinear.
-- Usar `jq .` en lugar de `table`, que muestra el JSON formateado y con colores.
+* Usar `jq .` en lugar de `table`, que muestra el JSON formateado y con colores.
 
 ### Cómo ejecutarla
 
 Los comandos están en la carpeta [commands/](commands/), en tres archivos:
 
-- [01-api-gateway.azcli](commands/01-api-gateway.azcli): probar los servicios a
+* [01-api-gateway.azcli](commands/01-api-gateway.azcli): probar los servicios a
   través del API Gateway.
-- [02-availability.azcli](commands/02-availability.azcli): demos de los
+* [02-availability.azcli](commands/02-availability.azcli): demos de los
   patrones de disponibilidad, de la 01 a la 09.
-- [03-performance.azcli](commands/03-performance.azcli): demos de los
+* [03-performance.azcli](commands/03-performance.azcli): demos de los
   patrones de rendimiento, de la 10 a la 16.
-- [04-security.azcli](commands/04-security.azcli): demos de los patrones de
+* [04-security.azcli](commands/04-security.azcli): demos de los patrones de
   seguridad, de la 17 a la 21.
 
 Cada archivo empieza levantando todos los servicios y termina con el *tear
@@ -318,10 +318,10 @@ en cada uno está en [02-availability.azcli](commands/02-availability.azcli),
 
 Mientras corren las pruebas, también se puede mirar:
 
-- La salud de los servicios en vivo, en otra terminal: `./demos/monitor-health.sh`.
-- Los eventos de los patrones en los logs de Docker:
+* La salud de los servicios en vivo, en otra terminal: `./demos/monitor-health.sh`.
+* Los eventos de los patrones en los logs de Docker:
   `docker compose logs -f orders-service orders-worker orders-projector products-service`.
-- Las colas, sus consumidores y los enlaces del exchange `andis.events` en la
+* Las colas, sus consumidores y los enlaces del exchange `andis.events` en la
   consola de RabbitMQ: <http://localhost:15672>, usuario y contraseña `guest`.
 
 ## Observabilidad y pruebas de carga
