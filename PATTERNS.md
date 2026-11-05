@@ -1002,7 +1002,7 @@ Qué se muestra:
   con los claims del token.
 * TLS, validación de tokens y compresión en el gateway, sin código en los
   servicios.
-* Validación y saneamiento de cada solicitud antes de que llegue a un servicio,
+* Validación y limpieza de cada solicitud antes de que llegue a un servicio,
   y servicios que solo se alcanzan a través del gateway.
 * Un proxy junto a `Products` que le agrega autenticación y autorización sin
   cambiar su código.
@@ -1044,6 +1044,11 @@ docker compose exec -T api-gateway cat /etc/nginx/tls/gateway.crt > gateway.crt
 alice=$(curl -s -X POST http://localhost:8080/realms/andis/protocol/openid-connect/token \
   -d grant_type=password -d client_id=andis-cli -d scope=openid \
   -d username=alice -d password=Pa55w0rd | jq -r .access_token)
+
+# Dirección para ver el token y verificar su firma en jwt.io. Un token real no se
+# pega en un sitio de terceros: este es de una demo y vence en 15 minutos
+echo "https://www.jwt.io/#token=$alice&publicKey=$(curl -sS http://localhost:8080/realms/andis/protocol/openid-connect/certs \
+  | jq -r '.keys[] | select(.use == "sig") | tostring | @uri')"
 
 # Las Orders de alice, con el token
 curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
@@ -1342,8 +1347,21 @@ mutuo.
 
 ![El sidecar de Products y quién lo llama](assets/20-sidecar.svg)
 
-**Código:** las políticas de autorización, en
-[ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
+Cada solicitud pasa por los filtros de Envoy, en orden: primero `jwt_authn`, que
+verifica el token y guarda sus claims; después `rbac`, que usa esos claims para
+decidir si la deja pasar; y por último `router`, que la envía a `Products`. Si
+un filtro la rechaza, los siguientes no se ejecutan y `Products` no se entera.
+Al terminar, con cualquier resultado, Envoy escribe la línea `[SIDECAR]`.
+
+**Código:** [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) no es
+código, sino configuración, que Envoy lee al arrancar. Tiene tres partes:
+
+* El *listener*: dónde escucha Envoy, en el puerto 9000.
+* Los filtros: qué se hace con cada solicitud, en el orden en que aparecen.
+* Los *clusters*: a quién puede llamar Envoy. Uno es `Products`, en
+  `127.0.0.1:8000`, y el otro es Keycloak, para obtener sus claves públicas.
+
+Las políticas de autorización están en el filtro `rbac`:
 
 ```yaml
 policies:

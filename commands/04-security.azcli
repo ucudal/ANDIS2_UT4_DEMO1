@@ -217,6 +217,16 @@ bob=$(echo "$response" | jq -r .access_token)
 
 echo "$bob" | claims
 
+# Para ver el token y verificar su firma en jwt.io, abrir en el navegador la
+# dirección que muestra el siguiente comando. Lleva el token y la clave pública
+# con la que Keycloak firma, que Keycloak publica en su endpoint certs. jwt.io
+# muestra los claims y dice si la firma es válida. El navegador no envía al
+# servidor lo que va después del #. Aun así, un token real no se pega en un
+# sitio de terceros: este es de una demo y vence en 15 minutos.
+
+echo "https://www.jwt.io/#token=$bob&publicKey=$(curl -sS http://localhost:8080/realms/andis/protocol/openid-connect/certs \
+  | jq -r '.keys[] | select(.use == "sig") | tostring | @uri')"
+
 # Users no guarda contraseñas: la tabla 'users' tiene solo el nombre y el
 # correo. Las contraseñas están en Keycloak.
 
@@ -660,7 +670,8 @@ head -c 5000000 /dev/urandom > "$image"
 # sube a Azurite con su propia clave. Para eso el gateway acepta hasta 20 MB en
 # esta ruta.
 
-curl -sS -w '%{http_code}\n' -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
+curl -sS -w '%{http_code}\n' \
+  -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
   -H "Content-Type: image/jpeg" --data-binary @"$image" | jq
 
 # Products recibió los 5 MB y los tuvo en memoria mientras los subía.
@@ -672,7 +683,8 @@ docker compose logs products-service | grep --color=always '\[VALET KEY\]' | tai
 
 carol=$(token carol)
 
-curl -sS -w '%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
+curl -sS -w '%{http_code}\n' --cacert gateway.crt \
+  -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
   -H "Authorization: Bearer $carol" -H "Content-Type: image/jpeg" --data-binary @"$image" | jq
 
 # Con Valet Key: carol le pide a Products una URL para subir la imagen. Como es
@@ -685,10 +697,12 @@ response=$(curl -sS --cacert gateway.crt -X POST \
 echo "$response" | jq
 url=$(echo "$response" | jq -r .uploadUrl)
 
-# Los parámetros de la firma, en la URL:
+# Los parámetros de la URL, en el orden en que aparecen. Algunos valores están
+# codificados para una URL: %3A es ':', %2B es '+' y %3D es '='.
+# - sv: la versión de la API de Azure Storage con la que se firmó.
+# - se: cuándo vence, en UTC.
 # - sr=b: vale para un solo blob, la imagen de este Product.
 # - sp=cw: permite crear y escribir, no leer.
-# - se: cuándo vence.
 # - sig: la firma, calculada con la clave de la cuenta. Sin la clave no se
 #   puede calcular otra, así que ninguno de los parámetros se puede cambiar.
 
@@ -706,18 +720,20 @@ curl -sS -o /dev/null -w '%{http_code}, %{size_upload} bytes\n' -X PUT "$url" \
 
 curl -sS -w '<!-- HTTP %{http_code} -->' "$url" | xmllint --format -
 
-# Escribir la imagen de otro Product con la misma clave: 403,
+# Escribir la imagen de otro Product con la misma clave: 403 Forbidden,
 # AuthorizationFailure, porque la firma era para otro blob.
 
 curl -sS -w '<!-- HTTP %{http_code} -->' -X PUT "${url/60f7c2b5e1d3c2a1b8e4d124/60f7c2b5e1d3c2a1b8e4d125}" \
   -H "x-ms-blob-type: BlockBlob" --data-binary 'x' | xmllint --format -
 
-# La misma dirección sin la firma: 403. El almacenamiento no es público.
+# La misma dirección sin la firma: 403 Forbidden. El almacenamiento no es
+# público.
 
 curl -sS -w '<!-- HTTP %{http_code} -->' "${url%%\?*}" | xmllint --format -
 
 # El cliente puede pedir una clave que venza antes, con ?seconds=N; nunca
-# después de los 2 minutos. Pedir una de 10 segundos, y usarla enseguida: 201.
+# después de los 2 minutos. Pedir una de 10 segundos, y usarla enseguida: 201
+# Created.
 
 short=$(curl -sS --cacert gateway.crt -X POST \
   -H "Authorization: Bearer $carol" \
@@ -726,8 +742,8 @@ short=$(curl -sS --cacert gateway.crt -X POST \
 curl -sS -o /dev/null -w '%{http_code}\n' -X PUT "$short" \
   -H "x-ms-blob-type: BlockBlob" -H "Content-Type: image/jpeg" --data-binary @"$image"
 
-# Esperar 10 segundos y volver a usarla: 403. Si alguien obtiene la URL, puede
-# usarla solo por poco tiempo, y solo para esa imagen.
+# Esperar 10 segundos y volver a usarla: 403 Forbidden. Si alguien obtiene la
+# URL, puede usarla solo por poco tiempo, y solo para esa imagen.
 
 curl -sS -w '<!-- HTTP %{http_code} -->' -X PUT "$short" -H "x-ms-blob-type: BlockBlob" --data-binary 'x' | xmllint --format -
 
