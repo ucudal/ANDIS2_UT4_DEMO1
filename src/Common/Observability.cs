@@ -25,6 +25,7 @@ public static class ObservabilityExtensions
         // circuito, rechazos del bulkhead y timeouts.
         "Polly",
         ChaosExtensions.MeterName,
+        ExternalConfigurationExtensions.MeterName,
         HealthMetricsPublisher.MeterName
     ];
 

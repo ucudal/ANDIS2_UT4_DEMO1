@@ -1,0 +1,21 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Aplicación" as APP {
+  rectangle "Orders" as O
+  rectangle "RabbitMQ\nexchange andis.events\ncola bridge.erp" as R
+}
+rectangle "Messaging Bridge\nreenvía y traduce" as B
+rectangle "ERP legado" as LEG {
+  rectangle "ActiveMQ\nERP.PEDIDOS\nERP.FACTURAS" as A
+  rectangle "ERP" as E
+}
+O --> R : order.confirmed\nJSON
+R --> B
+B --> A : PEDIDO\nancho fijo
+A --> E
+E --> A : FACTURA\nancho fijo
+A --> B
+B --> R : order.invoiced\nJSON
+R --> O
+@enduml

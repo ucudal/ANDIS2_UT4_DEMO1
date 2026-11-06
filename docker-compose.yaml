@@ -9,6 +9,9 @@ services:
       # ApiGateway/nginxconf/nginx.conf-.
       - "80:80"
       - "443:443"
+      # Strangler Fig: la fachada, con la tabla de rutas que se migra de a una
+      # -ver ApiGateway/nginxconf/nginx.conf-.
+      - "8090:8090"
     depends_on:
       # Solo la entrada HTTPS usa Keycloak, al validar cada token: alcanza con
       # que arranque.
@@ -76,6 +79,7 @@ services:
       UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
       RabbitMq__Host: "rabbitmq"
+      Consul__Url: "http://consul:8500"
       # Transactional Outbox: el relay publica los eventos que quedan en la base.
       Outbox__Enabled: "true"
     ports:
@@ -112,6 +116,7 @@ services:
       UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
       RabbitMq__Host: "rabbitmq"
+      Consul__Url: "http://consul:8500"
       Worker__Enabled: "true"
       Worker__ProcessingDelayMs: "2000"
     deploy:
@@ -143,6 +148,7 @@ services:
       UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
       ProductsService__BaseUrl: "http://products-service:8000/products/"
       RabbitMq__Host: "rabbitmq"
+      Consul__Url: "http://consul:8500"
       Projector__Enabled: "true"
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
@@ -187,6 +193,7 @@ services:
       MONGO_PASSWORD: "Pa55w0rd"
       Redis__Host: "redis"
       RabbitMq__Host: "rabbitmq"
+      Consul__Url: "http://consul:8500"
       # Valet Key: la cuenta de almacenamiento de las imágenes. Products la usa
       # con su clave para firmar las URL que entrega a los clientes, que suben y
       # bajan las imágenes directamente de Azurite, en localhost:10000.
@@ -277,6 +284,69 @@ services:
     command: ["azurite-blob", "--blobHost", "0.0.0.0", "--skipApiVersionCheck", "--loose"]
     ports:
       - "10000:10000"
+
+  # External Configuration Store: la configuración central, en el KV de Consul,
+  # bajo el prefijo andis/. Consola: http://localhost:8500. Sin volumen: si se
+  # recrea el contenedor, el almacén arranca vacío y los servicios usan sus
+  # valores por defecto. Ningún servicio espera a Consul: arrancan sin él.
+  consul:
+    image: hashicorp/consul:1.21
+    command: ["agent", "-dev", "-client", "0.0.0.0", "-log-level", "warn"]
+    ports:
+      - "8500:8500"
+
+  # Messaging Bridge: el broker del ERP legado, con su propia infraestructura de
+  # mensajería. Consola: http://localhost:8161/admin/ -usr: admin pwd: admin-.
+  legacy-broker:
+    image: apache/activemq-classic:6.1.7
+    # La consola trae la directiva upgrade-insecure-requests, que hace que el
+    # navegador pida los enlaces y los estilos por HTTPS, y este puerto solo habla
+    # HTTP. Sin esto, la página de Queues no abre.
+    entrypoint: ["sh", "-c", "sed -i 's/upgrade-insecure-requests; //' /opt/apache-activemq/conf/jetty.xml && exec /usr/local/bin/entrypoint.sh activemq console"]
+    ports:
+      - "8161:8161"
+    healthcheck:
+      # Sano si acepta conexiones en el puerto de sus clientes.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/61616"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Un ERP legado simulado: solo conoce ActiveMQ y sus registros de ancho fijo.
+  legacy-erp:
+    build:
+      context: ./src
+      dockerfile: ./LegacyErp/Dockerfile
+    image: legacy-erp:latest
+    environment:
+      LegacyBroker__Host: "legacy-broker"
+    depends_on:
+      legacy-broker:
+        condition: service_healthy
+
+  # Messaging Bridge: el único componente que conoce los dos brokers. Si uno no
+  # está, los mensajes esperan en el otro.
+  messaging-bridge:
+    build:
+      context: ./src
+      dockerfile: ./MessagingBridge/Dockerfile
+    image: messaging-bridge:latest
+    environment:
+      RabbitMq__Host: "rabbitmq"
+      LegacyBroker__Host: "legacy-broker"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      legacy-broker:
+        condition: service_healthy
+
+  # Strangler Fig: el monolito que se reemplaza. Solo se llega a él a través de
+  # la fachada del gateway, en el puerto 8090.
+  monolith:
+    build:
+      context: ./src
+      dockerfile: ./Monolith/Dockerfile
+    image: monolith:latest
 
   users-db:
     image: postgres:18

@@ -9,6 +9,10 @@ using Ucu.Andis.OrdersService.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// External Configuration Store: la configuración central, en Consul -ver
+// Common/ExternalConfiguration.cs-. Va primero, para que todo lo que sigue la vea.
+builder.AddExternalConfiguration();
+
 // Qué patrones de resiliencia están prendidos -ver Patterns.cs-. Los usan los
 // pipelines de Resilience.cs y la política de throttling.
 builder.Services.AddSingleton<PatternSettings>();
@@ -26,6 +30,10 @@ builder.Services.AddDbContext<OrdersDbContext>(options =>
 // El compartimento se dimensiona por dependencia: Users es rápido y se llama en
 // cada consulta, así que tiene más lugar; Products usa el tamaño por defecto -5
 // en curso y 5 en espera-.
+//
+// External Configuration Store: esta función corre cada vez que se crea un
+// HttpClient, y lee la URL de la configuración. Si la URL cambia en el almacén,
+// el próximo HttpClient ya usa la nueva.
 builder.Services.AddHttpClient("UsersService", client =>
 {
     var baseUrl = builder.Configuration["UsersService:BaseUrl"]

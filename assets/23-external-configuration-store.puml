@@ -1,0 +1,22 @@
+@startuml
+!include PlantUML.style
+participant "Operador" as U
+participant "Consul KV" as C
+participant "Orders" as O
+participant "Cliente" as K
+O -> C : GET /v1/kv/andis/?recurse
+C --> O : valores
+note right of O : Al arrancar, y después\ncada 2 segundos
+K -> O : POST /orders/, cantidad 10
+O --> K : 202 Accepted
+U -> C : PUT andis/Orders/MaxQuantity = 3
+O -> C : GET /v1/kv/andis/?recurse
+C --> O : valores nuevos
+K -> O : POST /orders/, cantidad 10
+O --> K : 400 La cantidad máxima por Order es 3
+note over C : Consul no responde
+O -> C : GET /v1/kv/andis/?recurse
+C --> O : sin respuesta
+K -> O : POST /orders/, cantidad 10
+O --> K : 400, con el último valor leído
+@enduml

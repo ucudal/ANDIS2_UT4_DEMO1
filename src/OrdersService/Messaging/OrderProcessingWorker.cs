@@ -152,7 +152,7 @@ public class OrderProcessingWorker : BackgroundService
         // Transactional Outbox: el evento de Event Sourcing, el cambio de estado y
         // el mensaje para los suscriptores se guardan juntos.
         var outboxMessage = rejection is null
-            ? OutboxMessage.Create(Events.OrderConfirmed, new OrderConfirmed(orderId))
+            ? OutboxMessage.Create(Events.OrderConfirmed, new OrderConfirmed(orderId, order.UserId, order.ProductId, order.Quantity))
             : OutboxMessage.Create(Events.OrderRejected, new OrderRejected(orderId, rejection));
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);

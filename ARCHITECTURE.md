@@ -18,6 +18,7 @@ que implementa están en [PATTERNS.md](PATTERNS.md).
 * [Consistencia de los datos](#consistencia-de-los-datos)
 * [Acoplamiento](#acoplamiento)
 * [Seguridad](#seguridad)
+* [Facilidad de modificación](#facilidad-de-modificación)
 * [Decisiones abiertas a discusión](#decisiones-abiertas-a-discusión)
 
 ## Servicios y datos
@@ -687,6 +688,49 @@ solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
   autentique y que Orders siga decidiendo con los claims qué puede hacer cada
   usuario: esa regla es del negocio. -->
 
+## Facilidad de modificación
+
+Cuatro cambios que la aplicación absorbe sin tocar su lógica de dominio. Cómo se
+implementó cada uno está en
+[PATTERNS.md](PATTERNS.md#demos-de-facilidad-de-modificación).
+
+Cuánto cuesta cada uno, y cómo se midió, está en
+[Tamaño del cambio](PATTERNS.md#tamaño-del-cambio).
+
+Estos son los cambios que los patrones anticipan, no cualquier cambio: qué queda
+afuera de cada uno está en
+[Patrones de facilidad de modificación](PATTERNS.md#patrones-de-facilidad-de-modificación).
+
+| Cambio | Qué se toca | Qué no se toca |
+| ------ | ----------- | -------------- |
+| Agregar una región | Dos líneas en el gateway y un despliegue más de la misma plantilla | Las imágenes de los servicios |
+| Cambiar un límite o un flag | Un valor en Consul | Las imágenes y los contenedores |
+| Integrar un ERP con otro broker | Un puente nuevo, y un suscriptor de la factura | El ERP y el flujo de creación de `Orders` |
+| Migrar una ruta del monolito | Una línea en la tabla de la fachada | Los clientes |
+
+| Componente | Es dueño de | Lo llaman | Llama a |
+| ---------- | ----------- | --------- | ------- |
+| `consul` | La configuración central | `orders-service`, `orders-worker`, `orders-projector`, `products-service` | — |
+| `messaging-bridge` | Nada: reenvía y traduce | RabbitMQ y ActiveMQ le entregan mensajes | RabbitMQ, ActiveMQ |
+| `legacy-erp` | Las facturas | ActiveMQ le entrega mensajes | ActiveMQ |
+| `monolith` | Su propia copia de `Users`, `Products` y `Orders`, en SQLite | gateway, por la fachada | — |
+
+**Para analizar:**
+
+* El gateway ahora es a la vez el enrutador de los *stamps* y la fachada del
+  monolito. ¿Qué riesgo tiene eso para la disponibilidad?
+  <!-- → Es un punto único de falla que crece en responsabilidades: si se cae, se
+  caen todos los stamps y la migración. Se mitiga con varias réplicas y, en
+  producción, con un servicio global como Azure Front Door o Amazon CloudFront. -->
+* ¿Qué valores de la aplicación no pondrían en el almacén de configuración?
+  <!-- → Los secretos, que van en un almacén con control de acceso y auditoría; y
+  lo que tiene que cambiar junto con el código, porque un valor nuevo con una
+  imagen vieja rompe. -->
+* Si se agregara un tercer sistema legado, ¿otro puente o el mismo?
+  <!-- → Depende de si comparte broker. Un puente por par de infraestructuras
+  mantiene aislados los formatos y las fallas; uno solo centraliza la operación,
+  pero tiende a volverse un bus con lógica de negocio. -->
+
 ## Decisiones abiertas a discusión
 
 Algunas decisiones simplifican la demo y no son las que se tomarían en
@@ -707,6 +751,10 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
 | Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
 | Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de Azurite y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
+| Consul en modo desarrollo, en un solo nodo y sin persistencia | Arranca con un comando | Si se vuelve a crear el contenedor, se pierden los valores; si se cae, nadie recibe cambios | — |
+| Una sola instancia del puente | Se conserva el orden de los pedidos | Si se cae, los mensajes esperan hasta que vuelva | — |
+| Los *stamps* solo en la entrada HTTP | La segunda copia no necesita *sidecar* | La entrada HTTPS atiende siempre a la primera copia | — |
+| La migración del monolito no sincroniza los datos | La demo se concentra en el enrutamiento | Durante la convivencia, los dos sistemas pueden responder distinto | [Strangler Fig](PATTERNS.md#strangler-fig) lo muestra y explica cómo resolverlo |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de Docker, sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 

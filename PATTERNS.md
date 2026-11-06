@@ -32,6 +32,14 @@
     * [Sidecar](#sidecar)
     * [Valet Key](#valet-key)
 * [Demos de facilidad de modificación](#demos-de-facilidad-de-modificación)
+  * [Qué agrega a las demos de seguridad](#qué-agrega-a-las-demos-de-seguridad)
+  * [Patrones de facilidad de modificación](#patrones-de-facilidad-de-modificación)
+    * [Deployment Stamps](#deployment-stamps)
+    * [External Configuration Store](#external-configuration-store)
+    * [Messaging Bridge](#messaging-bridge)
+    * [Strangler Fig](#strangler-fig)
+  * [Antes y después en Grafana](#antes-y-después-en-grafana)
+  * [Tamaño del cambio](#tamaño-del-cambio)
 * [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
 * [Cobertura](#cobertura)
 
@@ -1464,30 +1472,665 @@ imágenes que entrega Products", las URL firmadas.
 
 ## Demos de facilidad de modificación
 
-Escenario: operar para varias regiones o clientes, centralizar la configuración,
-integrarse con un sistema legado y migrar funcionalidad de un monolito.
+**Estado: implementada en este repositorio, sobre las demos de seguridad.**
+
+Escenario: la aplicación crece y tiene que cambiar sin detenerse. Hay que operar
+en otra región, ajustar su comportamiento sin redesplegar, integrarse con un
+sistema legado que no se puede tocar y retirar un monolito de a poco.
 
 Qué se muestra:
 
-* Una copia completa de la aplicación por región o cliente, con enrutamiento
-  dirigido.
-* Configuración central con recarga dinámica.
-* Un puente de mensajería entre la aplicación y un sistema legado simulado.
+* Una copia completa de la aplicación por región, con enrutamiento dirigido.
+* Configuración central que se recarga sin reiniciar.
+* Un puente de mensajería entre la aplicación y un ERP legado simulado.
 * Migración progresiva de rutas desde un monolito.
 
-Patrones cubiertos:
+Resultado observable: una segunda copia que no comparte datos ni fallas con la
+primera, cambios de configuración sin reiniciar ningún contenedor, una `Order`
+que se factura en un ERP aunque el broker del ERP haya estado caído, y un monolito
+que se apaga sin que el cliente lo note.
 
-* **Deployment Stamps**: dos copias de la aplicación; el gateway elige una según
-  un encabezado de región o cliente.
-* **External Configuration Store**: URLs, límites y *feature flags* en un
-  almacén central que se recarga sin redesplegar.
-* **Messaging Bridge**: traduce los eventos de `Orders` al formato de un ERP
-  legado simulado, y viceversa.
-* **Strangler Fig**: un monolito que atiende `Users`, `Products` y `Orders`; el
-  gateway desvía ruta por ruta hacia los microservicios hasta reemplazarlo.
+### Qué agrega a las demos de seguridad
 
-Resultado observable: despliegues independientes por región, cambios de
-configuración sin redespliegue y convivencia ordenada con sistemas existentes.
+| Componente | Para qué |
+| ---------- | -------- |
+| [docker-compose.stamps.yaml](docker-compose.stamps.yaml) | Una segunda copia de la aplicación, con los mismos servicios y sus propias bases, RabbitMQ, Redis y Azurite. Se levanta solo para la demo 22. |
+| Encabezado `X-Region` | El gateway envía `br` a la segunda copia, y cualquier otro valor a la primera. Responde cuál atendió en `X-Stamp`. Solo en la entrada HTTP. |
+| `consul` | El almacén de configuración, con la consola en <http://localhost:8500>. |
+| `legacy-broker` | ActiveMQ, el broker del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
+| `legacy-erp` | Un ERP simulado, en [LegacyErp/Program.cs](src/LegacyErp/Program.cs). |
+| `messaging-bridge` | El puente entre RabbitMQ y ActiveMQ, en [MessagingBridge/](src/MessagingBridge). |
+| `monolith` | El sistema que se reemplaza, en [Monolith/Program.cs](src/Monolith/Program.cs). |
+| Fachada del gateway | `http://localhost:8090`, con la tabla de rutas en [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
+
+### Patrones de facilidad de modificación
+
+Cada patrón tiene un script en [demos/](demos), del `22` al `25`, y un paso a
+paso en [commands/05-modifiability.azcli](commands/05-modifiability.azcli). Los
+*logs* de Docker muestran los eventos con una etiqueta: `[EXTERNAL CONFIG]` en
+los servicios, `[MESSAGING BRIDGE]` en `messaging-bridge` y en
+`orders-projector`, `[ERP]` en `legacy-erp` y `[STRANGLER]` en `api-gateway`.
+
+Estas demos no se conectan a ninguna nube: corren con Docker. Cada patrón nombra
+los servicios equivalentes de Azure y de AWS. Cómo verlos bajo carga está en
+[Antes y después en Grafana](#antes-y-después-en-grafana), y cuánto cuesta cada
+cambio, en [Tamaño del cambio](#tamaño-del-cambio).
+
+Ningún patrón hace que una aplicación sea fácil de cambiar en general. Cada uno
+apuesta a un tipo de cambio: reduce algunos costos, deja igual a otros y hasta
+puede encarecer alguno. Por eso, antes de elegir un patrón hay que preguntarse
+qué es probable que cambie: en un escenario de calidad -UT1-, ese cambio es el
+estímulo. Cada patrón indica qué cambios anticipa y cuáles no.
+
+#### Deployment Stamps
+
+**Contexto:** una aplicación de software como servicio —SaaS— atiende a muchos
+clientes -*tenants*- con la misma aplicación, y al principio un solo despliegue
+alcanza para todos. Con el tiempo, esos clientes dejan de ser iguales: están en
+otros países, consumen mucho más que el resto o exigen no compartir
+infraestructura. Entonces conviene repartirlos entre varias copias de la
+aplicación, de modo que cada copia atienda solo a una parte de ellos. Azure
+llama a cada copia *stamp* o *scale unit*, y AWS, *cell*. El reparto puede
+seguir distintos criterios; esta demo usa la geografía: la aplicación empieza a
+operar en Brasil, y esos clientes se atienden en una copia propia, en esa
+región. La demo no modela clientes: enruta por región.
+
+**Problema:** en una aplicación SaaS desplegada una sola vez una falla o un mal
+despliegue afecta a todos los clientes. Además, cada recurso tiene un límite de
+escala, y los datos de un cliente pueden tener que quedar en su región.
+
+**Implementación:** la aplicación se despliega varias veces a partir de la misma
+plantilla. Cada copia -un *stamp*- es independiente, con sus propios datos, y un
+componente global elige a cuál va cada solicitud.
+
+* **La plantilla:** cada servicio de
+  [docker-compose.stamps.yaml](docker-compose.stamps.yaml) extiende al de
+  [docker-compose.yaml](docker-compose.yaml) con `extends`. Son las mismas
+  imágenes y la misma configuración; solo cambian los nombres con los que las
+  piezas de la copia se encuentran.
+* **El enrutamiento:** dos tablas `map` de
+  [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf) traducen
+  `X-Region` al prefijo de los contenedores. Agregar una región es agregar una
+  línea a esas tablas y desplegar otra copia.
+* **Lo que queda fuera:** el gateway, Keycloak y Consul son globales.
+* **Azurite:** cada copia tiene el suyo. El de la segunda copia es el único
+  componente con un puerto publicado, el 10001, porque con
+  [Valet Key](#valet-key) los clientes le hablan directamente.
+
+En Azure, el enrutamiento global lo haría Azure Front Door, y en AWS, Amazon
+CloudFront o Amazon Route 53. La plantilla sería Bicep o AWS CloudFormation.
+
+No es lo mismo que [Geode](https://learn.microsoft.com/en-us/azure/architecture/patterns/geodes):
+ahí cualquier copia atiende a cualquier usuario, y acá cada *stamp* atiende solo a
+los suyos.
+
+**Cómo funciona:**
+
+![Dos copias de la aplicación detrás de componentes
+globales](assets/22-deployment-stamps.svg)
+
+**Código:** el enrutamiento, en
+[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+
+```nginx
+map $http_x_region $stamp_prefix {
+    default "";
+    br      "stamp-b-";
+}
+
+set $orders_service ${stamp_prefix}orders-service:8000;
+```
+
+**Cómo verlo:**
+[demos/22-deployment-stamps.sh](demos/22-deployment-stamps.sh) despliega la
+segunda copia y hace la misma solicitud a cada región. Crea una `Order` en la
+región `br`, que solo aparece en esa copia y que procesa su propio *worker*. Sube
+una imagen a la región `br`: esa región responde `302 Found` y la otra,
+`404 Not Found`. Después hace fallar a `Products` en la región `br`, y la otra
+sigue respondiendo. Al terminar, elimina la copia con sus datos.
+
+**Qué cambios anticipa:**
+
+| Cambio | ¿Lo anticipa? | Qué implica |
+| ------ | ------------- | ----------- |
+| Agregar una región o un grupo de clientes | Sí | Dos líneas en `nginx.conf` y otra copia de la plantilla |
+| Dedicarle una copia a un cliente | En parte | La plantilla sirve, pero la demo enruta por región: faltaría la tabla de cliente a *stamp* |
+| Mover un cliente a otro *stamp* | No | Hay que migrar sus datos sin cortar el servicio |
+| Cambiar la lógica o el esquema de un servicio | No | El patrón lo encarece: hay que aplicarlo en cada copia |
+| Agregar una consulta que cruce regiones | No | Los datos de una copia no se ven desde otra: hay que consultar cada una y reunir los resultados |
+| Cambiar el gateway, Keycloak o Consul | No | Son globales: el cambio alcanza a todas las copias a la vez |
+
+**Ventajas y desventajas:**
+
+| Decisión | Una opción | La otra |
+| -------- | ---------- | ------- |
+| Cómo se despliega | Una sola vez, escalando: más simple y barato, pero con mayor radio de explosión y sujeto a los límites de cada recurso | *Stamps*: fallas acotadas, escala por unidades y residencia de datos, a cambio de más costo y operación, y consultas globales difíciles |
+| Dónde va cada recurso | Global: una sola fuente de verdad y menos costo, pero es un punto de falla común | Por *stamp*: aislamiento, a cambio de más piezas y de datos que no se ven entre copias |
+| Qué pasa con cada cliente | Asignación fija: simple, pero un *stamp* puede quedar desbalanceado | Se lo puede mover de *stamp*: mejor balance, pero hay que migrar sus datos sin cortar el servicio |
+
+En esta demo, el gateway global es el punto débil: si se cae, se caen todas las
+copias. En producción, ese componente es un servicio con alta disponibilidad
+propia.
+
+**Multi-tenancy:** cómo compartir la aplicación entre *tenants* es una decisión
+distinta, aunque relacionada: dentro de un *stamp* puede haber un cliente o miles.
+No se implementa en la demo y no es parte del programa de la UT4, pero es la
+pregunta que aparece enseguida al elegir cómo aislar los datos. Los modelos, de
+menor a mayor aislamiento:
+
+| Modelo | Aislamiento | Costo por cliente | Se usa cuando |
+| ------ | ----------- | ----------------- | -------------- |
+| Base compartida, con una columna de cliente | Lógico: un filtro olvidado expone datos de otro cliente; se mitiga con seguridad a nivel de fila | El más bajo | Muchos clientes chicos |
+| Un esquema por cliente | Medio: hay que aplicar cada migración en todos los esquemas | Bajo | Clientes medianos, en cantidad acotada |
+| Una base por cliente | Alto: respaldo y restauración por cliente | Medio | Hay requisitos de aislamiento o de cumplimiento |
+| Un *stamp* por cliente | Total: tampoco hay vecino ruidoso | El más alto | Clientes grandes o regulados |
+| Mixto | *Stamps* compartidos para la mayoría y dedicados para algunos | Variable | Es lo más frecuente en SaaS; el enrutador necesita una tabla de cliente a *stamp* |
+
+La demo enruta por región, pero por cliente sería igual: el gateway buscaría el
+*stamp* en esa tabla, a partir de un claim del token o del subdominio.
+
+> [!TIP]
+>
+> Consulta [Deployment Stamps
+> pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/deployment-stamp)
+> para tener más información sobre el patrón, [Architect multitenant solutions on
+> Azure](https://learn.microsoft.com/en-us/azure/architecture/guide/multitenant/overview)
+> y [Tenancy models for a multitenant
+> solution](https://learn.microsoft.com/en-us/azure/architecture/guide/multitenant/considerations/tenancy-models)
+> sobre multi-tenancy, y [Architectural approaches for governance and compliance in
+> multitenant solutions](https://learn.microsoft.com/en-us/azure/architecture/guide/multitenant/approaches/governance-compliance)
+> sobre la residencia de datos. En AWS, consulta [Reducing the Scope of Impact with
+> Cell-Based Architecture](https://docs.aws.amazon.com/wellarchitected/latest/reducing-scope-of-impact-with-cell-based-architecture/reducing-scope-of-impact-with-cell-based-architecture.html)
+> para el patrón equivalente, y [Guidance for Multi-Tenant Architectures on
+> AWS](https://docs.aws.amazon.com/solutions/multi-tenant-architectures-on-aws/)
+> sobre multi-tenancy.
+
+#### External Configuration Store
+
+**Problema:** si la configuración está en la imagen o en las variables de entorno
+de cada contenedor, cambiar un límite obliga a redesplegar, cada réplica puede
+quedar con un valor distinto y nadie ve la configuración completa en un solo lugar.
+
+**Qué es Consul:** una herramienta de HashiCorp para coordinar servicios en
+sistemas distribuidos. Ofrece descubrimiento de servicios, chequeos de salud, un
+almacén clave-valor y una *service mesh*. Esta demo usa solo el almacén clave-valor
+-KV-, con una API HTTP y una consola web en <http://localhost:8500>:
+
+```bash
+# Guarda un valor. Para la aplicación, es Orders:MaxQuantity
+curl -X PUT http://localhost:8500/v1/kv/andis/Orders/MaxQuantity -d 3
+```
+
+Para la demo local se eligió Consul porque corre en un contenedor, sin cuentas
+ni credenciales, y tiene consola para mostrar los valores en clase.
+
+**Implementación:** el almacén es una fuente más de `IConfiguration`, en
+[Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs):
+
+* El método `AddExternalConfiguration` de la clase
+  `ExternalConfigurationExtensions` agrega al almacén como la última fuente:
+  gana sobre `appsettings.json` y las variables de entorno, que quedan como
+  valores por defecto.
+* La clase `ConsulConfigurationPoller` llama cada 2 segundos al método
+  `RefreshAsync` de la clase `ConsulConfigurationProvider`.
+* Si Consul no responde, se siguen usando los últimos valores. Un proceso que
+  arranca con Consul caído usa sus valores por defecto.
+
+El código que usa la configuración no sabe de dónde viene el valor, pero tiene
+que leerla en cada uso, y no guardarla al arrancar. Los valores de la demo:
+
+| Clave en Consul | Quién la usa | Para qué |
+| --------------- | ------------ | -------- |
+| `andis/Orders/MaxQuantity` | El método `CreateOrder` de la clase `OrdersController` | Límite: cuántas unidades de un `Product` se pueden pedir en una `Order`. Sin valor, no hay límite |
+| `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | Feature flag: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
+| `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de Redis |
+| `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [OrdersService/Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
+
+**Cómo funciona:**
+
+![Orders lee el almacén y sigue funcionando si no
+responde](assets/23-external-configuration-store.svg)
+
+**Código:**
+
+![Clases del proveedor de
+configuración](assets/23-external-configuration-store-clases.svg)
+
+**Cómo verlo:**
+[demos/23-external-configuration-store.sh](demos/23-external-configuration-store.sh)
+cambia cada valor de la tabla en Consul y muestra el efecto: una `Order` de 10
+unidades pasa de `202 Accepted` a `400 Bad Request`, el detalle gana una columna de
+precio, la caché dura 5 segundos y `Orders` deja de llegar a `Products` y vuelve.
+Después pausa Consul, y el límite sigue vigente. Al final muestra que cada proceso
+se enteró del cambio por su cuenta y que ningún contenedor se reinició.
+
+**Qué cambios anticipa:**
+
+| Cambio | ¿Lo anticipa? | Qué implica |
+| ------ | ------------- | ----------- |
+| Cambiar un límite, una duración o una URL que ya tiene clave | Sí | Un valor en Consul, sin reiniciar |
+| Prender o apagar una *feature* cuyo código ya está | Sí | Un valor en Consul |
+| Volver configurable un valor nuevo | No | Hay que cambiar el código para que lo lea, y redesplegar |
+| Agregar un comportamiento que no estaba previsto | No | Es un cambio de código: el almacén elige entre lo que ya existe |
+| Cambiar un valor junto con una versión del código | No | El valor y la imagen no se despliegan juntos: un valor nuevo con una imagen vieja puede romper |
+
+**Ventajas y desventajas:**
+
+| Decisión | Una opción | La otra |
+| -------- | ---------- | ------- |
+| Dónde está la configuración | Variables de entorno: sin componentes nuevos y con el valor versionado junto al despliegue, pero cambiarla exige reiniciar | Almacén central: cambios en vivo y un solo lugar, a cambio de otro componente, y de que un error se propaga enseguida a todos |
+| Cómo se entera cada proceso | *Polling*: simple y fácil de seguir, con hasta 2 segundos de demora y consultas sin novedades | Notificaciones o consultas bloqueantes de Consul: enseguida y sin consultas de más, pero con conexiones abiertas y más código |
+
+El almacén de la demo no guarda secretos: para eso están Azure Key Vault y AWS
+Secrets Manager, con control de acceso y auditoría.
+
+> [!TIP]
+>
+> Consulta [External Configuration Store
+> pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/external-configuration-store)
+> para tener más información sobre el patrón, y la [documentación de
+> Consul](https://developer.hashicorp.com/consul/docs) sobre el almacén
+> clave-valor.
+
+#### Messaging Bridge
+
+**Problema:** dos sistemas usan infraestructuras de mensajería distintas y no se
+pueden cambiar. Integrarlos por HTTP obliga a modificar a los dos, los acopla en
+el tiempo y hay que construir los reintentos a mano.
+
+**Qué es ActiveMQ:** un broker de mensajes de código abierto de Apache
+Foundation, escrito en Java. Es un intermediario que recibe mensajes, los guarda
+y los entrega, para que quien envía y quien recibe no tengan que estar
+disponibles al mismo tiempo. Implementa JMS, la API estándar de mensajería de
+Java, y por eso es común en sistemas corporativos antiguos. Tiene dos variantes:
+Classic, la que usa la demo, y Artemis, la de nueva generación.
+
+* **Colas y tópicos:** el mensaje de una cola lo recibe un solo consumidor, y el
+  de un tópico todos los suscriptores. La demo usa colas.
+* **Confirmaciones:** si el consumidor no confirma un mensaje, el broker lo
+  vuelve a entregar.
+* **Persistencia:** los mensajes persistentes se guardan en disco y sobreviven a
+  un reinicio del broker.
+* **Protocolos:** el nativo es OpenWire, y también admite AMQP, STOMP y MQTT.
+* **Clientes:** desde .NET se usa Apache NMS.
+
+Un envío, en el método `SendToErpAsync` de la clase `OrdersToErpBridge`:
+
+```csharp
+var connection = await _legacyBroker.GetConnectionAsync();
+using var session = await connection.CreateSessionAsync();
+using var queue = await session.GetQueueAsync(LegacyBroker.OrdersQueue);
+using var producer = await session.CreateProducerAsync(queue);
+producer.DeliveryMode = MsgDeliveryMode.Persistent;
+await producer.SendAsync(await session.CreateTextMessageAsync(record));
+```
+
+La consola, en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-,
+muestra las colas y sus mensajes.
+
+| | RabbitMQ | ActiveMQ Classic |
+| - | -------- | ---------------- |
+| Ecosistema | Erlang, muchos lenguajes | Java, JMS |
+| Protocolo nativo | AMQP 0-9-1 | OpenWire |
+| Modelo | Se publica a un exchange, que enruta a las colas | Se publica directamente a una cola o a un tópico |
+| En la demo | La mensajería de la aplicación | La mensajería del ERP |
+
+Ninguno es mejor por sí mismo. La demo necesita dos brokers porque el patrón
+existe para conectar infraestructuras incompatibles: con uno solo no habría nada
+que puentear. En Azure, el lado moderno sería Azure Service Bus, y en AWS,
+Amazon SQS; Amazon MQ ofrece ActiveMQ administrado.
+
+**El ERP simulado:** [LegacyErp/Program.cs](src/LegacyErp/Program.cs) representa
+el sistema que no se puede cambiar. Simula la creación de una factura para cada
+orden de compra. No conoce RabbitMQ, ni JSON, ni la aplicación, y no comparte
+código con ella: solo sabe leer pedidos de la cola `ERP.PEDIDOS` de ActiveMQ y
+escribir facturas en la cola `ERP.FACTURAS`. El método `ExecuteAsync` de la
+clase `Erp` repite este ciclo:
+
+1. Espera un mensaje en `ERP.PEDIDOS`.
+2. Valida que sea un registro de orden de pedido.
+3. Arma la factura con el número de orden, un número de factura y la fecha.
+4. Envía la factura a `ERP.FACTURAS`.
+
+Tres detalles del ciclo:
+
+* **Consumidor suscripto:** no consulta la cola cada tanto. El broker le entrega
+  cada mensaje en cuanto llega, y la espera de 1 segundo solo sirve para revisar
+  si el servicio se está deteniendo.
+* **Transacción:** el pedido se consume y la factura se envía juntos, o nada. Si
+  el ERP se cae en el medio, el broker vuelve a entregar el pedido.
+* **Registros inválidos:** solo se registra un aviso y el mensaje se descarta,
+  sin reintentos ni cola de errores.
+
+**Implementación:** el único componente que conoce los dos brokers es
+`messaging-bridge`:
+
+* **De RabbitMQ a ActiveMQ:** la clase `OrdersToErpBridge`, en
+  [MessagingBridge/OrdersToErpBridge.cs](src/MessagingBridge/OrdersToErpBridge.cs),
+  es un suscriptor más de `order.confirmed`, con su cola `bridge.erp`. `Orders` no
+  sabe que existe.
+* **De ActiveMQ a RabbitMQ:** la clase `ErpToOrdersBridge`, en
+  [MessagingBridge/ErpToOrdersBridge.cs](src/MessagingBridge/ErpToOrdersBridge.cs),
+  lee las facturas y publica `order.invoiced`. El método `ApplyAsync` de la clase
+  `OrderDetailsProjector` la agrega al historial de la `Order`.
+* **Entrega al menos una vez:** el puente confirma en un broker recién después de
+  que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente se cae
+  en el medio, el mensaje se repite: el ERP emite la misma factura, porque su número
+  sale del pedido, y `Orders` no la registra dos veces.
+
+`Orders` cambió en dos cosas, aunque el patrón busca no tocar los sistemas: el
+evento `OrderConfirmed` suma campos opcionales con los datos de la `Order`, y
+`OrderDetailsProjector` registra la factura. El ERP, en cambio, no cambió.
+
+**Puente y traductor:** en el catálogo de Azure, el puente reenvía los mensajes sin
+cambiar su contenido. Acá los sistemas además hablan formatos distintos: JSON y
+registros de ancho fijo. Esa traducción es otro patrón, Message Translator, de
+*Enterprise Integration Patterns*, ajeno al programa de la UT4. Por eso está
+aparte, en la clase `ErpFormat`, en
+[MessagingBridge/ErpFormat.cs](src/MessagingBridge/ErpFormat.cs): las clases que
+reenvían no conocen los formatos.
+
+```text
+PEDIDO  00000000040000000260f7c2b5e1d3c2a1b8e4d12400001
+FACTURA 0000000004F0000000004 20261105
+```
+
+**Cómo funciona:**
+
+![El puente entre RabbitMQ y ActiveMQ, en los dos
+sentidos](assets/24-messaging-bridge.svg)
+
+**Código:**
+
+![Clases del puente](assets/24-messaging-bridge-clases.svg)
+
+**Cómo verlo:**
+[demos/24-messaging-bridge.sh](demos/24-messaging-bridge.sh) crea una `Order` para
+el `User` 2 y muestra su historial con `OrderInvoiced`, y el registro de ancho fijo
+que pasó por el puente. Después detiene ActiveMQ y crea otra `Order`: se confirma
+igual, y su mensaje espera en la cola `bridge.erp`. Cuando ActiveMQ vuelve, el
+mensaje se entrega y la `Order` se factura.
+
+**Qué cambios anticipa:**
+
+| Cambio | ¿Lo anticipa? | Qué implica |
+| ------ | ------------- | ----------- |
+| Cambiar el formato de los registros del ERP | Sí | Solo la clase `ErpFormat` |
+| Reemplazar ActiveMQ por otro broker | Sí | Solo `messaging-bridge`; `Orders` no se entera |
+| Cambiar el flujo interno de `Orders` | Sí | El ERP no se entera, mientras `Orders` siga publicando `order.confirmed` |
+| Reenviar otro evento | En parte | Otro suscriptor en el puente, sin tocar a quien lo publica, pero el ERP tiene que entenderlo |
+| Enviarle al ERP un dato que el evento no trae | No | Hay que cambiar el evento y a `Orders`: ya pasó con `OrderConfirmed` |
+| Necesitar una respuesta inmediata del ERP | No | El puente es asíncrono: haría falta otra integración |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Puente | No cambia a los sistemas, tolera caídas y permite migrar de a poco | Un componente más, sin *features* que no existan en los dos brokers, y duplicados que hay que tolerar. El de la demo es una sola instancia |
+| Integración directa por HTTP | Sin componentes nuevos, respuesta inmediata | Hay que modificar los dos sistemas, los acopla en el tiempo y los reintentos son a mano |
+| Cambiar el ERP para que use RabbitMQ | Una sola infraestructura | Muchas veces es imposible, y siempre es lo más caro y riesgoso |
+
+> [!TIP]
+>
+> Consulta [Messaging Bridge
+> pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/messaging-bridge)
+> para tener más información sobre el patrón, la [documentación de ActiveMQ
+> Classic](https://activemq.apache.org/components/classic/documentation) sobre el
+> broker, y [Message
+> Translator](https://www.enterpriseintegrationpatterns.com/patterns/messaging/MessageTranslator.html)
+> sobre la traducción.
+
+#### Strangler Fig
+
+**Problema:** reemplazar un monolito de una sola vez es riesgoso: el sistema
+viejo sigue cambiando mientras se escribe el nuevo, todo el riesgo se concentra
+en el día de la migración, y no hay valor hasta el final.
+
+**El monolito simulado:** [Monolith/Program.cs](src/Monolith/Program.cs)
+representa lo que la aplicación habría sido antes de separarse en servicios: un
+solo proceso y una sola base, sin patrones. Ofrece las mismas rutas de los
+microservicios que usa la demo, con los mismos contratos, para que el cliente no
+note quién le responde:
+
+| Datos | Qué se puede hacer |
+| ----- | ------------------ |
+| `Users` | Consultar y modificar usuarios, por SOAP, con la interfaz `IUserService` |
+| `Products` | Listar, consultar uno y modificar el nombre y el precio de un producto |
+| `Orders` | Listar, crear y consultar el detalle de las órdenes de pedido de un `User` |
+
+Tres detalles que lo diferencian de los microservicios:
+
+* **Una sola base:** un archivo SQLite dentro del contenedor, con los mismos
+  datos iniciales que los microservicios. Al recrear el contenedor, vuelve a ese
+  estado.
+* **El detalle de las `Orders`:** es un JOIN entre tres tablas. Esa es la
+  comodidad que se pierde al separar los datos, y por la que `Orders` llama a
+  `Users` y a `Products` por HTTP en los microservicios.
+* **Crear una `Order`:** se crea y se confirma en una sola transacción, sin
+  colas ni *workers*.
+
+**Implementación:** una fachada recibe todas las solicitudes y desvía cada ruta
+al monolito o al servicio que la reemplaza. El nombre del patrón viene de la
+higuera estranguladora, que crece alrededor de un árbol hasta reemplazarlo.
+
+* **La fachada:** un tercer `server` de
+  [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), en el
+  puerto 8090. Responde quién atendió en `X-Served-By`.
+* **La tabla de rutas:**
+  [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf).
+  Migrar una ruta es cambiar una línea y recargar nginx, sin cortar el servicio.
+  Volver atrás es lo mismo.
+
+En Azure, la fachada podría ser Azure API Management o Azure Front Door, y en
+AWS, Amazon API Gateway.
+
+**Cómo funciona:**
+
+![La fachada desvía las rutas del monolito a los
+servicios](assets/25-strangler-fig.svg)
+
+**Código:** la tabla de rutas al principio, en
+[ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf):
+
+```nginx
+set $users_route    monolith:8000;
+set $products_route monolith:8000;
+set $orders_route   monolith:8000;
+```
+
+**Cómo verlo:** [demos/25-strangler-fig.sh](demos/25-strangler-fig.sh) hace las
+mismas solicitudes mientras migra `Products`, `Users` y `Orders`, de a una, y
+muestra quién atiende cada ruta. A mitad de camino cambia el nombre de un `Product`
+por la fachada: lo recibe el microservicio, y el JOIN del monolito sigue mostrando
+el nombre viejo. Es el costo de la convivencia. Al final apaga el monolito, y las
+solicitudes siguen respondiendo. Al terminar, deja la fachada como estaba.
+
+**Qué cambios anticipa:**
+
+| Cambio | ¿Lo anticipa? | Qué implica |
+| ------ | ------------- | ----------- |
+| Migrar una ruta completa, o volverla atrás | Sí | Una línea en la tabla de rutas |
+| Apagar el monolito | Sí | Nada, cuando ya no le quedan rutas |
+| Migrar solo una parte de una ruta | En parte | Una entrada nueva en la tabla y otro `location` en la fachada |
+| Cambiar el contrato de una ruta | No | La fachada no traduce: los clientes lo notan |
+| Cambiar un dato que los dos sistemas leen | No | Los datos divergen hasta resolver la sincronización |
+
+A diferencia de los otros tres, este patrón anticipa un solo cambio: reemplazar el
+monolito. Cuando termina, la fachada y su tabla de rutas ya no hacen falta.
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Migración progresiva | Riesgo acotado por ruta, marcha atrás inmediata y valor desde la primera ruta | Dos sistemas conviviendo, datos que hay que sincronizar y una fachada que es un punto de falla |
+| Reescritura completa | Sin convivencia ni sincronización | Todo el riesgo junto, sin valor hasta el final, y el sistema viejo sigue cambiando mientras tanto |
+
+La demo no sincroniza los datos: los dos sistemas arrancan con los mismos, y por eso
+responden igual a las consultas. Tampoco es igual todo el comportamiento: el
+monolito confirma la `Order` al crearla, y `Orders` lo hace después.
+
+**Cómo resolver la divergencia de datos:** en la demo, el nombre de un `Product`
+cambia en MongoDB, y el JOIN del monolito sigue leyendo su copia en SQLite. La
+regla de fondo es que cada dato tenga un solo dueño en cada momento: quien lo
+escribe. Las demás copias son de lectura y se actualizan desde ese dueño. Las
+formas de lograrlo, de más simple a más invasiva para el monolito:
+
+| Solución | Cómo funciona | A favor | En contra |
+| -------- | ------------- | ------- | ---------- |
+| El monolito le pregunta al servicio | Al migrar `Products`, el monolito deja de leer su tabla y llama a `Products` por HTTP | No hay copia, así que no hay divergencia | Hay que cambiar el monolito, se pierde el JOIN, y depende de que `Products` responda |
+| Base compartida durante la transición | El servicio nuevo usa la base del monolito, y se separa después | No hay divergencia y se migra primero el código | Acopla el servicio al esquema del monolito, y la separación queda pendiente |
+| Sincronización con eventos | El monolito se suscribe a `product.updated` y actualiza su copia | Reutiliza la mensajería, y `Products` no conoce al monolito | Hay que cambiar el monolito, y la consistencia es eventual |
+| Captura de cambios | Una herramienta como Debezium lee el log de la base del dueño y aplica los cambios en la otra | No cambia el código del sistema de origen | Otra infraestructura que operar, y hay que traducir entre esquemas |
+| Escritura doble | Cada escritura va a las dos bases | Parece lo más simple | Si falla la segunda escritura, las bases divergen sin aviso; no se recomienda sin un [Transactional Outbox](#transactional-outbox) |
+
+Para esta aplicación, la opción con mejor relación entre costo y resultado es
+sincronizar con eventos: `Products` ya publica `product.updated`, y al monolito le
+alcanzaría un consumidor con su propia cola. Habría que ampliar el evento, porque
+hoy trae el nombre pero no el precio.
+
+El dato también cambia de dueño en algún momento. Una secuencia habitual:
+
+1. Copiar los datos históricos a la base nueva.
+2. Sincronizar los cambios del monolito hacia el servicio, que todavía es solo de
+   lectura.
+3. Comparar las respuestas de los dos: la fachada envía las lecturas a ambos, y
+   solo devuelve la del monolito.
+4. Pasar las escrituras al servicio, que se vuelve el dueño, e invertir la
+   sincronización mientras el monolito siga leyendo ese dato.
+5. Retirar la sincronización y la tabla del monolito.
+
+Los identificadores requieren un cuidado aparte. Si `Orders` y el monolito crean
+`Orders` a la vez, los dos generan el mismo id para `Orders` distintas: hay que
+reservar rangos distintos o usar identificadores globales, como un UUID.
+
+En producción, Azure Database Migration Service y AWS Database Migration Service
+hacen la copia inicial y la replicación continua de los cambios.
+
+> [!TIP]
+>
+> Consulta [Strangler Fig
+> pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/strangler-fig)
+> para tener más información sobre el patrón, y [Strangler Fig
+> Application](https://martinfowler.com/bliki/StranglerFigApplication.html), de
+> Martin Fowler, sobre el origen del nombre, y la [documentación de
+> Debezium](https://debezium.io/documentation/) sobre la captura de cambios.
+
+### Antes y después en Grafana
+
+El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes ni
+reinicios. Para mostrarlo, [demos/load-modifiability.sh](demos/load-modifiability.sh)
+lanza un escenario de k6 y hace los cambios mientras corre. Cada cambio queda
+marcado con una línea vertical en el dashboard, con una anotación de Grafana,
+para distinguir el antes y el después. Los scripts del `22` al `25` también marcan
+sus pasos si Grafana está levantado.
+
+```bash
+docker compose --profile observability up -d --wait
+./demos/load-modifiability.sh strangler   # también: config, bridge, stamps
+```
+
+Los paneles están en la fila "Facilidad de modificación: antes y después". Estos
+resultados son de una corrida en una sola máquina, con pocas solicitudes por
+segundo: ilustran el efecto y no son una prueba de rendimiento.
+
+| Patrón | Qué se hace | Qué mirar | Resultado |
+| ------ | ----------- | --------- | --------- |
+| Strangler Fig | Se migran las tres rutas y se apaga el monolito, con 15 solicitudes por segundo | "Solicitudes de la fachada, por destino" y "Respuestas de la fachada con error" | 1051 solicitudes, sin errores. El tráfico del monolito llega a cero |
+| Strangler Fig | Lo mismo | "Latencia p95 del detalle, por destino" | Sube de unos 8 ms a unos 18 ms: el costo de reemplazar el JOIN por llamadas HTTP |
+| Messaging Bridge | Se detiene ActiveMQ durante unos 30 segundos, con 2 `Orders` por segundo | "Cola bridge.erp" y "Orders confirmadas por segundo" | La cola llega a 89 mensajes y vuelve a cero. Las 161 `Orders` se aceptaron, y se siguieron confirmando durante la caída |
+| Deployment Stamps | `Products` falla con un despliegue, y después con dos copias | "Respuestas por grupo de clientes" | Con un despliegue, fallan los dos grupos. Con dos copias, solo el de esa copia: el grupo `br` no recibe ningún `503 Service Unavailable` |
+| External Configuration Store | El mismo límite, por variable de entorno y en el almacén, con 22 solicitudes por segundo | "Solicitudes a Orders por resultado" | Las dos formas pasan de `202 Accepted` a `400 Bad Request`. Con la variable de entorno se perdieron 24 solicitudes de 2531, en los dos momentos en que se recreó el contenedor; con el almacén, ninguna |
+
+Las métricas que dependen de quién respondió las informa k6 con los encabezados
+`X-Served-By` y `X-Stamp`, para no tener que instrumentar nginx ni recolectar
+métricas de la segunda copia.
+
+### Tamaño del cambio
+
+Grafana muestra el efecto de un cambio en ejecución, pero la facilidad de
+modificación se mide con otra pregunta: cuánto cuesta hacer el cambio. En un
+escenario de calidad -UT1-, esa es la medida de respuesta. Los números salen de
+[demos/measure-change-size.sh](demos/measure-change-size.sh), que se puede volver a
+ejecutar:
+
+```bash
+./demos/measure-change-size.sh
+```
+
+Se separan dos costos, porque un patrón se paga una vez y se aprovecha muchas.
+
+**Costo de introducir cada patrón:**
+
+| Patrón | Archivos nuevos | Líneas nuevas | Líneas en archivos existentes | Total |
+| ------ | --------------- | ------------- | ----------------------------- | ----- |
+| Deployment Stamps | 1 | 99 | 15 | 114 |
+| External Configuration Store | 1 | 130 | 52 | 182 |
+| Messaging Bridge | 10 | 310 | 50 | 360 |
+| Strangler Fig | 4 | 140 | 29 | 169 |
+
+Cómo se calcula:
+
+* **Línea efectiva:** una línea que no está vacía ni es un comentario, es decir, que
+  no empieza con `//` o `#`. Los comentarios de este repositorio son extensos y
+  distorsionarían la comparación.
+* **Qué se cuenta:** código C#, proyectos, `Dockerfile`, YAML de Docker Compose y
+  configuración de nginx. No se cuentan la documentación, los diagramas, los
+  scripts de `demos/`, los escenarios de `k6/`, el dashboard ni el archivo `.sln`:
+  son parte de la demostración, no de la aplicación.
+* **Líneas nuevas:** las líneas efectivas de los archivos que el patrón agrega.
+* **Líneas en archivos existentes:** las agregadas más las borradas según `git diff`
+  contra el commit `3a02c77`, el último sin estos patrones. Una línea modificada
+  cuenta dos veces, como una borrada y una agregada.
+* **Archivos compartidos:** `docker-compose.yaml` y `nginx.conf` los tocan varios
+  patrones, y cada línea se le asigna al patrón al que pertenece: por el servicio
+  en `docker-compose.yaml`, y por el bloque en `nginx.conf`. El script verifica que
+  lo repartido sume lo que dice `git`: 85 líneas en ambos casos. Los archivos de
+  `Orders` y `Products` también se reparten, por su contenido.
+* **Qué incluye de más:** el proveedor de configuración incluye su métrica para Grafana. El
+  ERP simulado y el monolito cuentan aunque representan sistemas que ya existirían:
+  en un caso real, el costo del puente sería solo el de `MessagingBridge`.
+
+**Costo de cada cambio posterior:**
+
+| Cambio | Líneas | Contenedores reiniciados | Demora |
+| ------ | ------ | ------------------------ | ------ |
+| Cambiar un límite en el almacén | 0 | 0 | 1,0 a 2,2 s |
+| Cambiar un límite en una variable de entorno | 1 | 1 | 1,3 a 1,7 s |
+| Migrar una ruta del monolito | 1 | 0 | 1,4 s |
+| Agregar una región | 101 | 0, y 11 contenedores nuevos | 16,8 a 21,7 s |
+
+Cómo se calcula:
+
+* **Líneas:** las que hay que escribir para hacer el cambio. Agregar una región son
+  las 2 líneas de las tablas de `nginx.conf` más una copia de
+  `docker-compose.stamps.yaml` con otro prefijo: 99 líneas repetidas de una
+  plantilla, que una herramienta generaría.
+* **Contenedores reiniciados:** se compara la hora de arranque de cada contenedor
+  antes y después del cambio.
+* **Demora:** desde que se aplica el cambio hasta que se observa su efecto. Para el
+  límite, hasta que una `Order` de 10 unidades responde `400 Bad Request`,
+  consultando cada 0,2 segundos; para la ruta, hasta que `X-Served-By` cambia; para
+  la región, hasta que `docker compose up --wait` termina. Es el rango de tres ejecuciones, con las
+  imágenes ya construidas.
+
+Cómo leerlo:
+
+* **La demora no es la diferencia:** cambiar un límite tarda lo mismo por las dos
+  vías, porque recrear este contenedor es rápido. La diferencia está en los
+  reinicios: la variable de entorno corta el servicio y pierde el estado en memoria
+  de `Orders`, como los interruptores de los patrones.
+* **El almacén tampoco es gratis:** la variable de entorno queda versionada en el
+  repositorio, y el cambio en el almacén no.
+* **Una línea no es una unidad de esfuerzo:** estas medidas sirven para comparar
+  alternativas en esta aplicación, no para estimar. No miden la dificultad de
+  diseñar el cambio ni de probarlo, y migrar una ruta de una línea presupone el
+  trabajo previo de escribir el servicio y resolver sus datos.
+* **Falta una alternativa real:** no hay una aplicación equivalente sin los patrones
+  con la cual comparar cada cambio. Salvo el límite, que se midió de las dos
+  formas, los números describen el cambio con el patrón.
+* **Solo se miden cambios anticipados:** cada fila es un cambio para el que hay un
+  patrón. Los que un patrón no anticipa cuestan lo mismo que antes, o más: una
+  regla nueva en `Orders`, con dos *stamps*, hay que desplegarla dos veces.
 
 ## Demos de facilidad de despliegue
 

@@ -13,12 +13,14 @@ public class OrdersController : ControllerBase
 {
     private readonly OrdersDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _config;
     private readonly ILogger<OrdersController> _logger;
 
-    public OrdersController(OrdersDbContext db, IHttpClientFactory httpClientFactory, ILogger<OrdersController> logger)
+    public OrdersController(OrdersDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config, ILogger<OrdersController> logger)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _config = config;
         _logger = logger;
     }
 
@@ -46,6 +48,11 @@ public class OrdersController : ControllerBase
             order.UserId = caller.UserId.Value;
             _logger.LogInformation("[FEDERATED IDENTITY] Order para el User {UserId}, según el token de {Name}", order.UserId, caller.Name);
         }
+
+        // External Configuration Store: el límite viene del almacén, y se lee en
+        // cada solicitud. Sin un valor, no hay límite.
+        if (_config.GetValue<int?>("Orders:MaxQuantity") is { } maxQuantity && order.Quantity > maxQuantity)
+            return BadRequest(new { detail = $"La cantidad máxima por Order es {maxQuantity}" });
 
         order.Status = OrderStatus.Pending;
 
@@ -205,6 +212,10 @@ public class OrdersController : ControllerBase
 
         var productsClient = _httpClientFactory.CreateClient("ProductsService");
 
+        // External Configuration Store: un feature flag. Con el flag prendido, el
+        // detalle incluye el precio de cada Product.
+        var showPrices = _config.GetValue<bool>("Features:ProductPrices");
+
         var result = new List<object>();
         // Una llamada a Products por Order, de a una. Cada llamada pasa por el
         // compartimento del Bulkhead de Products por separado: si está lleno,
@@ -215,14 +226,24 @@ public class OrdersController : ControllerBase
             var product = await Dependencies.GetAsync<ProductDto>(productsClient, $"{order.ProductId}", HttpContext.RequestAborted);
             var productName = product.Available ? product.Value?.Name : $"no disponible [{product.Failure}]";
 
-            result.Add(new
-            {
-                order_id = order.Id,
-                customer_name = customerName,
-                product_name = productName,
-                quantity = order.Quantity,
-                status = order.Status
-            });
+            result.Add(showPrices
+                ? (object)new
+                {
+                    order_id = order.Id,
+                    customer_name = customerName,
+                    product_name = productName,
+                    quantity = order.Quantity,
+                    status = order.Status,
+                    unit_price = product.Value?.Price
+                }
+                : new
+                {
+                    order_id = order.Id,
+                    customer_name = customerName,
+                    product_name = productName,
+                    quantity = order.Quantity,
+                    status = order.Status
+                });
         }
 
         return Ok(result);

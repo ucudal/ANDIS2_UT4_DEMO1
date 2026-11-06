@@ -1,0 +1,29 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class ExternalConfigurationExtensions {
+  {static} +AddExternalConfiguration(builder)
+}
+class ConsulConfigurationSource {
+  +Provider : ConsulConfigurationProvider
+  +Build(builder)
+}
+class ConsulConfigurationProvider {
+  +Load()
+  +RefreshAsync() : claves cambiadas
+  -ReadAsync() : valores
+}
+class ConsulConfigurationPoller {
+  #ExecuteAsync()
+}
+class OrdersController
+interface IConfiguration
+
+ExternalConfigurationExtensions --> ConsulConfigurationSource : registra
+ConsulConfigurationSource --> ConsulConfigurationProvider
+ConsulConfigurationPoller --> ConsulConfigurationProvider : cada 2 segundos
+IConfiguration --> ConsulConfigurationProvider : la última fuente
+OrdersController --> IConfiguration : lee en cada uso
+@enduml

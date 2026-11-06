@@ -11,6 +11,7 @@ public static class Events
     public const string OrderCreated = "order.created";
     public const string OrderConfirmed = "order.confirmed";
     public const string OrderRejected = "order.rejected";
+    public const string OrderInvoiced = "order.invoiced";
     public const string UserUpdated = "user.updated";
     public const string ProductUpdated = "product.updated";
 }
@@ -21,9 +22,16 @@ public static class Events
 // ellos.
 public record OrderCreated(int OrderId, int UserId, string? ProductId, int Quantity);
 
-public record OrderConfirmed(int OrderId);
+// Messaging Bridge: la Order completa, y no solo su id, para que un suscriptor
+// externo -el puente hacia el ERP- no tenga que consultar a Orders. Los campos
+// nuevos son opcionales: un mensaje anterior sigue siendo válido.
+public record OrderConfirmed(int OrderId, int UserId = 0, string? ProductId = null, int Quantity = 0);
 
 public record OrderRejected(int OrderId, string Reason);
+
+// Messaging Bridge: el ERP facturó una Order. Lo publica el puente; Orders no
+// sabe que viene de otro broker.
+public record OrderInvoiced(int OrderId, string InvoiceNumber, string IssuedOn);
 
 public record UserUpdated(int UserId, string Name);
 

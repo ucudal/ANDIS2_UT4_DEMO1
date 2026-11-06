@@ -1,0 +1,378 @@
+# Parte 5: demos de los patrones de facilidad de modificación, de la 22 a la 25
+#
+# Las demos de disponibilidad están en 02-availability.azcli, las de rendimiento,
+# en 03-performance.azcli y las de seguridad, en 04-security.azcli.
+
+# ---------------------------------------------------------------------------
+# Levantar todos los servicios
+# ---------------------------------------------------------------------------
+
+# Estos comandos deben ejecutarse desde la raíz del repositorio. Usar el comando
+# 'Azure CLI: Run Line in Terminal'.
+
+# Inicia Docker si no está iniciado
+docker desktop start
+
+# Crear las carpetas que serán montadas como volúmenes para contener las bases
+# de datos
+mkdir -p src/UsersService/pgdata
+mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/OrdersService/mysqldata
+
+# Levantar todos los contenedores
+docker compose build
+docker compose up -d --wait
+
+# ---------------------------------------------------------------------------
+# Observabilidad -opcional, recomendada para las demos-
+# ---------------------------------------------------------------------------
+
+# Levantar también Prometheus y Grafana. Si la aplicación ya está levantada,
+# solo agrega los dos contenedores nuevos.
+docker compose --profile observability up -d --wait
+
+# Abrir en el navegador el dashboard de Grafana. Los paneles de estas demos están
+# en la fila "Facilidad de modificación: antes y después":
+#
+#    http://localhost:3000
+
+# ---------------------------------------------------------------------------
+# Funciones auxiliares
+# ---------------------------------------------------------------------------
+
+# Seleccionar y ejecutar esta función en la terminal, de la misma forma como se
+# ejecutan los demás comandos de este archivo. Muestra las respuestas JSON como
+# tabla; requiere jq y column, ver los requisitos en README.md.
+table() {
+  jq -r 'if type == "array"
+         then (.[0] | keys_unsorted) as $k | ($k | @tsv), (.[] | [.[$k[]] | tostring] | @tsv)
+         elif type == "number" then "HTTP \(.)"
+         else to_entries[] | [.key, (.value | tostring)] | @tsv end' \
+  | column -t -s $'\t'
+}
+
+# ---------------------------------------------------------------------------
+# Demo 22: Deployment Stamps
+# ---------------------------------------------------------------------------
+# Una segunda copia completa de la aplicación, con sus propios servicios, bases,
+# broker, caché y almacenamiento, a partir de la misma plantilla. El gateway
+# elige la copia según el encabezado X-Region.
+
+# Desplegar la segunda copia en docker-compose.stamps.yaml: son los mismos
+# servicios de docker-compose.yaml, con otro nombre. Puede tardar hasta un
+# minuto.
+docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml up -d --wait
+
+# La misma solicitud a cada región. El encabezado X-Stamp dice qué copia atendió.
+# Sin X-Region, la solicitud va a la primera copia, como en las demás demos.
+curl -si -H 'X-Region: uy' http://localhost/products/ | grep -iE '^(HTTP|x-stamp)'
+curl -si -H 'X-Region: br' http://localhost/products/ | grep -iE '^(HTTP|x-stamp)'
+
+# Crear una Order en la región br. Como siempre, para el User 2: las del User 1
+# son la base de las demos de disponibilidad.
+id=$(curl -s -X POST http://localhost/orders/ -H 'X-Region: br' -H 'Content-Type: application/json' \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+echo "$id"
+
+# La Order nueva, en la segunda copia
+curl -s -H 'X-Region: br' http://localhost/orders/$id | table
+
+# La lista de Orders de cada región: la Order nueva está solo en la tabla 'orders'
+# de la segunda copia.
+curl -s -H 'X-Region: uy' http://localhost/orders/ | jq length
+curl -s -H 'X-Region: br' http://localhost/orders/ | jq length
+
+# Las imágenes también están separadas: la URL firmada de la región br apunta al
+# puerto 10001, al Azurite de esa copia.
+url=$(curl -s -X POST -H 'X-Region: br' \
+  http://localhost/products/60f7c2b5e1d3c2a1b8e4d125/image/upload-url | jq -r .uploadUrl)
+echo "$url"
+
+# Subir una imagen con esa URL, como en la demo 21
+printf 'imagen de la region br' | curl -s -o /dev/null -w '%{http_code}\n' -X PUT "$url" \
+  -H 'x-ms-blob-type: BlockBlob' -H 'Content-Type: image/jpeg' --data-binary @-
+
+# La región br responde 302 Found, y redirige a su almacenamiento. La otra responde
+# 404 Not Found, porque esa copia no tiene la imagen.
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: br' http://localhost/products/60f7c2b5e1d3c2a1b8e4d125/image
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: uy' http://localhost/products/60f7c2b5e1d3c2a1b8e4d125/image
+
+# Una falla en una copia no llega a la otra: Products de la región br falla...
+curl -s -X PUT http://localhost/products/chaos -H 'X-Region: br' -H 'Content-Type: application/json' \
+  -d '{"failureRate": 1, "delayMs": 0}' | jq
+
+# ...y responde 503 Service Unavailable solo en esa región
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: br' http://localhost/products/
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: uy' http://localhost/products/
+
+# Volver a la normalidad
+curl -s -X DELETE -H 'X-Region: br' http://localhost/products/chaos | jq
+
+# Eliminar la segunda copia, con sus datos
+docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml rm -sfv \
+  $(docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml config --services | grep '^stamp-b-')
+
+# La demo completa:
+
+./demos/22-deployment-stamps.sh
+
+# Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
+# cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
+# - "Respuestas por grupo de clientes": Products falla con un despliegue, y después
+#   con dos copias. Con un despliegue, fallan los dos grupos. Con dos copias, solo
+#   el de esa copia: el grupo br no recibe ningún 503 Service Unavailable.
+./demos/load-modifiability.sh stamps
+
+# ---------------------------------------------------------------------------
+# Demo 23: External Configuration Store
+# ---------------------------------------------------------------------------
+# Los límites, los feature flags y las URL están en un almacén central, Consul.
+# Cambian sin redesplegar y sin reiniciar. Este paso a paso usa dos valores: cuántas
+# unidades de un Product se pueden pedir en una Order, y si el detalle de las Orders
+# muestra el precio unitario.
+
+# Abrir la consola de Consul; las claves de la demo están en Key/Value, bajo
+# 'andis':
+#
+#    http://localhost:8500
+
+# Vaciar el almacén de Consul, para empezar con los valores por defecto
+curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
+
+# Un límite: cuántas unidades de un Product se pueden pedir en una Order. Sin un
+# valor en el almacén, no hay límite: una Order de 10 unidades responde 202
+# Accepted
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/orders/ \
+  -H 'Content-Type: application/json' \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}'
+
+# Poner el límite en 3 unidades por Order, en el almacén. La clave
+# andis/Orders/MaxQuantity es Orders:MaxQuantity para la aplicación.
+curl -s -X PUT http://localhost:8500/v1/kv/andis/Orders/MaxQuantity -d 3
+
+# Unos 2 segundos después, la misma Order de 10 unidades responde 400 Bad
+# Request. Nadie reinició Orders.
+curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}'
+
+# Cada proceso se enteró por su cuenta
+docker compose logs orders-service orders-worker products-service | grep 'EXTERNAL CONFIG'
+
+# Un feature flag: si el detalle de las Orders de un User muestra el precio
+# unitario de cada Product. Sin un valor en el almacén, está apagado. Prenderlo
+# agrega esa columna
+curl -s http://localhost/orders/user/1/details | table
+curl -s -X PUT http://localhost:8500/v1/kv/andis/Features/ProductPrices -d true
+curl -s http://localhost/orders/user/1/details | table
+
+# Pausar Consul: los servicios siguen con los últimos valores. El límite de 3
+# unidades sigue vigente, y la Order de 10 unidades responde 400 Bad Request
+docker compose pause consul
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}'
+docker compose unpause consul
+
+# Borrar los valores: los servicios vuelven a sus valores por defecto
+curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
+
+# La demo completa:
+
+./demos/23-external-configuration-store.sh
+
+# Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
+# cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
+# - "Solicitudes a Orders por resultado": se cambia el mismo límite de dos formas,
+#   con una variable de entorno y en el almacén. Las dos pasan de 202 Accepted a
+#   400 Bad Request, pero con la variable de entorno se pierden solicitudes cada
+#   vez que se recrea el contenedor, y con el almacén no se pierde ninguna.
+# - "Valor vigente por proceso": cada proceso cambia de valor sin reiniciarse.
+./demos/load-modifiability.sh config
+
+# ---------------------------------------------------------------------------
+# Demo 24: Messaging Bridge
+# ---------------------------------------------------------------------------
+# Un ERP legado usa otro broker, ActiveMQ, y otro formato, registros de ancho
+# fijo. El puente reenvía las Orders confirmadas de RabbitMQ a ActiveMQ, y las
+# facturas en sentido contrario.
+#
+# El ERP está simulado: espera órdenes de pedido en la cola ERP.PEDIDOS de
+# ActiveMQ y, por cada una, escribe una factura en la cola ERP.FACTURAS. No
+# conoce RabbitMQ ni la aplicación.
+
+# Paso a paso. Abrir la consola de ActiveMQ, usuario 'admin' y contraseña
+# 'admin'. Las colas ERP.PEDIDOS y ERP.FACTURAS están en Queues:
+#
+#    http://admin:admin@localhost:8161/admin/
+
+# Crear una Order para el User 2
+id=$(curl -s -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+echo "$id"
+
+# A los pocos segundos, su historial tiene la factura del ERP
+curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data}'
+
+# Lo que pasó por el puente: el JSON se volvió un registro de ancho fijo
+docker compose logs --no-log-prefix messaging-bridge legacy-erp | grep -E '\[(MESSAGING BRIDGE|ERP)\]'
+
+# Detener el broker del ERP y crear otra Order
+docker compose stop legacy-broker
+id=$(curl -s -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
+  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+echo "$id"
+
+# El mensaje espera en la cola 'bridge.erp' de RabbitMQ. La Order se confirma
+# igual: la aplicación no depende del ERP.
+docker compose exec rabbitmq rabbitmqctl list_queues name messages consumers | grep bridge
+
+curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data}'
+
+# Al volver el broker, el mensaje se entrega y la Order se factura. No es
+# inmediato: el puente reintenta cada vez más espaciado y puede tardar cerca de
+# un minuto. Este comando espera hasta que aparece la factura.
+docker compose start legacy-broker
+until curl -s http://localhost:8000/orders/$id/events | grep -q OrderInvoiced; do sleep 2; done
+curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data}'
+
+# La demo completa:
+
+./demos/24-messaging-bridge.sh
+
+# Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
+# cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
+# - "Cola bridge.erp": se detiene ActiveMQ durante unos 30 segundos. Los mensajes
+#   se acumulan y vuelven a cero cuando el puente se reconecta.
+# - "Orders confirmadas por segundo": no se detiene durante la caída.
+./demos/load-modifiability.sh bridge
+
+# ---------------------------------------------------------------------------
+# Demo 25: Strangler Fig
+# ---------------------------------------------------------------------------
+# Una fachada, en el puerto 8090, recibe todas las solicitudes y las desvía,
+# ruta por ruta, del monolito a los microservicios.
+#
+# El monolito está simulado: un solo proceso con una sola base SQLite, que
+# atiende Users, Products y Orders con las mismas rutas y los mismos contratos
+# que los microservicios. Es lo que la aplicación habría sido antes de separarse
+# en servicios.
+
+# La solicitud SOAP a Users, el Product de la demo, y desde cuándo contar las
+# solicitudes de la fachada
+soap='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://ucu.edu.uy/andis/users">
+      <id>1</id>
+    </GetUser>
+  </soap:Body>
+</soap:Envelope>'
+product=60f7c2b5e1d3c2a1b8e4d123
+since=$(date +%s)
+
+# Al principio, el monolito atiende las tres rutas. El encabezado X-Served-By dice
+# quién respondió.
+curl -si http://localhost:8090/products/$product | grep -i x-served-by
+curl -si http://localhost:8090/orders/user/1/details | grep -i x-served-by
+curl -si -X POST http://localhost:8090/users/UserService.svc -d "$soap" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' | grep -i x-served-by
+
+# La tabla de rutas de la fachada
+docker compose exec api-gateway cat /etc/nginx/strangler-routes.conf
+
+# Migrar Products: cambiar una línea de la tabla y recargar nginx, sin cortar el
+# servicio
+docker compose exec api-gateway sh -c \
+  "sed -i 's|^set \\\$products_route .*|set \\\$products_route products-service:8000;|' /etc/nginx/strangler-routes.conf && nginx -s reload"
+docker compose exec api-gateway cat /etc/nginx/strangler-routes.conf
+
+# La misma solicitud, la misma respuesta, y ahora la atiende el microservicio
+curl -si http://localhost:8090/products/$product | grep -i x-served-by
+
+# El costo de la convivencia: los datos están en dos lugares. Cambiar el nombre
+# del Product por la fachada: lo recibe el microservicio, que lo guarda en
+# MongoDB.
+curl -s -X PUT http://localhost:8090/products/$product \
+  -H 'Content-Type: application/json' -d '{"name": "Camisa nueva", "price": 1200.50}' | jq
+curl -s http://localhost:8090/products/$product | jq .name
+
+# El detalle de las Orders todavía lo atiende el monolito, y su JOIN lee su
+# propia copia en SQLite: sigue mostrando Camisa. Una migración real tiene que
+# sincronizar los datos mientras dure la convivencia. Cómo hacerlo está en
+# PATTERNS.md.
+curl -s http://localhost:8090/orders/user/1/details | table
+
+# Volver a poner el nombre original
+curl -s -X PUT http://localhost:8090/products/$product \
+  -H 'Content-Type: application/json' -d '{"name": "Camisa", "price": 1200.50}' | jq
+
+# Migrar Users: ahora responde el microservicio, con el mismo contrato SOAP
+docker compose exec api-gateway sh -c \
+  "sed -i 's|^set \\\$users_route .*|set \\\$users_route users-service:8000;|' /etc/nginx/strangler-routes.conf && nginx -s reload"
+curl -si -X POST http://localhost:8090/users/UserService.svc -d "$soap" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' | grep -i x-served-by
+
+# Migrar Orders. Si algo falla después de migrar una ruta, volver atrás es
+# cambiar la misma línea.
+docker compose exec api-gateway sh -c \
+  "sed -i 's|^set \\\$orders_route .*|set \\\$orders_route orders-service:8000;|' /etc/nginx/strangler-routes.conf && nginx -s reload"
+curl -si http://localhost:8090/orders/user/1/details | grep -i x-served-by
+
+# Cuántas solicitudes atendió cada uno, según la fachada
+docker compose logs --no-log-prefix --since $since api-gateway | grep '\[STRANGLER\]' \
+  | awk '{ print $NF }' | sort | uniq -c
+
+# Ya nada llega al monolito: apagarlo. Las solicitudes siguen respondiendo.
+docker compose stop monolith
+curl -s http://localhost:8090/orders/user/1/details | table
+curl -si http://localhost:8090/products/$product | grep -i x-served-by
+
+# Dejar todo como estaba: recrear el monolito y el gateway. La tabla de rutas
+# vuelve al monolito, porque el cambio queda solo en el contenedor.
+docker compose up -d --force-recreate --wait monolith api-gateway
+
+# La demo completa:
+
+./demos/25-strangler-fig.sh
+
+# Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
+# cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
+# - "Solicitudes de la fachada, por destino": el tráfico pasa del monolito a cada
+#   servicio, una ruta por vez, hasta que el monolito llega a cero.
+# - "Respuestas de la fachada con error": sigue en cero durante toda la migración.
+#   El cliente no nota el cambio.
+# - "Latencia p95 del detalle, por destino": sube al migrar Orders, de unos 8 ms a
+#   unos 18 ms. Es el costo de reemplazar el JOIN por llamadas HTTP.
+
+./demos/load-modifiability.sh strangler
+
+# ---------------------------------------------------------------------------
+# Tamaño del cambio
+# ---------------------------------------------------------------------------
+
+# Cuántas líneas costó introducir cada patrón, y cuánto cuesta cada cambio
+# posterior. Cómo se calcula cada número está en PATTERNS.md, en "Tamaño del
+# cambio".
+
+./demos/measure-change-size.sh
+
+# ---------------------------------------------------------------------------
+# Tear down
+# ---------------------------------------------------------------------------
+
+docker compose --profile observability down -v
+
+docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
+docker rmi legacy-erp:latest messaging-bridge:latest monolith:latest
+docker rmi hashicorp/consul:1.21 apache/activemq-classic:6.1.7
+docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
+docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest
+docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
+docker image prune -f
+docker volume prune -f
+docker builder prune -f
+
+rm -rf ./src/OrdersService/mysqldata
+rm -rf ./src/ProductsService/mongodbdata
+rm -rf ./src/UsersService/pgdata
+rm -f gateway.crt

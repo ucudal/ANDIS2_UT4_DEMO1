@@ -9,8 +9,8 @@ width="150"/>
 # Demo de patrones de arquitectura en una arquitectura de microservicios
 
 Esta demo es la aplicación base de la UT4, una pequeña aplicación de comercio
-electrónico, con los patrones de disponibilidad, rendimiento y seguridad
-implementados.
+electrónico, con los patrones de disponibilidad, rendimiento, seguridad y
+facilidad de modificación implementados.
 
 También es la demo de la [arquitectura de microservicios](ARCHITECTURE.md) en la
 UT5.
@@ -35,7 +35,7 @@ directamente de Azurite, el emulador de Azure Storage, con URL firmadas.
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina TLS, valida los tokens y las solicitudes, y comprime las respuestas | nginx 1.25 | 80 HTTP, 443 HTTPS |
+| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina TLS, valida los tokens y las solicitudes, y comprime las respuestas | nginx 1.25 | 80 HTTP, 443 HTTPS, 8090 fachada |
 | `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por SOAP, con el contrato publicado como WSDL | ASP.NET Core 10 + SoapCore + EF Core | 8002 |
 | `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + MongoDB Driver + StackExchange.Redis | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
@@ -46,6 +46,11 @@ directamente de Azurite, el emulador de Azure Storage, con URL firmadas.
 | `products-sidecar` | Autenticación, autorización y registro de accesos de `Products`, sin cambiar su código; comparte el espacio de red de `products-service` | Envoy 1.40 | — |
 | `keycloak` | Proveedor de identidad: usuarios, contraseñas, roles y tokens | Keycloak 26.8 | 8080 |
 | `azurite` | Imágenes de los `Products` | Azurite 3.37, emulador de Azure Storage | 10000 |
+| `consul` | Almacén central de configuración | Consul 1.21 | 8500 consola |
+| `legacy-broker` | Broker del ERP legado | ActiveMQ Classic 6.1 | 8161 consola |
+| `legacy-erp` | ERP legado simulado: registros de ancho fijo en ActiveMQ | .NET 10 + Apache NMS | — |
+| `messaging-bridge` | Puente entre RabbitMQ y ActiveMQ | .NET 10 + RabbitMQ.Client + Apache NMS | — |
+| `monolith` | Monolito que se reemplaza en la demo de Strangler Fig | ASP.NET Core 10 + SoapCore + EF Core + SQLite | — |
 | `users-db` | Datos de `Users` | PostgreSQL 18 | 5432 |
 | `products-db` | Datos de `Products` | MongoDB 9 | 27017 |
 | `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | MySQL 26 | 3306 |
@@ -121,7 +126,7 @@ En ese caso hay dos opciones:
 
 ### Cómo ejecutarla
 
-Los comandos están en la carpeta [commands/](commands/), en tres archivos:
+Los comandos están en la carpeta [commands/](commands/), en cinco archivos:
 
 * [01-api-gateway.azcli](commands/01-api-gateway.azcli): probar los servicios a
   través del API Gateway.
@@ -131,6 +136,8 @@ Los comandos están en la carpeta [commands/](commands/), en tres archivos:
   patrones de rendimiento, de la 10 a la 16.
 * [04-security.azcli](commands/04-security.azcli): demos de los patrones de
   seguridad, de la 17 a la 21.
+* [05-modifiability.azcli](commands/05-modifiability.azcli): demos de los
+  patrones de facilidad de modificación, de la 22 a la 25.
 
 Cada archivo empieza levantando todos los servicios y termina con el *tear
 down*, así que se puede usar por separado. En resumen:
@@ -210,6 +217,15 @@ flowchart LR
 
             gw["«container» api-gateway<br/>nginx 1.25<br/>──────────<br/>«artifact» nginx.conf"]
             kc["«container» keycloak<br/>Keycloak 26.8<br/>──────────<br/>«artifact» andis-realm.json"]
+            cs["«container» consul<br/>Consul 1.21"]
+            mono["«container» monolith<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» Monolith.dll"]
+            br["«container» messaging-bridge<br/>.NET 10<br/>──────────<br/>«artifact» MessagingBridge.dll"]
+
+            subgraph erp["ERP legado"]
+                direction TB
+                amq[["«container» legacy-broker<br/>ActiveMQ 6.1"]]
+                le["«container» legacy-erp<br/>.NET 10<br/>──────────<br/>«artifact» LegacyErp.dll"]
+            end
 
             subgraph users["Users"]
                 direction TB
@@ -237,7 +253,13 @@ flowchart LR
         end
     end
 
-    client -- "HTTP :80, HTTPS :443" --> gw
+    client -- "HTTP :80, HTTPS :443, fachada :8090" --> gw
+    gw -- "HTTP :8000 fachada" --> mono
+    os -- "HTTP :8500 configuración" --> cs
+    ps -- "HTTP :8500 configuración" --> cs
+    mq -- "AMQP :5672 consume y publica" --> br
+    br -- "OpenWire :61616" --> amq
+    le -- "OpenWire :61616" --> amq
     client -- "HTTP :8080 inicio de sesión" --> kc
     client -- "HTTP :10000 URL firmadas" --> az
     gw -- "HTTP :8080 valida tokens" --> kc
@@ -298,12 +320,18 @@ encuentran como `products-service:9000`.
 | Gateway Offloading | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): TLS, `auth_request` a Keycloak, los claims con [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js) y gzip |
 | Gatekeeper | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): rutas, métodos, tipo y tamaño del cuerpo, y encabezados de identidad; [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de publicar los puertos de los servicios |
 | Sidecar | `products-sidecar` en [docker-compose.yaml](docker-compose.yaml), configurado en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) |
+| Deployment Stamps | [docker-compose.stamps.yaml](docker-compose.stamps.yaml), con la misma plantilla, y las tablas `map` de `X-Region` en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf) |
+| External Configuration Store | Las clases `ConsulConfigurationProvider` y `ConsulConfigurationPoller`, en [Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) |
+| Messaging Bridge | Las clases `OrdersToErpBridge` y `ErpToOrdersBridge`, en [MessagingBridge/](src/MessagingBridge); la traducción está en la clase `ErpFormat` |
+| Strangler Fig | La fachada del puerto 8090 en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf), y el monolito en [Monolith/Program.cs](src/Monolith/Program.cs) |
 | Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
 está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad),
-[Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono)
-y [Demos de seguridad](PATTERNS.md#demos-de-seguridad) de PATTERNS.md.
+[Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono),
+[Demos de seguridad](PATTERNS.md#demos-de-seguridad) y
+[Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación)
+de PATTERNS.md.
 
 ## Cómo probar los patrones
 
@@ -313,8 +341,9 @@ solicitudes, y muestra el resultado.
 
 Las instrucciones para ejecutar estos scripts y la explicación de lo que sucede
 en cada uno está en [02-availability.azcli](commands/02-availability.azcli),
-[03-performance.azcli](commands/03-performance.azcli) y
-[04-security.azcli](commands/04-security.azcli).
+[03-performance.azcli](commands/03-performance.azcli),
+[04-security.azcli](commands/04-security.azcli) y
+[05-modifiability.azcli](commands/05-modifiability.azcli).
 
 Mientras corren las pruebas, también se puede mirar:
 
@@ -323,6 +352,11 @@ Mientras corren las pruebas, también se puede mirar:
   `docker compose logs -f orders-service orders-worker orders-projector products-service`.
 * Las colas, sus consumidores y los enlaces del exchange `andis.events` en la
   consola de RabbitMQ: <http://localhost:15672>, usuario y contraseña `guest`.
+* El tamaño de cada cambio: `./demos/measure-change-size.sh`, explicado en
+  [PATTERNS.md](PATTERNS.md#tamaño-del-cambio).
+* La configuración central en la consola de Consul: <http://localhost:8500>.
+* Las colas del ERP en la consola de ActiveMQ: <http://localhost:8161/admin/>,
+  usuario y contraseña `admin`.
 
 ## Observabilidad y pruebas de carga
 
@@ -374,8 +408,11 @@ código a mano:
 | `orders_circuit_state` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
 | `products_images_received_bytes_total`, `products_images_valet_keys_total` | La clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs) | Bytes de imágenes que recibió `Products`, sin Valet Key, y URL firmadas que entregó, por permiso |
 | `envoy_http_rbac_*`, `envoy_http_jwt_authn_*` | El *sidecar* de `Products` | Solicitudes permitidas y rechazadas por la autorización, y tokens aceptados y rechazados |
+| `config_value` | La clase `ConsulConfigurationPoller`, en [Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) | Valor vigente de cada clave numérica del almacén, en cada proceso |
 | `keycloak_user_events_total` | Keycloak | Inicios de sesión y validaciones de tokens, con su error si lo hubo |
 | `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
+| `k6_strangler_requests_total`, `k6_strangler_details_duration_*` | Los escenarios de k6 | Solicitudes de la fachada por destino, según `X-Served-By`, y latencia del detalle |
+| `k6_stamp_requests_total`, `k6_config_requests_total` | Los escenarios de k6 | Respuestas por grupo de clientes, según `X-Stamp`, y a `Orders`, por operación y resultado |
 
 > [!TIP]
 >
@@ -401,6 +438,19 @@ dashboard.
 | `load.js` | Carga base para las demos de rendimiento: lecturas mezcladas a una tasa configurable; con `-e DETAILS=view`, el detalle se lee de la vista | Throughput y latencia por servicio; k6 termina con error si no se cumple el objetivo de p95 menor a 500 ms con menos de 1 % de errores; comparando las dos corridas, la latencia de `details` contra la de `details view` |
 | `cache-aside.js` | 50 lecturas de `Products` por segundo, con una base que demora 100 ms: 30 s con la caché apagada y 30 s prendida | La latencia de `product` baja de unos 100 ms a unos 3 ms; las lecturas de la caché pasan de `disabled` a casi todas `hit` |
 | `load-leveling.js` | 10 `POST /orders/` por segundo durante 10 s, directamente en `orders-service` | La latencia de `create order` se mantiene baja; la cola `orders.process` crece durante el pico y se vacía a ritmo constante |
+
+| `strangler-fig.js` | 15 lecturas por segundo a la fachada, mientras se migran las rutas | El tráfico pasa del monolito a los servicios, sin errores; la latencia del detalle sube |
+| `external-configuration.js` | 2 `POST /orders/` y 20 lecturas por segundo, mientras se cambia un límite por variable de entorno y en el almacén | Solo la variable de entorno deja solicitudes sin respuesta |
+| `messaging-bridge.js` | 2 `Orders` por segundo, mientras se detiene ActiveMQ | La cola `bridge.erp` crece y se vacía; las `Orders` se siguen confirmando |
+| `deployment-stamps.js` | 10 lecturas por segundo de dos grupos de clientes, con una copia y con dos, mientras falla `Products` | Con dos copias, la falla alcanza a un solo grupo |
+
+Los últimos cuatro necesitan que alguien haga el cambio mientras corren: se lanzan
+con [demos/load-modifiability.sh](demos/load-modifiability.sh), que además marca
+cada cambio en el dashboard:
+
+```bash
+./demos/load-modifiability.sh strangler   # también: config, bridge, stamps
+```
 
 `load.js` acepta la tasa y la duración como parámetros:
 

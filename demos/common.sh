@@ -242,6 +242,42 @@ call_inside() {
     printf '  HTTP %s  %s\n' "${out##*$'\n'}" "$(head -c 110 <<< "${out%$'\n'*}" | tr -d '\n')"
 }
 
+# Funciones de los demos de facilidad de modificación, de la 22 en adelante.
+
+CONSUL=${CONSUL:-http://localhost:8500}
+FACADE=${FACADE:-http://localhost:8090}
+GRAFANA=${GRAFANA:-http://localhost:3000}
+
+# config_set <clave> <valor> y config_delete <clave>: cambian un valor en el
+# almacén de configuración. La clave se escribe con barras, por ejemplo
+# Orders/MaxQuantity. Los servicios lo leen cada 2 segundos: se espera 3.
+config_set() {
+    curl -s -X PUT "$CONSUL/v1/kv/andis/$1" -d "$2" > /dev/null
+    printf '  en el almacén: %s = %s\n' "$1" "$2"
+    sleep 3
+}
+config_delete() {
+    curl -s -X DELETE "$CONSUL/v1/kv/andis/$1" > /dev/null
+    printf '  en el almacén: se borra %s\n' "$1"
+    sleep 3
+}
+
+# annotate <texto>: marca el momento en el dashboard de Grafana, para distinguir
+# el antes y el después de un cambio. Si Grafana no está levantado, no hace nada.
+annotate() {
+    curl -s -m 2 -o /dev/null -X POST "$GRAFANA/api/annotations" -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg text "$1" '{dashboardUID: "ut4-demo1", tags: ["modificabilidad"], text: $text}')" || true
+}
+
+# strangler_route <users|products|orders> <destino>: cambia el destino de una
+# ruta en la tabla de la fachada y recarga nginx, sin cortar el servicio. El
+# cambio queda en el contenedor, no en el archivo del repositorio.
+strangler_route() {
+    docker compose exec -T api-gateway sh -c \
+        "sed -i 's|^set \\\$$1_route .*|set \\\$$1_route $2;|' /etc/nginx/strangler-routes.conf && nginx -s reload" 2> /dev/null
+    sleep 1
+}
+
 # Al terminar, deja los servicios sin fallas simuladas y con todos los patrones
 # prendidos.
 trap 'reset_chaos; reset_patterns' EXIT

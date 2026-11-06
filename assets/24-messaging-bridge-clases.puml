@@ -1,0 +1,30 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class OrdersToErpBridge {
+  #ExecuteAsync()
+  -SendToErpAsync(record)
+}
+class ErpToOrdersBridge {
+  #ExecuteAsync()
+  -ForwardInvoicesAsync()
+}
+class ErpFormat {
+  {static} +ToOrderRecord(order) : string
+  {static} +ToOrderInvoiced(record) : OrderInvoiced
+}
+class LegacyBroker {
+  +GetConnectionAsync()
+}
+class RabbitMq
+
+OrdersToErpBridge --> ErpFormat
+ErpToOrdersBridge --> ErpFormat
+OrdersToErpBridge --> RabbitMq : consume
+OrdersToErpBridge --> LegacyBroker : envía
+ErpToOrdersBridge --> LegacyBroker : consume
+ErpToOrdersBridge --> RabbitMq : publica
+note bottom of ErpFormat : La traducción está aparte:\nlos que reenvían no conocen los formatos
+@enduml

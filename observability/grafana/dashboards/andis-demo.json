@@ -2151,7 +2151,448 @@
           "range": true
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 33,
+      "title": "Facilidad de modificación: antes y después",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 34,
+      "title": "Solicitudes de la fachada, por destino [Demo 25]",
+      "description": "Strangler Fig: el tráfico pasa del monolito a cada servicio, una ruta por vez. Lo informa k6 a partir del encabezado X-Served-By. Las marcas verticales son los pasos de la migración.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (backend) (rate(k6_strangler_requests_total[$__rate_interval]))",
+          "legendFormat": "{{backend}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 35,
+      "title": "Respuestas de la fachada con error [Demo 25]",
+      "description": "Strangler Fig: tiene que quedar en cero durante toda la migración. Es lo que el cliente percibiría si migrar una ruta cortara el servicio.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 68,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route, status) (rate(k6_strangler_requests_total{status!=\"200\"}[$__rate_interval])) or vector(0)",
+          "legendFormat": "{{route}} {{status}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 36,
+      "title": "Latencia p95 del detalle, por destino [Demo 25]",
+      "description": "Strangler Fig: el monolito resuelve el detalle con un JOIN; Orders llama a Users y a Products por HTTP. Es el costo de separar los datos.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 68,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (backend) (k6_strangler_details_duration_p95)",
+          "legendFormat": "{{backend}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 37,
+      "title": "Cola bridge.erp [Demo 24]",
+      "description": "Messaging Bridge: con ActiveMQ caído, los mensajes esperan en RabbitMQ; cuando vuelve, la cola se vacía.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rabbitmq_detailed_queue_messages{queue=\"bridge.erp\"})",
+          "legendFormat": "mensajes",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 38,
+      "title": "Orders confirmadas por segundo [Demo 24]",
+      "description": "Messaging Bridge: se siguen confirmando durante la caída del ERP. Sin el puente, con una llamada directa, la confirmación dependería del ERP.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 76,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(orders_processed_total{result=\"Confirmed\"}[$__rate_interval]))",
+          "legendFormat": "confirmadas",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 39,
+      "title": "Respuestas por grupo de clientes [Demo 22]",
+      "description": "Deployment Stamps: con un solo despliegue, la falla alcanza a los dos grupos; con dos copias, solo a los clientes de esa copia.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 76,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (client, status) (rate(k6_stamp_requests_total[$__rate_interval]))",
+          "legendFormat": "{{client}} {{status}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 40,
+      "title": "Solicitudes a Orders por resultado [Demo 23]",
+      "description": "External Configuration Store: las dos formas de cambiar el límite pasan los POST de 202 a 400. Con la variable de entorno aparecen solicitudes sin respuesta mientras se recrea el contenedor; con el almacén, no.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 76,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (operation, status) (rate(k6_config_requests_total[$__rate_interval]))",
+          "legendFormat": "{{operation}} {{status}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 41,
+      "title": "Valor vigente por proceso [Demo 23]",
+      "description": "External Configuration Store: el valor de cada clave en cada proceso. Todos cambian casi a la vez y sin reiniciarse.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (job, instance, key) (config_value)",
+          "legendFormat": "{{job}} {{instance}} {{key}}",
+          "range": true
+        }
+      ]
     }
   ],
-  "description": "Entre corchetes, al final del título de cada panel, las demos que lo usan: el número es el del script en demos/, por ejemplo [Demo 1] es 01-retry.sh."
+  "description": "Entre corchetes, al final del título de cada panel, las demos que lo usan: el número es el del script en demos/, por ejemplo [Demo 1] es 01-retry.sh.",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "rgba(255, 152, 48, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  }
 }

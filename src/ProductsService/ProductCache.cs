@@ -23,7 +23,8 @@ public class CacheSettings
 }
 
 // Cache-Aside: Products busca primero en Redis; si no está -miss-, lee MongoDB
-// y guarda el resultado en Redis por 60 segundos para la próxima. Al cambiar un
+// y guarda el resultado en Redis por 60 segundos -o por lo que diga
+// Products:CacheTtlSeconds, en el almacén de configuración- para la próxima. Al cambiar un
 // Product, Products borra de Redis las claves afectadas: la próxima lectura es
 // un miss y trae el dato nuevo.
 //
@@ -34,20 +35,20 @@ public class ProductCache
 {
     public const string MeterName = "Ucu.Andis.ProductsCache";
 
-    private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(60);
-
     private static readonly Meter Meter = new(MeterName);
     private static readonly Counter<long> Lookups = Meter.CreateCounter<long>("products.cache", "{lookup}",
         "Lecturas de la caché de Products: hit, miss, error o disabled");
 
     private readonly IConnectionMultiplexer _redis;
+    private readonly IConfiguration _config;
     private readonly ILogger<ProductCache> _logger;
 
     public CacheSettings Settings { get; } = new();
 
-    public ProductCache(IConnectionMultiplexer redis, ILogger<ProductCache> logger)
+    public ProductCache(IConnectionMultiplexer redis, IConfiguration config, ILogger<ProductCache> logger)
     {
         _redis = redis;
+        _config = config;
         _logger = logger;
     }
 
@@ -96,7 +97,7 @@ public class ProductCache
         {
             try
             {
-                await db.StringSetAsync(key, JsonSerializer.Serialize(value), Ttl);
+                await db.StringSetAsync(key, JsonSerializer.Serialize(value), TimeSpan.FromSeconds(_config.GetValue("Products:CacheTtlSeconds", 60)));
             }
             catch (RedisException ex)
             {

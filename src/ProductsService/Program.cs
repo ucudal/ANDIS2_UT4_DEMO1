@@ -6,6 +6,10 @@ using Ucu.Andis.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// External Configuration Store: la configuración central, en Consul -ver
+// Common/ExternalConfiguration.cs-.
+builder.AddExternalConfiguration();
+
 // MongoClient es thread-safe y mantiene su propio pool de conexiones: se crea
 // una sola vez y se comparte, en lugar de crear uno por request.
 builder.Services.AddSingleton<IMongoCollection<Product>>(_ =>

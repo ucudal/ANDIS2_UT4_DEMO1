@@ -112,6 +112,20 @@ public class OrderDetailsProjector : BackgroundService
                 await SetStatusAsync(db, rejected.OrderId, OrderStatus.Rejected, cancellationToken);
                 return true;
 
+            // Messaging Bridge: la factura del ERP queda en el historial de la
+            // Order. Es idempotente: el puente entrega cada mensaje al menos una
+            // vez. Este proyector tiene una sola réplica: no hay dos copias del
+            // mensaje procesándose a la vez.
+            case Events.OrderInvoiced:
+                var invoiced = JsonSerializer.Deserialize<OrderInvoiced>(body.Span)!;
+                if (await db.OrderEvents.AnyAsync(e => e.OrderId == invoiced.OrderId && e.Type == OrderEventTypes.OrderInvoiced, cancellationToken))
+                    return true;
+                db.OrderEvents.Add(OrderEvent.Create(invoiced.OrderId, OrderEventTypes.OrderInvoiced,
+                    new OrderInvoicedData(invoiced.InvoiceNumber, invoiced.IssuedOn)));
+                await db.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("[MESSAGING BRIDGE] Order {OrderId} facturada: {InvoiceNumber}", invoiced.OrderId, invoiced.InvoiceNumber);
+                return true;
+
             // Los nombres copiados en la vista se actualizan cuando cambian en el
             // servicio que es dueño del dato. Hasta que llega el evento, la vista
             // muestra el nombre anterior: consistencia eventual.

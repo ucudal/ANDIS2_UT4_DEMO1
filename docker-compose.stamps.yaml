@@ -1,0 +1,131 @@
+# Deployment Stamps: una segunda copia completa de la aplicación, con sus propios
+# servicios, bases de datos, broker, caché y almacenamiento. Se aplica junto con
+# docker-compose.yaml:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml up -d --wait
+#
+# Cada servicio extiende al de docker-compose.yaml: la copia no es código nuevo
+# sino la misma plantilla, las mismas imágenes y la misma configuración, y solo
+# cambian los nombres con los que las piezas de la copia se encuentran entre sí.
+# Agregar otra copia es repetir este archivo con otro prefijo.
+#
+# Lo que queda fuera de la copia es global, compartido por todas: el gateway, que
+# elige la copia según el encabezado X-Region, Keycloak y Consul.
+#
+# Las bases de esta copia no usan los directorios de datos del repositorio. El
+# único puerto publicado es el de Azurite, porque con Valet Key los clientes le
+# hablan directamente; a todo lo demás se llega a través del gateway.
+#
+# Para eliminar la copia:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml rm -sf <servicios>
+services:
+  stamp-b-rabbitmq:
+    extends: { file: docker-compose.yaml, service: rabbitmq }
+    ports: !reset []
+
+  stamp-b-redis:
+    extends: { file: docker-compose.yaml, service: redis }
+    ports: !reset []
+
+  stamp-b-azurite:
+    extends: { file: docker-compose.yaml, service: azurite }
+    ports: !override
+      - "10001:10000"
+
+  stamp-b-orders-db:
+    extends: { file: docker-compose.yaml, service: orders-db }
+    ports: !reset []
+    volumes: !override
+      - ./src/OrdersService/mysqlinit:/docker-entrypoint-initdb.d
+
+  stamp-b-products-db:
+    extends: { file: docker-compose.yaml, service: products-db }
+    ports: !reset []
+    volumes: !override
+      - ./src/ProductsService/mongoinit:/docker-entrypoint-initdb.d
+
+  stamp-b-users-db:
+    extends: { file: docker-compose.yaml, service: users-db }
+    ports: !reset []
+    volumes: !override
+      - ./src/UsersService/pginit:/docker-entrypoint-initdb.d
+
+  stamp-b-users-service:
+    extends: { file: docker-compose.yaml, service: users-service }
+    ports: !reset []
+    environment:
+      SERVICE_NAME: "stamp-b-users-service"
+      ConnectionStrings__UsersDb: "Host=stamp-b-users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+      RabbitMq__Host: "stamp-b-rabbitmq"
+    depends_on: !override
+      stamp-b-users-db:
+        condition: service_healthy
+      stamp-b-rabbitmq:
+        condition: service_started
+
+  stamp-b-products-service:
+    extends: { file: docker-compose.yaml, service: products-service }
+    ports: !reset []
+    environment:
+      SERVICE_NAME: "stamp-b-products-service"
+      MONGO_HOST: "stamp-b-products-db"
+      Redis__Host: "stamp-b-redis"
+      RabbitMq__Host: "stamp-b-rabbitmq"
+      Storage__ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://stamp-b-azurite:10000/devstoreaccount1;"
+      Storage__PublicBlobEndpoint: "http://localhost:10001/devstoreaccount1"
+    depends_on: !override
+      stamp-b-products-db:
+        condition: service_healthy
+      stamp-b-redis:
+        condition: service_started
+      stamp-b-rabbitmq:
+        condition: service_started
+      stamp-b-azurite:
+        condition: service_started
+
+  stamp-b-orders-service:
+    extends: { file: docker-compose.yaml, service: orders-service }
+    ports: !reset []
+    environment:
+      SERVICE_NAME: "stamp-b-orders-service"
+      ConnectionStrings__OrdersDb: "Server=stamp-b-orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      UsersService__BaseUrl: "http://stamp-b-users-service:8000/users/UserService.svc"
+      ProductsService__BaseUrl: "http://stamp-b-products-service:8000/products/"
+      RabbitMq__Host: "stamp-b-rabbitmq"
+    depends_on: !override
+      stamp-b-orders-db:
+        condition: service_healthy
+      stamp-b-rabbitmq:
+        condition: service_healthy
+      stamp-b-users-service:
+        condition: service_healthy
+      stamp-b-products-service:
+        condition: service_healthy
+
+  # Una sola réplica del worker: alcanza para esta copia.
+  stamp-b-orders-worker:
+    extends: { file: docker-compose.yaml, service: orders-worker }
+    deploy:
+      replicas: 1
+    environment:
+      SERVICE_NAME: "stamp-b-orders-worker"
+      ConnectionStrings__OrdersDb: "Server=stamp-b-orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      UsersService__BaseUrl: "http://stamp-b-users-service:8000/users/UserService.svc"
+      ProductsService__BaseUrl: "http://stamp-b-products-service:8000/products/"
+      RabbitMq__Host: "stamp-b-rabbitmq"
+    depends_on: !override
+      stamp-b-orders-service:
+        condition: service_healthy
+
+  stamp-b-orders-projector:
+    extends: { file: docker-compose.yaml, service: orders-projector }
+    environment:
+      SERVICE_NAME: "stamp-b-orders-projector"
+      ConnectionStrings__OrdersDb: "Server=stamp-b-orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      UsersService__BaseUrl: "http://stamp-b-users-service:8000/users/UserService.svc"
+      ProductsService__BaseUrl: "http://stamp-b-products-service:8000/products/"
+      RabbitMq__Host: "stamp-b-rabbitmq"
+    depends_on: !override
+      stamp-b-orders-service:
+        condition: service_healthy

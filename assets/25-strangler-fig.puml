@@ -1,0 +1,26 @@
+@startuml
+!include PlantUML.style
+rectangle "Al principio" as P1 {
+  rectangle "Fachada" as F1
+  rectangle "Monolito\nUsers, Products, Orders" as M1
+  F1 --> M1 : todas las rutas
+}
+rectangle "Durante la migración" as P2 {
+  rectangle "Fachada" as F2
+  rectangle "Monolito\nUsers, Orders" as M2
+  rectangle "Products" as S2
+  F2 --> M2 : /users/, /orders/
+  F2 --> S2 : /products/
+}
+rectangle "Al final" as P3 {
+  rectangle "Fachada" as F3
+  rectangle "Users" as U3
+  rectangle "Products" as S3
+  rectangle "Orders" as O3
+  F3 --> U3
+  F3 --> S3
+  F3 --> O3
+}
+P1 -right[hidden]-> P2
+P2 -right[hidden]-> P3
+@enduml

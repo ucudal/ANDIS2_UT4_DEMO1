@@ -17,8 +17,8 @@
 #   docker compose up -d --wait
 #
 # Siguen publicados el gateway, Keycloak y Azurite, porque los clientes los
-# usan directamente, y las herramientas de las demos: la consola de RabbitMQ,
-# Prometheus y Grafana.
+# usan directamente, y las herramientas de las demos: las consolas de RabbitMQ,
+# Consul y ActiveMQ, Prometheus y Grafana.
 services:
   users-service:
     ports: !reset []
