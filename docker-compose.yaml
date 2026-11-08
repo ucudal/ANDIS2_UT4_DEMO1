@@ -348,6 +348,77 @@ services:
       dockerfile: ./Monolith/Dockerfile
     image: monolith:latest
 
+  # Anti-corruption Layer: Purchases muestra las compras de cada Product con su
+  # propio modelo. Su capa anticorrupción traduce desde Orders y desde el SOAP de
+  # Users. El gateway la publica en /purchases/.
+  purchases-service:
+    build:
+      context: ./src
+      dockerfile: ./PurchasesService/Dockerfile
+    image: purchases-service:latest
+    environment:
+      OrdersService__BaseUrl: "http://orders-service:8000/orders/"
+      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      orders-service:
+        condition: service_healthy
+      users-service:
+        condition: service_healthy
+
+  # Backends for Frontends: un backend por cliente. El gateway publica el de la
+  # web en /web/ y el de la app móvil en /mobile/.
+  bff-web:
+    build:
+      context: ./src
+      dockerfile: ./BffWeb/Dockerfile
+    image: bff-web:latest
+    environment:
+      OrdersService__BaseUrl: "http://orders-service:8000/orders/"
+      ProductsService__BaseUrl: "http://products-service:8000/products/"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      orders-service:
+        condition: service_healthy
+      products-service:
+        condition: service_healthy
+
+  bff-mobile:
+    build:
+      context: ./src
+      dockerfile: ./BffMobile/Dockerfile
+    image: bff-mobile:latest
+    environment:
+      OrdersService__BaseUrl: "http://orders-service:8000/orders/"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      orders-service:
+        condition: service_healthy
+
   users-db:
     image: postgres:18
     environment:

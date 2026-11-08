@@ -1,0 +1,12 @@
+@startuml
+!include PlantUML.style
+rectangle "Purchases" as C {
+  rectangle "Modelo de Purchases\nPurchase: comprador, unidades, confirmada" as M
+  rectangle "Capa anticorrupción\ntraduce y descarta" as A
+  M --> A : IPurchaseSource
+}
+rectangle "Orders\nuser_id, product_id, status" as O
+rectangle "Users\nSOAP" as U
+A --> O : GET /orders/
+A --> U : GetUser
+@enduml

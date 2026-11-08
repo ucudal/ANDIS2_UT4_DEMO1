@@ -2427,8 +2427,8 @@
     {
       "type": "timeseries",
       "id": 39,
-      "title": "Respuestas por grupo de clientes [Demo 22]",
-      "description": "Deployment Stamps: con un solo despliegue, la falla alcanza a los dos grupos; con dos copias, solo a los clientes de esa copia.",
+      "title": "Latencia p95: Orders y Purchases [Demo 22]",
+      "description": "Anti-corruption Layer: Purchases lee de Orders a través de su capa, que además le pregunta a Users por SOAP el nombre de cada comprador. La diferencia con Orders es el costo de la capa; si Users se demora, solo sube Purchases.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2441,7 +2441,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
+          "unit": "s",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10,
@@ -2469,8 +2469,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (client, status) (rate(k6_stamp_requests_total[$__rate_interval]))",
-          "legendFormat": "{{client}} {{status}}",
+          "expr": "max by (source) (k6_acl_duration_p95)",
+          "legendFormat": "{{source}}",
           "range": true
         }
       ]
@@ -2538,7 +2538,7 @@
       "gridPos": {
         "x": 0,
         "y": 84,
-        "w": 24,
+        "w": 12,
         "h": 7
       },
       "fieldConfig": {
@@ -2573,6 +2573,57 @@
           },
           "expr": "max by (job, instance, key) (config_value)",
           "legendFormat": "{{job}} {{instance}} {{key}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 42,
+      "title": "Respuestas por cliente [Demo 26]",
+      "description": "Backends for Frontends: la web y la app móvil, cada una por su backend. Mientras se redespliega el de la app, la web sigue respondiendo 200 OK.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 84,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (client, status) (rate(k6_bff_requests_total[$__rate_interval]))",
+          "legendFormat": "{{client}} {{status}}",
           "range": true
         }
       ]

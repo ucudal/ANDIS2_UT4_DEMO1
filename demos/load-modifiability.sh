@@ -4,12 +4,11 @@
 # cada uno en el dashboard. Necesita el perfil de observabilidad:
 #
 #   docker compose --profile observability up -d --wait
-#   ./demos/load-modifiability.sh <strangler|config|bridge|stamps>
+#   ./demos/load-modifiability.sh <acl|config|bridge|strangler|bff>
 #
 # Los paneles están en la fila "Facilidad de modificación".
 source "$(dirname "$0")/common.sh"
 
-STAMPS="-f docker-compose.yaml -f docker-compose.stamps.yaml"
 OVERRIDE=$(mktemp)
 K6_PID=""
 
@@ -97,35 +96,38 @@ bridge_cleanup() {
     docker compose start legacy-broker > /dev/null 2>&1
 }
 
-stamps() {
-    title "Deployment Stamps bajo carga"
-    note "Se despliega la segunda copia -puede tardar hasta un minuto-..."
-    docker compose $STAMPS up -d --wait > /dev/null 2>&1
-    load deployment-stamps.js
-    sleep 10
-    mark "Un despliegue: falla Products"
-    chaos products 1 0
+acl() {
+    title "Anti-corruption Layer bajo carga"
+    load anti-corruption-layer.js
     sleep 20
-    mark "Vuelve Products"
-    reset_chaos
-    sleep 35
-    mark "Dos copias: falla Products de stamp-a"
-    chaos products 1 0
-    sleep 20
-    mark "Vuelve Products"
+    mark "Users con 200 ms de demora"
+    chaos users 0 200
+    sleep 25
+    mark "Users vuelve a la normalidad"
     reset_chaos
 }
 
-stamps_cleanup() {
+acl_cleanup() {
     reset_chaos
-    # shellcheck disable=SC2046
-    docker compose $STAMPS rm -sfv $(docker compose $STAMPS config --services | grep '^stamp-b-') > /dev/null 2>&1
+}
+
+bff() {
+    title "Backends for Frontends bajo carga"
+    load backends-for-frontends.js
+    sleep 25
+    mark "Se redespliega bff-mobile"
+    docker compose up -d --no-deps --force-recreate --wait bff-mobile > /dev/null 2>&1
+    mark "bff-mobile redesplegado"
+}
+
+bff_cleanup() {
+    docker compose up -d --no-deps --wait bff-mobile > /dev/null 2>&1
 }
 
 pattern=${1:-}
 case "$pattern" in
-    strangler|config|bridge|stamps) ;;
-    *) echo "Uso: $0 <strangler|config|bridge|stamps>" >&2; exit 2 ;;
+    acl|config|bridge|strangler|bff) ;;
+    *) echo "Uso: $0 <acl|config|bridge|strangler|bff>" >&2; exit 2 ;;
 esac
 
 cleanup() {

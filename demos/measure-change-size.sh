@@ -9,7 +9,6 @@ source "$(dirname "$0")/common.sh"
 
 # El último commit sin los patrones de facilidad de modificación.
 BASE=3a02c77
-STAMPS="-f docker-compose.yaml -f docker-compose.stamps.yaml"
 OVERRIDE=$(mktemp)
 
 # Líneas efectivas: sin líneas vacías ni comentarios.
@@ -40,14 +39,41 @@ changed() {
 compose_service() { # <servicio>: líneas del servicio en docker-compose.yaml
     awk -v name="  $1:" '$0 == name { on = 1; print; next } /^  [a-z]/ { on = 0 } on' docker-compose.yaml | count
 }
-nginx_stamps=$(($(awk '/^    map \$http_x_region/,/^    }/' src/ApiGateway/nginxconf/nginx.conf | count) + 1 + 6))
+nginx_location() { # <ruta>: líneas de ese location en la entrada HTTP de nginx.conf
+    awk -v start="        location $1 {" '$0 == start { on = 1 } on { print } on && /^        }/ { on = 0 }' \
+        src/ApiGateway/nginxconf/nginx.conf | count
+}
+nginx_bff=$(($(nginx_location /web/) + $(nginx_location /mobile/)))
 nginx_strangler=$(($(awk '/log_format strangler/ { print } /listen 8090;/ { on = 1 } on { print } on && /^    }/ { on = 0 }' src/ApiGateway/nginxconf/nginx.conf | count) + 1))
 compose_consul=$(($(compose_service consul) + $(grep -c 'Consul__Url' docker-compose.yaml)))
-compose_bridge=$(($(compose_service legacy-broker) + $(compose_service legacy-erp) + $(compose_service messaging-bridge)))
-compose_strangler=$(($(compose_service monolith) + 1))
+compose_bridge=$(compose_service messaging-bridge)
+compose_bff=$(($(compose_service bff-web) + $(compose_service bff-mobile)))
+# El puerto 8090 de la fachada, en api-gateway.
+compose_strangler=1
+# Fuera de los patrones: los sistemas simulados, que ya existirían en un caso real,
+# y Purchases, el cliente nuevo de Anti-corruption Layer. Del patrón es solo su capa.
+outside=$(($(compose_service legacy-broker) + $(compose_service legacy-erp) + $(compose_service monolith) \
+    + $(compose_service purchases-service) + $(nginx_location /purchases/)))
 
-config_existing=$(changed src/OrdersService/Controllers/OrdersController.cs src/OrdersService/Program.cs \
-    src/ProductsService/Program.cs src/ProductsService/ProductCache.cs src/Common/Observability.cs | count)
+# changed_in <archivo> <desde> <hasta>: como changed, pero solo los cambios entre
+# esas líneas del archivo actual.
+changed_in() {
+    git diff -U0 "$BASE" -- "$1" | awk -v from="$2" -v to="$3" '
+        /^(\+\+\+|---)/ { next }
+        /^@@/ { split($3, n, ","); line = substr(n[1], 2); next }
+        /^\+/ { if (line >= from && line <= to) print substr($0, 2); line++; next }
+        /^-/ { if (line >= from && line <= to) print substr($0, 2) }'
+}
+
+# El flag de la fecha de creación, en el método ListOrders, simula un cambio de
+# otro equipo para la demo de Anti-corruption Layer: no es costo de un patrón.
+controller=src/OrdersService/Controllers/OrdersController.cs
+list_from=$(grep -n 'ListOrders()' "$controller" | cut -d: -f1)
+list_to=$(awk -v from="$list_from" 'NR > from && /^    }$/ { print NR; exit }' "$controller")
+order_dates=$(changed_in "$controller" "$list_from" "$list_to" | count)
+
+config_existing=$(($(changed "$controller" src/OrdersService/Program.cs \
+    src/ProductsService/Program.cs src/ProductsService/ProductCache.cs src/Common/Observability.cs | count) - order_dates))
 bridge_existing=$(($(changed src/Common/Events.cs src/OrdersService/Models/OrderEvent.cs \
     src/OrdersService/Messaging/OrderDetailsProjector.cs | count) \
     + $(changed src/OrdersService/Messaging/OrderProcessingWorker.cs | grep -c 'OrderConfirmed')))
@@ -67,15 +93,16 @@ total() {
     local files=$2 new=$3 existing=$4
     row "$1" "$files" "$new" "$existing" "$((new + existing))"
 }
-total "Deployment Stamps" 1 "$(new_lines docker-compose.stamps.yaml)" "$nginx_stamps"
+total "Anti-corruption Layer" "$(new_files src/PurchasesService/AntiCorruption)" "$(new_lines src/PurchasesService/AntiCorruption)" 0
 total "External Configuration Store" 1 "$(new_lines src/Common/ExternalConfiguration.cs)" "$((config_existing + compose_consul))"
-total "Messaging Bridge" "$(new_files src/MessagingBridge src/LegacyErp)" "$(new_lines src/MessagingBridge src/LegacyErp)" "$((bridge_existing + compose_bridge))"
-total "Strangler Fig" "$(($(new_files src/Monolith) + 1))" "$(($(new_lines src/Monolith) + $(new_lines src/ApiGateway/nginxconf/strangler-routes.conf)))" "$((nginx_strangler + compose_strangler + strangler_existing))"
+total "Messaging Bridge" "$(new_files src/MessagingBridge)" "$(new_lines src/MessagingBridge)" "$((bridge_existing + compose_bridge))"
+total "Strangler Fig" 1 "$(new_lines src/ApiGateway/nginxconf/strangler-routes.conf)" "$((nginx_strangler + compose_strangler + strangler_existing))"
+total "Backends for Frontends" "$(new_files src/BffWeb src/BffMobile)" "$(new_lines src/BffWeb src/BffMobile)" "$((nginx_bff + compose_bff))"
 
 # Control: lo repartido tiene que sumar lo que dice git.
 expected=$(changed docker-compose.yaml src/ApiGateway/nginxconf/nginx.conf | count)
-split=$((nginx_stamps + nginx_strangler + compose_consul + compose_bridge + compose_strangler))
-note "Control de docker-compose.yaml y nginx.conf: repartidas $split, según git $expected."
+split=$((nginx_strangler + compose_consul + compose_bridge + compose_strangler + nginx_bff + compose_bff))
+note "Control de docker-compose.yaml y nginx.conf: repartidas $split, fuera de los patrones $outside, según git $expected."
 
 # Estado de cada contenedor: al comparar dos fotos se ve cuáles se reiniciaron.
 snapshot() {
@@ -99,8 +126,6 @@ cleanup() {
     curl -s -X DELETE "$CONSUL/v1/kv/andis/Orders/MaxQuantity" > /dev/null
     docker compose up -d --no-deps --wait orders-service > /dev/null 2>&1
     strangler_route products monolith:8000
-    # shellcheck disable=SC2046
-    docker compose $STAMPS rm -sfv $(docker compose $STAMPS config --services | grep '^stamp-b-') > /dev/null 2>&1
     rm -f "$OVERRIDE" "$BEFORE"
     reset_chaos
 }
@@ -135,12 +160,3 @@ strangler_route products products-service:8000
 until curl -s -D - -o /dev/null "$FACADE/products/" | grep -qi 'x-served-by: products-service'; do sleep 0.1; done
 measure "Migrar una ruta del monolito" 1 "$(restarted "$BEFORE")" "$(elapsed "$start")"
 
-snapshot > "$BEFORE"
-start=$(now_ms)
-docker compose $STAMPS up -d --wait > /dev/null 2>&1
-region_time=$(elapsed "$start")
-region_lines=$(($(new_lines docker-compose.stamps.yaml) + 2))
-new_containers=$(docker compose $STAMPS ps -q | wc -l | tr -d ' ')
-existing=$(wc -l < "$BEFORE" | tr -d ' ')
-measure "Agregar una región" "$region_lines" "$(($(diff "$BEFORE" <(docker compose $STAMPS ps -q | xargs docker inspect -f '{{.Name}} {{.State.StartedAt}}' | sort) | grep -c '^<' || true)))" "$region_time"
-note "La región agrega $((new_containers - existing)) contenedores, sin tocar los $existing que ya estaban."

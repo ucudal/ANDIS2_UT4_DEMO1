@@ -1,0 +1,32 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+class Purchase {
+  +Number : int
+  +Buyer : string
+  +Units : int
+  +Confirmed : bool
+}
+interface IPurchaseSource {
+  +ForProductAsync(productId) : Purchase[]
+}
+package AntiCorruption {
+  class OrdersPurchaseSource {
+    +ForProductAsync(productId) : Purchase[]
+  }
+  class OrdersTranslator {
+    +ForProductAsync(productId) : TranslatedOrder[]
+  }
+  class UsersTranslator {
+    +NameAsync(userId) : string
+  }
+}
+
+IPurchaseSource ..> Purchase
+OrdersPurchaseSource ..|> IPurchaseSource
+OrdersPurchaseSource --> OrdersTranslator
+OrdersPurchaseSource --> UsersTranslator
+note bottom of AntiCorruption : Solo esta carpeta conoce\nel modelo de Orders y el SOAP de Users
+@enduml

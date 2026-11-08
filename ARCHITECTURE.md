@@ -25,18 +25,18 @@ que implementa están en [PATTERNS.md](PATTERNS.md).
 
 Cada servicio es dueño de sus datos: tiene su propia base, y ningún otro
 servicio la lee ni la escribe. Si `Orders` necesita el nombre de un `User`, se
-lo pide a `Users` por HTTP, o guarda una copia que se actualiza con los eventos
+lo pide a `Users` por [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), o guarda una copia que se actualiza con los eventos
 que publica `Users`. Además, cada servicio usa la tecnología de base de datos
 que mejor le sirve.
 
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
-| `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | PostgreSQL, relacional | gateway, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `user.updated` |
-| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio; sus imágenes | MongoDB, documentos; Redis como caché; Azurite para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated`; Azurite, para las imágenes |
-| `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | MySQL, relacional | gateway | `users-service`, `products-service`, RabbitMQ |
+| `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | [PostgreSQL](https://www.postgresql.org/), relacional | gateway, `orders-service`, `orders-worker`, `orders-projector` | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
+| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio; sus imágenes | [MongoDB](https://www.mongodb.com/), documentos; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated`; Azurite, para las imágenes |
+| `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | [MySQL](https://www.mysql.com/), relacional | gateway | `users-service`, `products-service`, RabbitMQ |
 | `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `orders-projector` | Comparte la base de `orders-service`; es el único que escribe la vista del detalle | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
-| `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y Keycloak |
+| `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y [Keycloak](https://www.keycloak.org/) |
 | `products-sidecar` | Nada: autoriza las solicitudes a `products-service` | — | gateway, por HTTPS, y cualquier contenedor de la red | `products-service`; Keycloak, para obtener sus claves públicas |
 | `keycloak` | Las identidades: usuarios, contraseñas y roles | Su propia base, en memoria en modo desarrollo | clientes, para iniciar sesión; gateway, para validar tokens | — |
 
@@ -48,7 +48,7 @@ identificador del `User` es un entero de PostgreSQL; el del `Product`, un
 ve en la sección de consistencia.
 
 `orders-service`, `orders-worker` y `orders-projector` son la misma imagen de
-Docker, con el *relay* del *outbox*, el *worker* o el proyector habilitados por
+[Docker](https://www.docker.com/), con el *relay* del *outbox*, el *worker* o el proyector habilitados por
 configuración, y comparten la base de `Orders`.
 
 **Para analizar:**
@@ -501,17 +501,17 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   contrato: si `Products` cambia la forma del evento, el proyector deja de
   entenderlo, y `Products` no se entera.
 * **Los contratos HTTP.** `Orders` espera que `GET /products/{id}` devuelva un
-  JSON con el nombre. Si `Products` lo renombra, `Orders` deja de mostrar el
+  [JSON](https://www.json.org/) con el nombre. Si `Products` lo renombra, `Orders` deja de mostrar el
   nombre del producto, y nada lo detecta hasta que se ejecuta. No hay versiones
   en las rutas.
-* **El contrato SOAP de `Users`.** `Users` no es REST: expone SOAP y publica su
-  contrato como WSDL en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
-  sobre de `GetUser` y lee el XML de la respuesta -ver el método `GetUserAsync`
+* **El contrato [SOAP](https://www.w3.org/TR/soap/) de `Users`.** `Users` no es [REST](https://roy.gbiv.com/pubs/dissertation/rest_arch_style.htm): expone SOAP y publica su
+  contrato como [WSDL](https://www.w3.org/TR/wsdl/) en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
+  sobre de `GetUser` y lee el [XML](https://www.w3.org/XML/) de la respuesta -ver el método `GetUserAsync`
   de la clase `Dependencies`, en
   [OrdersService/Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que depende del
   namespace, del nombre de la operación y de los nombres de los elementos. El
   WSDL documenta el contrato, pero `Orders` no lo usa para generar el cliente:
-  un cliente WCF generado tendría su propio canal HTTP y dejaría afuera el
+  un cliente [WCF](https://learn.microsoft.com/dotnet/framework/wcf/) generado tendría su propio canal HTTP y dejaría afuera el
   pipeline de resiliencia. Un detalle de SOAP 1.1 afecta a los patrones: todo
   SOAP Fault viaja como HTTP 500, que el Retry y el Circuit Breaker tratan como
   falla transitoria. Por eso `GetUser` responde sin resultado, y no con un
@@ -528,7 +528,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   clientes. El *sidecar*, además, espera los roles en `realm_access.roles`,
   donde los pone Keycloak.
 * **La ubicación de cada servicio.** Las URL de `Users` y `Products` se pasan a
-  `Orders` por variables de entorno, y nginx encuentra cada servicio por su nombre
+  `Orders` por variables de entorno, y [nginx](https://nginx.org/) encuentra cada servicio por su nombre
   en el DNS de Docker. No hay un registro de servicios.
 
 **Para analizar:**
@@ -574,7 +574,7 @@ VLANs o subredes, y entre una zona y otra hay un firewall que decide quién se
 conecta con quién:
 
 * **Zona perimetral -DMZ-:** la única que se alcanza desde Internet. Ahí está el
-  gateway: un *reverse proxy* o un *load balancer*, que termina TLS y puede
+  gateway: un *reverse proxy* o un *load balancer*, que termina [TLS](https://datatracker.ietf.org/doc/html/rfc8446) y puede
   filtrar solicitudes con un WAF.
 * **Zona de aplicación:** aquí están los servicios, que son inaccesibles desde
   Internet: el firewall de esta zona deja entrar solo el tráfico que viene del
@@ -598,15 +598,15 @@ proveedor:
 * **Reglas de quién se conecta con quién.** Las reglas de la red dejan entrar a
   un servicio solo el tráfico que viene del gateway o de los servicios que lo
   llaman, y a cada base, solo el de su servicio. En Azure son los *Network
-  Security Groups*; en AWS, los *security groups*; en Kubernetes, las
+  Security Groups*; en AWS, los *security groups*; en [Kubernetes](https://kubernetes.io/), las
   `NetworkPolicies`.
-* **Servicios administrados con entrada interna.** En Azure, Container Apps
-  admite una entrada interna, que solo se alcanza desde la red virtual, y App
-  Service admite restricciones de acceso y *private endpoints*. El gateway, por
-  ejemplo Azure API Management o Application Gateway, se despliega en la misma
-  red virtual que los servicios. En AWS, los servicios corren en ECS o Fargate
-  en subredes privadas, detrás de un *Application Load Balancer* interno, y el
-  gateway, Amazon API Gateway, llega a ellos con un *VPC link*.
+* **Servicios administrados con entrada interna.** En Azure, [Container Apps](https://azure.microsoft.com/products/container-apps/)
+  admite una entrada interna, que solo se alcanza desde la red virtual, y [App
+  Service](https://azure.microsoft.com/products/app-service/) admite restricciones de acceso y *private endpoints*. El gateway, por
+  ejemplo [Azure API Management](https://azure.microsoft.com/products/api-management/) o [Application Gateway](https://azure.microsoft.com/products/application-gateway/), se despliega en la misma
+  red virtual que los servicios. En AWS, los servicios corren en [ECS](https://aws.amazon.com/ecs/) o [Fargate](https://aws.amazon.com/fargate/)
+  en subredes privadas, detrás de un *[Application Load Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/)* interno, y el
+  gateway, [Amazon API Gateway](https://aws.amazon.com/api-gateway/), llega a ellos con un *VPC link*.
 * **En Kubernetes**, los servicios son de tipo `ClusterIP`: no tienen dirección
   fuera del clúster. Solo se expone el *ingress controller*, que cumple el
   papel del gateway.
@@ -627,7 +627,7 @@ estar adentro de la red no prueba nada:
 
 * **TLS mutuo entre el gateway y los servicios, y entre servicios.** Cada parte
   presenta un certificado, y un servicio acepta solo a los llamadores en cuyo
-  certificado confía. Una *service mesh*, como Istio o Linkerd, lo hace sin
+  certificado confía. Una *service mesh*, como [Istio](https://istio.io/) o [Linkerd](https://linkerd.io/), lo hace sin
   cambiar el código, con un *sidecar* en cada servicio.
 * **Cada servicio verifica el token, él o su *sidecar*.** El gateway le pasa el
   token al servicio, que verifica la firma con las claves públicas del
@@ -635,8 +635,8 @@ estar adentro de la red no prueba nada:
   podría mandar.
 * **Identidades administradas y un almacén de secretos.** Cada servicio tiene
   una identidad que le da la plataforma, como *Managed Identity* en Azure o un
-  rol de IAM en AWS, y las contraseñas que todavía hagan falta están en un
-  almacén de secretos, como Azure Key Vault o AWS Secrets Manager, y no en la
+  rol de [IAM](https://aws.amazon.com/iam/) en AWS, y las contraseñas que todavía hagan falta están en un
+  almacén de secretos, como [Azure Key Vault](https://azure.microsoft.com/products/key-vault/) o [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/), y no en la
   configuración.
 
 En la demo, solo `Products` tiene *sidecar*, que verifica la firma del token.
@@ -690,7 +690,7 @@ solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
 
 ## Facilidad de modificación
 
-Cuatro cambios que la aplicación absorbe sin tocar su lógica de dominio. Cómo se
+Cinco cambios que la aplicación absorbe sin tocar su lógica de dominio. Cómo se
 implementó cada uno está en
 [PATTERNS.md](PATTERNS.md#demos-de-facilidad-de-modificación).
 
@@ -703,25 +703,35 @@ afuera de cada uno está en
 
 | Cambio | Qué se toca | Qué no se toca |
 | ------ | ----------- | -------------- |
-| Agregar una región | Dos líneas en el gateway y un despliegue más de la misma plantilla | Las imágenes de los servicios |
-| Cambiar un límite o un flag | Un valor en Consul | Las imágenes y los contenedores |
+| `Orders` o `Users` cambian su modelo | El traductor de la capa anticorrupción de `Purchases` | El modelo de `Purchases` |
+| Cambiar un límite o un flag | Un valor en [Consul](https://developer.hashicorp.com/consul) | Las imágenes y los contenedores |
 | Integrar un ERP con otro broker | Un puente nuevo, y un suscriptor de la factura | El ERP y el flujo de creación de `Orders` |
 | Migrar una ruta del monolito | Una línea en la tabla de la fachada | Los clientes |
+| Cambiar lo que muestra la app móvil | `bff-mobile` | `bff-web` y los servicios |
 
 | Componente | Es dueño de | Lo llaman | Llama a |
 | ---------- | ----------- | --------- | ------- |
 | `consul` | La configuración central | `orders-service`, `orders-worker`, `orders-projector`, `products-service` | — |
-| `messaging-bridge` | Nada: reenvía y traduce | RabbitMQ y ActiveMQ le entregan mensajes | RabbitMQ, ActiveMQ |
+| `messaging-bridge` | Nada: reenvía y traduce | RabbitMQ y [ActiveMQ](https://activemq.apache.org/) le entregan mensajes | RabbitMQ, ActiveMQ |
 | `legacy-erp` | Las facturas | ActiveMQ le entrega mensajes | ActiveMQ |
-| `monolith` | Su propia copia de `Users`, `Products` y `Orders`, en SQLite | gateway, por la fachada | — |
+| `monolith` | Su propia copia de `Users`, `Products` y `Orders`, en [SQLite](https://www.sqlite.org/) | gateway, por la fachada | — |
+| `purchases-service` | Nada: traduce desde `Orders` y `Users` | gateway | `orders-service`, `users-service` |
+| `bff-web` | Nada: arma la respuesta de la web | gateway | `orders-service`, `products-service` |
+| `bff-mobile` | Nada: arma la respuesta de la app móvil | gateway | `orders-service` |
 
 **Para analizar:**
 
-* El gateway ahora es a la vez el enrutador de los *stamps* y la fachada del
-  monolito. ¿Qué riesgo tiene eso para la disponibilidad?
+* El gateway ahora es a la vez la fachada del monolito y la entrada de los dos
+  BFF. ¿Qué riesgo tiene eso para la disponibilidad?
   <!-- → Es un punto único de falla que crece en responsabilidades: si se cae, se
-  caen todos los stamps y la migración. Se mitiga con varias réplicas y, en
-  producción, con un servicio global como Azure Front Door o Amazon CloudFront. -->
+  caen la migración y los dos clientes. Se mitiga con varias réplicas y, en
+  producción, con un servicio administrado como Azure API Management o Amazon
+  API Gateway. -->
+* Si `Orders` quisiera mostrar un dato nuevo en la web y en la app, ¿cuántos
+  componentes cambian?
+  <!-- → Orders y los dos BFF: Backends for Frontends no anticipa los cambios que
+  comparten todos los clientes. Si se repitieran mucho, conviene que Orders
+  ofrezca una consulta que los BFF reusen. -->
 * ¿Qué valores de la aplicación no pondrían en el almacén de configuración?
   <!-- → Los secretos, que van en un almacén con control de acceso y auditoría; y
   lo que tiene que cambiar junto con el código, porque un valor nuevo con una
@@ -753,7 +763,7 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de Azurite y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
 | Consul en modo desarrollo, en un solo nodo y sin persistencia | Arranca con un comando | Si se vuelve a crear el contenedor, se pierden los valores; si se cae, nadie recibe cambios | — |
 | Una sola instancia del puente | Se conserva el orden de los pedidos | Si se cae, los mensajes esperan hasta que vuelva | — |
-| Los *stamps* solo en la entrada HTTP | La segunda copia no necesita *sidecar* | La entrada HTTPS atiende siempre a la primera copia | — |
+| `Purchases` y los BFF solo en la entrada HTTP | No hace falta agregarlos a las reglas de autorización | Cualquiera puede consultar las compras de un `Product` o las `Orders` de un `User`, sin identificarse | — |
 | La migración del monolito no sincroniza los datos | La demo se concentra en el enrutamiento | Durante la convivencia, los dos sistemas pueden responder distinto | [Strangler Fig](PATTERNS.md#strangler-fig) lo muestra y explica cómo resolverlo |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de Docker, sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |

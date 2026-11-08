@@ -105,8 +105,30 @@ public class OrdersController : ControllerBase
         var caller = CallerIdentity.From(Request);
         var onlyUserId = caller is { IsAdmin: false } ? caller.UserId ?? -1 : (int?)null;
 
-        var orders = await _db.Orders
-            .Where(o => onlyUserId == null || o.UserId == onlyUserId)
+        var orders = _db.Orders.Where(o => onlyUserId == null || o.UserId == onlyUserId);
+
+        // Anti-corruption Layer: un cambio en el modelo de Orders. Con el flag
+        // prendido, cada Order trae la fecha de su evento OrderCreated, de la misma
+        // base. La capa anticorrupción de Purchases lee solo los campos que usa:
+        // la demo 22 muestra que Purchases responde igual.
+        if (_config.GetValue<bool>("Features:OrderDates"))
+            return Ok(await (
+                from o in orders
+                join e in _db.OrderEvents.Where(e => e.Type == OrderEventTypes.OrderCreated)
+                    on o.Id equals e.OrderId into created
+                from e in created.DefaultIfEmpty()
+                select new
+                {
+                    id = o.Id,
+                    user_id = o.UserId,
+                    product_id = o.ProductId,
+                    quantity = o.Quantity,
+                    status = o.Status,
+                    created_at = (DateTime?)e.OccurredAt
+                })
+                .ToListAsync());
+
+        return Ok(await orders
             .Select(o => new
             {
                 id = o.Id,
@@ -115,9 +137,7 @@ public class OrdersController : ControllerBase
                 quantity = o.Quantity,
                 status = o.Status
             })
-            .ToListAsync();
-
-        return Ok(orders);
+            .ToListAsync());
     }
 
     // GET /orders/{id}

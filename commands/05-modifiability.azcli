@@ -52,84 +52,77 @@ table() {
 }
 
 # ---------------------------------------------------------------------------
-# Demo 22: Deployment Stamps
+# Demo 22: Anti-corruption Layer
 # ---------------------------------------------------------------------------
-# Una segunda copia completa de la aplicación, con sus propios servicios, bases,
-# broker, caché y almacenamiento, a partir de la misma plantilla. El gateway
-# elige la copia según el encabezado X-Region.
+# Purchases, un cliente nuevo, muestra para un Product todas sus compras con su
+# propio modelo: comprador, unidades y si está confirmada. Los datos vienen de
+# Orders y de Users, que tienen otro modelo y otro protocolo. La capa
+# anticorrupción, en src/PurchasesService/AntiCorruption, los traduce: Purchases no
+# conoce ninguno de los dos.
 
-# Desplegar la segunda copia en docker-compose.stamps.yaml: son los mismos
-# servicios de docker-compose.yaml, con otro nombre. Puede tardar hasta un
-# minuto.
-docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml up -d --wait
+# El Product de la demo
+product=60f7c2b5e1d3c2a1b8e4d125
 
-# La misma solicitud a cada región. El encabezado X-Stamp dice qué copia atendió.
-# Sin X-Region, la solicitud va a la primera copia, como en las demás demos.
-curl -si -H 'X-Region: uy' http://localhost/products/ | grep -iE '^(HTTP|x-stamp)'
-curl -si -H 'X-Region: br' http://localhost/products/ | grep -iE '^(HTTP|x-stamp)'
+# El modelo de Orders: user_id, product_id y el estado
+curl -s http://localhost/orders/ | jq -c --arg p $product '.[] | select(.product_id == $p)'
 
-# Crear una Order en la región br. Como siempre, para el User 2: las del User 1
-# son la base de las demos de disponibilidad.
-id=$(curl -s -X POST http://localhost/orders/ -H 'X-Region: br' -H 'Content-Type: application/json' \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+# El modelo de Users: SOAP
+curl -s -X POST http://localhost/users/UserService.svc \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' \
+  -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://ucu.edu.uy/andis/users">
+      <id>1</id>
+    </GetUser>
+  </soap:Body>
+</soap:Envelope>'
+
+# El modelo de Purchases: sin el id del User, ni el del Product, ni el estado de
+# Orders. Una Order rechazada no es una compra, así que no aparece.
+curl -s http://localhost/purchases/product/$product | table
+
+# Orders cambia su modelo: con un flag en Consul, cada Order trae la fecha de su
+# creación. Después de unos 2 segundos, la lista de Orders tiene 'created_at'...
+curl -s -X PUT http://localhost:8500/v1/kv/andis/Features/OrderDates -d true
+curl -s http://localhost/orders/ | jq -c --arg p $product '.[] | select(.product_id == $p)'
+
+# ...y Purchases responde igual: la capa lee solo los campos que usa
+curl -s http://localhost/purchases/product/$product | table
+
+# Volver a apagar el flag
+curl -s -X DELETE http://localhost:8500/v1/kv/andis/Features/OrderDates
+
+# Crear una Order para el User 2 y esperar unos segundos a que se confirme
+id=$(curl -s -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
+  -d "{\"userId\": 2, \"productId\": \"$product\", \"quantity\": 1}" | jq .id)
 echo "$id"
 
-# La Order nueva, en la segunda copia
-curl -s -H 'X-Region: br' http://localhost/orders/$id | table
+# La Order nueva aparece como compra de bob
+curl -s http://localhost/purchases/product/$product | jq -c --argjson id $id '.[] | select(.number == $id)'
 
-# La lista de Orders de cada región: la Order nueva está solo en la tabla 'orders'
-# de la segunda copia.
-curl -s -H 'X-Region: uy' http://localhost/orders/ | jq length
-curl -s -H 'X-Region: br' http://localhost/orders/ | jq length
-
-# Las imágenes también están separadas: la URL firmada de la región br apunta al
-# puerto 10001, al Azurite de esa copia.
-url=$(curl -s -X POST -H 'X-Region: br' \
-  http://localhost/products/60f7c2b5e1d3c2a1b8e4d125/image/upload-url | jq -r .uploadUrl)
-echo "$url"
-
-# Subir una imagen con esa URL, como en la demo 21
-printf 'imagen de la region br' | curl -s -o /dev/null -w '%{http_code}\n' -X PUT "$url" \
-  -H 'x-ms-blob-type: BlockBlob' -H 'Content-Type: image/jpeg' --data-binary @-
-
-# La región br responde 302 Found, y redirige a su almacenamiento. La otra responde
-# 404 Not Found, porque esa copia no tiene la imagen.
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: br' http://localhost/products/60f7c2b5e1d3c2a1b8e4d125/image
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: uy' http://localhost/products/60f7c2b5e1d3c2a1b8e4d125/image
-
-# Una falla en una copia no llega a la otra: Products de la región br falla...
-curl -s -X PUT http://localhost/products/chaos -H 'X-Region: br' -H 'Content-Type: application/json' \
-  -d '{"failureRate": 1, "delayMs": 0}' | jq
-
-# ...y responde 503 Service Unavailable solo en esa región
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: br' http://localhost/products/
-curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Region: uy' http://localhost/products/
-
-# Volver a la normalidad
-curl -s -X DELETE -H 'X-Region: br' http://localhost/products/chaos | jq
-
-# Eliminar la segunda copia, con sus datos
-docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml rm -sfv \
-  $(docker compose -f docker-compose.yaml -f docker-compose.stamps.yaml config --services | grep '^stamp-b-')
+# Solo la capa conoce los modelos de Orders y de Users
+grep -rlE 'user_id|product_id|"Rejected"|Envelope|SOAPAction' src/PurchasesService --include='*.cs'
 
 # La demo completa:
 
-./demos/22-deployment-stamps.sh
+./demos/22-anti-corruption-layer.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
-# cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
-# - "Respuestas por grupo de clientes": Products falla con un despliegue, y después
-#   con dos copias. Con un despliegue, fallan los dos grupos. Con dos copias, solo
-#   el de esa copia: el grupo br no recibe ningún 503 Service Unavailable.
-./demos/load-modifiability.sh stamps
+# cambio queda marcado con una línea vertical en los paneles. Resultado en
+# Grafana:
+# - "Latencia p95: Orders y Purchases": Purchases tarda más, porque la capa hace
+#   una llamada más y le pregunta a Users el nombre de cada comprador. Cuando
+#   Users se demora 200 ms, solo sube Purchases.
+./demos/load-modifiability.sh acl
 
 # ---------------------------------------------------------------------------
 # Demo 23: External Configuration Store
 # ---------------------------------------------------------------------------
 # Los límites, los feature flags y las URL están en un almacén central, Consul.
-# Cambian sin redesplegar y sin reiniciar. Este paso a paso usa dos valores: cuántas
-# unidades de un Product se pueden pedir en una Order, y si el detalle de las Orders
-# muestra el precio unitario.
+# Cambian sin redesplegar y sin reiniciar. Este paso a paso usa dos valores:
+# cuántas unidades de un Product se pueden pedir en una Order, y si el detalle
+# de las Orders muestra el precio unitario.
 
 # Abrir la consola de Consul; las claves de la demo están en Key/Value, bajo
 # 'andis':
@@ -186,6 +179,7 @@ curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
 #   400 Bad Request, pero con la variable de entorno se pierden solicitudes cada
 #   vez que se recrea el contenedor, y con el almacén no se pierde ninguna.
 # - "Valor vigente por proceso": cada proceso cambia de valor sin reiniciarse.
+
 ./demos/load-modifiability.sh config
 
 # ---------------------------------------------------------------------------
@@ -243,6 +237,7 @@ curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data
 # - "Cola bridge.erp": se detiene ActiveMQ durante unos 30 segundos. Los mensajes
 #   se acumulan y vuelven a cero cuando el puente se reconecta.
 # - "Orders confirmadas por segundo": no se detiene durante la caída.
+
 ./demos/load-modifiability.sh bridge
 
 # ---------------------------------------------------------------------------
@@ -347,6 +342,45 @@ docker compose up -d --force-recreate --wait monolith api-gateway
 ./demos/load-modifiability.sh strangler
 
 # ---------------------------------------------------------------------------
+# Demo 26: Backends for Frontends
+# ---------------------------------------------------------------------------
+# La web y la app móvil muestran las Orders de un User, pero cada una necesita
+# algo distinto. Cada cliente tiene su propio backend: bff-web y bff-mobile. El
+# gateway publica el de la web en /web/ y el de la app en /mobile/.
+
+# La web: cada Order con el precio de su Product, y el total
+curl -s http://localhost/web/orders/user/1 | jq
+
+# La app móvil: solo el Product y el estado de cada Order
+curl -s http://localhost/mobile/orders/user/1 | jq
+
+# La misma consulta, dos respuestas a la medida: cuántos bytes recibe cada
+# cliente
+curl -s -o /dev/null -w '%{size_download}\n' http://localhost/web/orders/user/1
+curl -s -o /dev/null -w '%{size_download}\n' http://localhost/mobile/orders/user/1
+
+# Cuándo arrancó bff-web, para comparar después
+docker inspect -f '{{.State.StartedAt}}' $(docker compose ps -q bff-web)
+
+# El equipo móvil publica un cambio: se redespliega solo bff-mobile
+docker compose up -d --no-deps --force-recreate --wait bff-mobile
+
+# bff-web sigue con la misma hora de arranque: la web no se enteró
+docker inspect -f '{{.State.StartedAt}}' $(docker compose ps -q bff-web)
+
+# La demo completa:
+
+./demos/26-backends-for-frontends.sh
+
+# Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
+# cambio queda marcado con una línea vertical en los paneles. Resultado en
+# Grafana:
+# - "Respuestas por cliente": mientras se redespliega bff-mobile, la app puede
+#   tener algún error. La web sigue respondiendo 200 OK.
+
+./demos/load-modifiability.sh bff
+
+# ---------------------------------------------------------------------------
 # Tamaño del cambio
 # ---------------------------------------------------------------------------
 
@@ -364,6 +398,7 @@ docker compose --profile observability down -v
 
 docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
 docker rmi legacy-erp:latest messaging-bridge:latest monolith:latest
+docker rmi purchases-service:latest bff-web:latest bff-mobile:latest
 docker rmi hashicorp/consul:1.21 apache/activemq-classic:6.1.7
 docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
 docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest

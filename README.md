@@ -22,38 +22,41 @@ El panorama de la demo y la explicación de cada patrón está en
 
 La aplicación tiene tres servicios de dominio, cada uno con su propia base de
 datos, detrás de un API Gateway. Las `Orders` se procesan en segundo plano por
-varias réplicas de un *worker* que consumen una cola de RabbitMQ. Los servicios
+varias réplicas de un *worker* que consumen una cola de [RabbitMQ](https://www.rabbitmq.com/). Los servicios
 publican eventos en RabbitMQ, y un proyector los usa para mantener una vista
-materializada del detalle de las `Orders`. `Products` usa Redis como caché.
+materializada del detalle de las `Orders`. `Products` usa [Redis](https://redis.io/) como caché.
 
-El gateway tiene dos entradas: HTTP, sin los patrones de seguridad, y HTTPS,
+El gateway tiene dos entradas: [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin los patrones de seguridad, y HTTPS,
 con ellos. Por la entrada HTTPS, los usuarios se identifican con un token de
-Keycloak, el proveedor de identidad; el gateway valida cada solicitud antes de
+[Keycloak](https://www.keycloak.org/), el proveedor de identidad; el gateway valida cada solicitud antes de
 reenviarla; `Products` tiene un *sidecar* que exige el rol `admin` para
 cambiar el catálogo; y las imágenes de los `Products` se suben y se bajan
-directamente de Azurite, el emulador de Azure Storage, con URL firmadas.
+directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azure Storage](https://azure.microsoft.com/products/storage/), con URL firmadas.
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina TLS, valida los tokens y las solicitudes, y comprime las respuestas | nginx 1.25 | 80 HTTP, 443 HTTPS, 8090 fachada |
-| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por SOAP, con el contrato publicado como WSDL | ASP.NET Core 10 + SoapCore + EF Core | 8002 |
-| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + MongoDB Driver + StackExchange.Redis | 8001 |
+| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina [TLS](https://datatracker.ietf.org/doc/html/rfc8446), valida los tokens y las solicitudes, y comprime las respuestas | [nginx](https://nginx.org/) 1.25 | 80 HTTP, 443 HTTPS, 8090 fachada |
+| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por [SOAP](https://www.w3.org/TR/soap/), con el contrato publicado como [WSDL](https://www.w3.org/TR/wsdl/) | [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) 10 + [SoapCore](https://github.com/DigDes/SoapCore) + [EF Core](https://learn.microsoft.com/ef/core/) | 8002 |
+| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + [MongoDB Driver](https://www.mongodb.com/docs/drivers/csharp/) + [StackExchange.Redis](https://stackexchange.github.io/StackExchange.Redis/) | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
-| `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
+| `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + [RabbitMQ.Client](https://www.rabbitmq.com/client-libraries/dotnet) | — |
 | `orders-projector` | Mantiene la vista materializada del detalle de las `Orders` a partir de los eventos; es la misma imagen que `orders-service` con el proyector habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
 | `rabbitmq` | Exchange `andis.events` y colas `orders.process` y `orders.details-view` | RabbitMQ 4.4 | 5672, 15672 consola |
 | `redis` | Caché de `Products` | Redis 8 | 6379 |
-| `products-sidecar` | Autenticación, autorización y registro de accesos de `Products`, sin cambiar su código; comparte el espacio de red de `products-service` | Envoy 1.40 | — |
+| `products-sidecar` | Autenticación, autorización y registro de accesos de `Products`, sin cambiar su código; comparte el espacio de red de `products-service` | [Envoy](https://www.envoyproxy.io/) 1.40 | — |
 | `keycloak` | Proveedor de identidad: usuarios, contraseñas, roles y tokens | Keycloak 26.8 | 8080 |
 | `azurite` | Imágenes de los `Products` | Azurite 3.37, emulador de Azure Storage | 10000 |
-| `consul` | Almacén central de configuración | Consul 1.21 | 8500 consola |
-| `legacy-broker` | Broker del ERP legado | ActiveMQ Classic 6.1 | 8161 consola |
-| `legacy-erp` | ERP legado simulado: registros de ancho fijo en ActiveMQ | .NET 10 + Apache NMS | — |
+| `consul` | Almacén central de configuración | [Consul](https://developer.hashicorp.com/consul) 1.21 | 8500 consola |
+| `legacy-broker` | Broker del ERP legado | [ActiveMQ](https://activemq.apache.org/) Classic 6.1 | 8161 consola |
+| `legacy-erp` | ERP legado simulado: registros de ancho fijo en ActiveMQ | [.NET](https://dotnet.microsoft.com/) 10 + [Apache NMS](https://activemq.apache.org/components/nms/) | — |
 | `messaging-bridge` | Puente entre RabbitMQ y ActiveMQ | .NET 10 + RabbitMQ.Client + Apache NMS | — |
-| `monolith` | Monolito que se reemplaza en la demo de Strangler Fig | ASP.NET Core 10 + SoapCore + EF Core + SQLite | — |
-| `users-db` | Datos de `Users` | PostgreSQL 18 | 5432 |
-| `products-db` | Datos de `Products` | MongoDB 9 | 27017 |
-| `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | MySQL 26 | 3306 |
+| `monolith` | Monolito que se reemplaza en la demo de Strangler Fig | ASP.NET Core 10 + SoapCore + EF Core + [SQLite](https://www.sqlite.org/) | — |
+| `purchases-service` | Las compras de cada `Product`, con su propio modelo; su capa anticorrupción traduce desde `Orders` y `Users` | ASP.NET Core 10 | — |
+| `bff-web` | Backend de la web: las `Orders` de un `User` con precios y total | ASP.NET Core 10 | — |
+| `bff-mobile` | Backend de la app móvil: el `Product` y el estado de cada `Order` | ASP.NET Core 10 | — |
+| `users-db` | Datos de `Users` | [PostgreSQL](https://www.postgresql.org/) 18 | 5432 |
+| `products-db` | Datos de `Products` | [MongoDB](https://www.mongodb.com/) 9 | 27017 |
+| `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | [MySQL](https://www.mysql.com/) 26 | 3306 |
 
 Endpoints disponibles a través del gateway, en `http://localhost`. Por la
 entrada HTTPS, `https://localhost`, son los mismos, salvo los de
@@ -95,11 +98,11 @@ nombres en la vista.
 
 | Herramienta | Para qué | macOS | Windows |
 | ----------- | -------- | ----- | ------- |
-| Docker | Levantar la aplicación | Docker Desktop[^docker] | Docker Desktop[^docker] |
+| [Docker](https://www.docker.com/) | Levantar la aplicación | Docker Desktop[^docker] | Docker Desktop[^docker] |
 | `bash` y `curl` | Los comandos de los archivos de [commands/](commands/) y los scripts de [demos/](demos/) | Incluidos | Git Bash[^gitbash] o WSL[^wsl]; PowerShell y `cmd` no sirven, porque los comandos usan sintaxis de `bash` |
-| `jq`[^jq] | Formatear las respuestas JSON y convertirlas en tablas con la función `table` de los archivos de `commands/` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
-| `column` | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
-| `xmllint` | Indentar las respuestas SOAP de `Users` en `commands/01-api-gateway.azcli` y los errores de Azurite en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el XML sin indentar |
+| `jq`[^jq] | Formatear las respuestas [JSON](https://www.json.org/) y convertirlas en tablas con la función `table` de los archivos de `commands/` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
+| [`column`](https://man7.org/linux/man-pages/man1/column.1.html) | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
+| [`xmllint`](https://gnome.pages.gitlab.gnome.org/libxml2/xmllint.html) | Indentar las respuestas SOAP de `Users` en `commands/01-api-gateway.azcli` y los errores de Azurite en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el [XML](https://www.w3.org/XML/) sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir los archivos de [commands/](commands/) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
 | Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de MySQL, PostgreSQL, MongoDB y Redis; los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
@@ -137,7 +140,7 @@ Los comandos están en la carpeta [commands/](commands/), en cinco archivos:
 * [04-security.azcli](commands/04-security.azcli): demos de los patrones de
   seguridad, de la 17 a la 21.
 * [05-modifiability.azcli](commands/05-modifiability.azcli): demos de los
-  patrones de facilidad de modificación, de la 22 a la 25.
+  patrones de facilidad de modificación, de la 22 a la 26.
 
 Cada archivo empieza levantando todos los servicios y termina con el *tear
 down*, así que se puede usar por separado. En resumen:
@@ -320,10 +323,11 @@ encuentran como `products-service:9000`.
 | Gateway Offloading | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): TLS, `auth_request` a Keycloak, los claims con [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js) y gzip |
 | Gatekeeper | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): rutas, métodos, tipo y tamaño del cuerpo, y encabezados de identidad; [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de publicar los puertos de los servicios |
 | Sidecar | `products-sidecar` en [docker-compose.yaml](docker-compose.yaml), configurado en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) |
-| Deployment Stamps | [docker-compose.stamps.yaml](docker-compose.stamps.yaml), con la misma plantilla, y las tablas `map` de `X-Region` en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf) |
+| Anti-corruption Layer | Las clases `OrdersTranslator`, `UsersTranslator` y `OrdersPurchaseSource`, en [PurchasesService/AntiCorruption/](src/PurchasesService/AntiCorruption); el modelo de `Purchases` está en [PurchasesService/Purchase.cs](src/PurchasesService/Purchase.cs) |
 | External Configuration Store | Las clases `ConsulConfigurationProvider` y `ConsulConfigurationPoller`, en [Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) |
 | Messaging Bridge | Las clases `OrdersToErpBridge` y `ErpToOrdersBridge`, en [MessagingBridge/](src/MessagingBridge); la traducción está en la clase `ErpFormat` |
 | Strangler Fig | La fachada del puerto 8090 en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf), y el monolito en [Monolith/Program.cs](src/Monolith/Program.cs) |
+| Backends for Frontends | `bff-web` y `bff-mobile`, en [BffWeb/Program.cs](src/BffWeb/Program.cs) y [BffMobile/Program.cs](src/BffMobile/Program.cs), publicados por el gateway en `/web/` y `/mobile/` |
 | Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
@@ -368,8 +372,8 @@ opcional de observabilidad y escenarios de carga con [k6](https://k6.io).
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `prometheus` | Consulta cada 5 s el endpoint `/metrics` de los servicios, de cada réplica de `orders-worker`, de RabbitMQ, del *sidecar* de `Products` y de Keycloak; recibe las métricas de k6 | Prometheus 3.15 | 9090 |
-| `grafana` | Dashboard con todo lo anterior, ya configurado y sin login | Grafana 13.2 | 3000 |
+| `prometheus` | Consulta cada 5 s el endpoint `/metrics` de los servicios, de cada réplica de `orders-worker`, de RabbitMQ, del *sidecar* de `Products` y de Keycloak; recibe las métricas de k6 | [Prometheus](https://prometheus.io/) 3.15 | 9090 |
+| `grafana` | Dashboard con todo lo anterior, ya configurado y sin login | [Grafana](https://grafana.com/oss/grafana/) 13.2 | 3000 |
 | `k6` | Genera la carga de cada escenario; no queda corriendo | k6 2.3 | — |
 
 ```bash
@@ -386,7 +390,7 @@ resultados se ven únicamente en la terminal.
 
 ### Métricas
 
-Los servicios exponen sus métricas en `GET /metrics`, con OpenTelemetry y el
+Los servicios exponen sus métricas en `GET /metrics`, con [OpenTelemetry](https://opentelemetry.io/) y el
 exporter de Prometheus, configurado en el método `AddObservability` de la clase
 `ObservabilityExtensions`, en [Common/Observability.cs](src/Common/Observability.cs). Casi todas las métricas ya
 las publican las bibliotecas que usa la aplicación; no hubo que instrumentar el
@@ -396,7 +400,7 @@ código a mano:
 | ------- | ---------------- | ----------- |
 | `http_server_request_duration_seconds` | ASP.NET Core | Solicitudes recibidas, latencia y código HTTP, por ruta |
 | `aspnetcore_rate_limiting_*` | ASP.NET Core | Throttling: consultas en curso, aceptadas y rechazadas |
-| `resilience_polly_strategy_events_total` | Polly | Retry, Circuit Breaker, Bulkhead y timeouts: cada evento, por dependencia |
+| `resilience_polly_strategy_events_total` | [Polly](https://www.pollydocs.org/) | Retry, Circuit Breaker, Bulkhead y timeouts: cada evento, por dependencia |
 | `resilience_polly_pipeline_duration_milliseconds` | Polly | Duración de cada llamada a `Users` y `Products`, con los reintentos incluidos |
 | `rabbitmq_detailed_queue_*` | RabbitMQ | Mensajes esperando y en proceso en la cola, y consumidores conectados |
 | `orders_processed_total` | La clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
@@ -412,7 +416,7 @@ código a mano:
 | `keycloak_user_events_total` | Keycloak | Inicios de sesión y validaciones de tokens, con su error si lo hubo |
 | `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
 | `k6_strangler_requests_total`, `k6_strangler_details_duration_*` | Los escenarios de k6 | Solicitudes de la fachada por destino, según `X-Served-By`, y latencia del detalle |
-| `k6_stamp_requests_total`, `k6_config_requests_total` | Los escenarios de k6 | Respuestas por grupo de clientes, según `X-Stamp`, y a `Orders`, por operación y resultado |
+| `k6_acl_duration_*`, `k6_bff_requests_total`, `k6_config_requests_total` | Los escenarios de k6 | Latencia de `Orders` y de `Purchases`, respuestas de cada BFF, y respuestas de `Orders` por operación y resultado |
 
 > [!TIP]
 >
@@ -442,14 +446,15 @@ dashboard.
 | `strangler-fig.js` | 15 lecturas por segundo a la fachada, mientras se migran las rutas | El tráfico pasa del monolito a los servicios, sin errores; la latencia del detalle sube |
 | `external-configuration.js` | 2 `POST /orders/` y 20 lecturas por segundo, mientras se cambia un límite por variable de entorno y en el almacén | Solo la variable de entorno deja solicitudes sin respuesta |
 | `messaging-bridge.js` | 2 `Orders` por segundo, mientras se detiene ActiveMQ | La cola `bridge.erp` crece y se vacía; las `Orders` se siguen confirmando |
-| `deployment-stamps.js` | 10 lecturas por segundo de dos grupos de clientes, con una copia y con dos, mientras falla `Products` | Con dos copias, la falla alcanza a un solo grupo |
+| `anti-corruption-layer.js` | 10 lecturas por segundo, mitad a `Orders` y mitad a `Purchases`, mientras se demora `Users` | `Purchases` tarda más que `Orders`; con `Users` demorado, solo sube `Purchases` |
+| `backends-for-frontends.js` | 20 lecturas por segundo, mitad por cada BFF, mientras se redespliega `bff-mobile` | La web sigue respondiendo `200 OK`; la app puede recibir algún error |
 
-Los últimos cuatro necesitan que alguien haga el cambio mientras corren: se lanzan
+Los últimos cinco necesitan que alguien haga el cambio mientras corren: se lanzan
 con [demos/load-modifiability.sh](demos/load-modifiability.sh), que además marca
 cada cambio en el dashboard:
 
 ```bash
-./demos/load-modifiability.sh strangler   # también: config, bridge, stamps
+./demos/load-modifiability.sh strangler   # también: acl, config, bridge, bff
 ```
 
 `load.js` acepta la tasa y la duración como parámetros:

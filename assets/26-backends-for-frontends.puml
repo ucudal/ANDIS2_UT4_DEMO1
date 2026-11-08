@@ -1,0 +1,17 @@
+@startuml
+!include PlantUML.style
+rectangle "App web" as W
+rectangle "App móvil" as M
+rectangle "Gateway" as G
+rectangle "bff-web\ndetalle, precio y total" as BW
+rectangle "bff-mobile\nProduct y estado" as BM
+rectangle "Orders" as O
+rectangle "Products" as P
+W --> G : /web/
+M --> G : /mobile/
+G --> BW
+G --> BM
+BW --> O : GET /orders/
+BW --> P : GET /products/{id}
+BM --> O : GET /orders/user/{id}/details
+@enduml
