@@ -2267,6 +2267,7 @@ qué variante la atendió.
 | Entrada de despliegue del gateway | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [ApiGateway/nginxconf/deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
 | Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [UsersService/Release.cs](src/UsersService/Release.cs). |
 | El experimento | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
+| `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 30 los levanta sola. |
 
 La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión `v1` con
 otra configuración y en otros contenedores, para simplificar la demo. En
@@ -2489,10 +2490,11 @@ atrás.
   que elige el destino según un hash de `$request_id`, distinto en cada
   solicitud. Cambiar el porcentaje es cambiar una línea y recargar nginx, con la
   función `deploy_canary`.
-* **La métrica por versión:** con `X-Version`, cada respuesta dice qué versión la
-  atendió. La demo y [k6](https://k6.io/) cuentan las respuestas y los errores de cada una.
-* **La falla:** el `/users/chaos` de la versión `v2`, por adentro de la red de Docker:
-  esa versión responde `503 Service Unavailable` a todo.
+* **La métrica por versión:** con `X-Version`, cada respuesta dice qué versión
+  la atendió. La demo y [k6](https://k6.io/) cuentan las respuestas y los
+  errores de cada una.
+* **La falla:** el `/users/chaos` de la versión `v2`, por adentro de la red de
+  Docker: esa versión responde `503 Service Unavailable` a todo.
 
 El reparto es por solicitud: el mismo cliente puede recibir una versión y después
 la otra. Para que cada cliente vea siempre la misma, el hash puede usar una cookie
@@ -2549,72 +2551,146 @@ versión `v1`.
 
 #### A/B Testing
 
-**Problema:** para elegir entre dos formas de una funcionalidad hay que medir cuál
-funciona mejor con clientes reales. Si cada cliente ve una variante distinta en
-cada consulta, no se puede atribuir el efecto a ninguna.
+**Problema:** para elegir entre dos formas de una funcionalidad hay que medir
+cuál funciona mejor con clientes reales. Si cada cliente ve una variante
+distinta en cada consulta, no se puede atribuir el efecto a ninguna.
 
-**Escenario:** la versión `v2` de `Users` muestra el nombre de cada `User` en una de
-dos variantes: la A, solo el nombre, y la B, el nombre y el email. Algunos `Users`
-se anotaron para probar lo nuevo y ven siempre la B.
+**Escenario:** la versión `v2` de `Users` muestra el nombre de cada `User` en
+una de dos variantes: la A, solo el nombre, y la B, el nombre y el email.
+Algunos `Users` se anotaron para probar lo nuevo y ven siempre la B.
 
 **Implementación:** el experimento está en la versión `v2`, en la clase
-`Experiment`, que usa el método `GetUser` de la clase `UserService`.
+`Experiment`, que usa el método `GetUser` de la clase `UserService`. Qué
+variante ve cada `User` no lo decide ese código: lo decide
+[Unleash](https://www.getunleash.io/), un servicio de *feature flags* de código
+abierto, en el flag `users-display-name`. `Users` se lo pregunta a
+[OpenFeature](https://openfeature.dev/), el estándar abierto de *feature flags*
+de la [CNCF](https://www.cncf.io/).
 
-* **Por segmento:** si la solicitud trae `X-Segment: beta`, la variante es la B.
-* **Al azar:** si no, la decide un hash del id del `User`. Es aleatoria entre los
-  `Users`, pero el mismo `User` cae siempre en la misma variante.
+* **Por segmento:** la primera estrategia del flag tiene una restricción: si la
+  solicitud trae `X-Segment: beta`, la variante es la B.
+* **Por porcentaje:** si no, la segunda estrategia reparte los `Users` entre A y
+  B, la mitad en cada una. Unleash calcula un hash del id del `User`: el
+  reparto es aleatorio entre los `Users`, pero el mismo `User` cae siempre en la
+  misma variante, y todas las réplicas eligen la misma.
+* **El cambio del reparto:** se hace en Unleash, con la consola o con su API, sin
+  desplegar. `Users` vuelve a leer el flag cada 2 segundos.
+* **Si Unleash no responde:** `Users` sigue con la última configuración que
+  leyó. Si nunca la leyó, OpenFeature devuelve la variante A, el valor por
+  omisión. Unleash no está en el camino de cada solicitud: la variante se
+  calcula en `Users`.
 * **La respuesta:** el campo `DisplayName` con la variante, y el encabezado
   `X-Variant`.
 * **La medida:** la métrica `users_experiment_total`, por variante y por segmento.
 
-A diferencia de Canary Testing, el reparto no está en el gateway, sino en el código
-de la versión que trae el experimento. Canary decide qué versión atiende; A/B,
-qué variante ve cada `User` dentro de una versión.
+A diferencia de Canary Testing, el reparto no está en el gateway, sino en un
+servicio de *feature flags* que consulta la versión que trae el experimento.
+Canary decide qué versión atiende; A/B, qué variante ve cada `User` dentro de
+una versión.
+
+Es también un ejemplo de facilidad de modificación: la clase `Experiment` solo
+depende de OpenFeature. El único lugar que sabe de Unleash es
+[UsersService/Program.cs](src/UsersService/Program.cs), que registra el
+proveedor. Cambiar Unleash por otro servicio de *feature flags* es cambiar ese
+registro y el paquete del proveedor, sin tocar `Experiment`.
 
 En Azure, [Azure App
 Configuration](https://azure.microsoft.com/products/app-configuration/) asigna
 variantes con [*feature
 flags*](https://learn.microsoft.com/en-us/azure/azure-app-configuration/concept-experimentation).
-En AWS, [AWS AppConfig](https://aws.amazon.com/systems-manager/features/appconfig/)
-tiene [*feature flags* con
+En AWS, [AWS
+AppConfig](https://aws.amazon.com/systems-manager/features/appconfig/) tiene
+[*feature flags* con
 variantes](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-creating-multi-variant-feature-flags.html).
+
+Unleash se parece a [Consul](https://developer.hashicorp.com/consul) en la demo
+de [External Configuration Store](#external-configuration-store): con los dos se
+cambia el comportamiento sin desplegar, y si se caen, los servicios siguen con
+la última configuración que leyeron. La diferencia está en qué guarda cada uno:
+
+* **Consul es un almacén de configuración:** guarda valores, como
+  `andis/Features/ProductPrices` en `true` o `andis/Orders/MaxQuantity` en `3`.
+  El servicio lee el valor y lo aplica igual a todas las solicitudes. Un *flag*
+  ahí es un valor más, prendido o apagado para todos: Consul no sabe quién
+  pregunta.
+* **Unleash es un servicio de *feature flags*:** guarda reglas. En cada
+  solicitud, `Users` le pasa a OpenFeature un contexto, con el id del `User` y
+  el segmento, y la regla responde según quién pregunta. Unleash no evalúa la
+  regla en cada solicitud: el cliente que corre en `Users` la descarga y la
+  evalúa localmente. Además, trae lo que necesita un experimento: variantes,
+  porcentajes, restricciones y una consola para cambiarlos.
+
+Consul responde "¿cuál es el valor?", lo mismo para todos; Unleash responde
+"¿qué le toca a este `User`?". Los *flags* de External Configuration Store para
+los que usamos Consul no son lo mismo que los *feature flags* configurados en
+Unleash. La misma distinción existe en Azure, entre la configuración y los
+*feature flags* de Azure App Configuration, y en AWS, entre [AWS Systems Manager
+Parameter
+Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html)
+y los *feature flags* de AWS AppConfig.
 
 **Cómo funciona:**
 
-![La versión `v2` elige la variante de cada User, por segmento o al
-azar](assets/30-ab-testing.svg)
+![La versión `v2` le pregunta a Unleash la variante de cada User, por segmento o
+por porcentaje](assets/30-ab-testing.svg)
 
-**Código:** la elección de la variante, en el método `Apply` de la clase
-`Experiment`:
+**Código:** la elección de la variante, en el método `ApplyAsync` de la clase
+`Experiment`. El contexto de la evaluación lleva el id del `User`, que fija la
+variante, y el segmento, que usa la restricción del flag:
 
 ```csharp
-var segment = context?.Request.Headers[SegmentHeader].ToString();
-var variant = segment == "beta" ? "B" : VariantFor(user.Id);
+var evaluation = EvaluationContext.Builder().SetTargetingKey(user.Id.ToString());
+if (!string.IsNullOrEmpty(segment))
+    evaluation.Set("segment", segment);
+var variant = await _flags.GetStringValueAsync(Flag, "A", evaluation.Build());
 
-user.DisplayName = variant == "A" ? user.Name : $"{user.Name} <{user.Email}>";
+user.DisplayName = variant == "B" ? $"{user.Name} <{user.Email}>" : user.Name;
 ```
 
-**Cómo verlo:** [demos/30-ab-testing.sh](demos/30-ab-testing.sh) muestra que la
-versión `v1` no tiene experimento y despliega la `v2` con Blue/Green. Pide los
-dos `Users`: 'alice' cae en la B y 'bob' en la A. Pide a 'bob' tres veces, y
-siempre recibe la A; con `X-Segment: beta`, recibe la B. Al final muestra
-cuántas veces se mostró cada variante, según las métricas de `Users`.
+El registro del proveedor, en
+[UsersService/Program.cs](src/UsersService/Program.cs). Solo se registra si está
+configurado `Unleash:Url`, como en la versión `v2`:
+
+```csharp
+await Api.Instance.SetProviderAsync(new UnleashProvider(new UnleashSettings
+{
+    AppName = "users-service",
+    UnleashApi = new Uri(unleashUrl),
+    CustomHttpHeaders = new() { ["Authorization"] = builder.Configuration["Unleash:Token"]! },
+    FetchTogglesInterval = TimeSpan.FromSeconds(2),
+}));
+```
+
+El feature flag y sus estrategias los crean las funciones `experiment_start` y
+`experiment_split` de [demos/common.sh](demos/common.sh), con la API de
+administración de Unleash.
+
+**Cómo verlo:** [demos/30-ab-testing.sh](demos/30-ab-testing.sh) levanta
+Unleash, muestra que la versión `v1` no tiene experimento y despliega la `v2`
+con Blue/Green. Pide los dos `Users`: 'alice' cae en la B y 'bob' en la A. Pide
+a 'bob' tres veces, y siempre recibe la A; con `X-Segment: beta`, recibe la B.
+Después cambia el reparto en Unleash para que todos vean la B, y los dos `Users`
+la reciben sin desplegar nada. Detiene Unleash, y `Users` sigue respondiendo
+con la B. Al final vuelve el reparto a la mitad y muestra cuántas veces se
+mostró cada variante, según las métricas de `Users`.
 
 **Qué facilita en el despliegue:**
 
 | Situación | ¿La facilita? | Cómo |
 | --------- | ------------- | ---- |
 | Desplegar dos formas de una funcionalidad y compararlas | Sí | Cada `User` ve siempre la misma variante, y se cuenta cuántas veces se mostró cada una |
-| Mostrarle una variante a un segmento | Sí | Un encabezado, o cualquier propiedad del `User` |
-| Agregar una tercera variante | En parte | Un cambio en la clase `Experiment` y una versión nueva |
+| Mostrarle una variante a un segmento | Sí | Una restricción en el flag, sobre un campo del contexto de la evaluación |
+| Cambiar el reparto o terminar el experimento | Sí | Un cambio en Unleash, sin desplegar |
+| Agregar una tercera variante | En parte | La variante se agrega en Unleash, pero mostrarla es un cambio en la clase `Experiment` y una versión nueva |
 | Saber qué variante funciona mejor | No | La demo cuenta cuántas veces se mostró cada una; falta medir qué hizo cada `User` después |
 
 **Ventajas y desventajas:**
 
 | Decisión | Una opción | La otra |
 | -------- | ---------- | ------- |
-| Dónde se elige la variante | En el código, como acá: se puede usar cualquier propiedad del `User`, pero cambiar el experimento es desplegar | En un servicio de *feature flags*: se cambia sin desplegar, a cambio de otro componente |
-| Cómo se elige | Por segmento: se elige a quién, pero el grupo no es representativo | Al azar: los grupos son comparables, pero nadie elige quién ve qué |
+| Dónde se elige la variante | En un servicio de *feature flags*, como acá: se cambia sin desplegar, a cambio de otro componente que levantar y operar | En el código: no hay otro componente, pero cambiar el experimento es desplegar |
+| Cómo se consulta | Con OpenFeature, como acá: el código no depende del servicio de *feature flags* | Con el SDK del servicio: puede usar todo lo que ofrece, pero cambiar de servicio es cambiar el código |
+| Cómo se elige | Por segmento: se elige a quién, pero el grupo no es representativo | Por porcentaje: los grupos son comparables, pero nadie elige quién ve qué |
 
 > [!TIP]
 >

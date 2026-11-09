@@ -477,6 +477,10 @@ services:
       CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
       RABBITMQ__HOST: "rabbitmq"
       RELEASE__VERSION: "2"
+      # A/B Testing: la variante del experimento la decide Unleash, del perfil
+      # feature-flags. Si no está levantado, Users responde con la variante A.
+      UNLEASH__URL: "http://unleash:4242/api/"
+      UNLEASH__TOKEN: "default:development.andis-client-token"
     networks:
       default:
         # Rolling Upgrade: el grupo de instancias que atiende la entrada de
@@ -497,6 +501,49 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+
+  # A/B Testing: Unleash decide qué variante del experimento ve cada User, y la
+  # versión 2 de Users se lo pregunta con OpenFeature -ver UsersService/Experiment.cs-.
+  # Se levanta con
+  #   docker compose --profile feature-flags up -d --wait
+  # La demo 30 lo levanta sola. Consola: http://localhost:4242, usuario admin,
+  # contraseña unleash4all.
+  unleash-db:
+    image: postgres:18
+    profiles: ["feature-flags"]
+    environment:
+      POSTGRES_DB: "unleash"
+      POSTGRES_USER: "unleashusr"
+      POSTGRES_PASSWORD: "Pa55w0rd"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "unleashusr", "-d", "unleash"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  unleash:
+    image: unleashorg/unleash-server:8.2.1
+    profiles: ["feature-flags"]
+    environment:
+      DATABASE_URL: "postgres://unleashusr:Pa55w0rd@unleash-db:5432/unleash"
+      DATABASE_SSL: "false"
+      # Tokens fijos, para no crearlos a mano: el de administración lo usan los
+      # scripts de las demos para configurar el flag, y el de cliente, Users
+      # para leerlo. Es un entorno de demo: en producción serían secretos.
+      INIT_ADMIN_API_TOKENS: "*:*.andis-admin-token"
+      INIT_CLIENT_API_TOKENS: "default:development.andis-client-token"
+    ports:
+      - "4242:4242"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4242/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      unleash-db:
+        condition: service_healthy
 
   # Observabilidad -opcional-: se levanta con
   #   docker compose --profile observability up -d

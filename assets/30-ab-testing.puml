@@ -4,13 +4,15 @@ rectangle "User 1" as U1
 rectangle "User 2" as U2
 rectangle "User 2\nX-Segment: beta" as U3
 rectangle "users-service-v2\nExperiment" as V2
+rectangle "Unleash\nflag users-display-name" as UL
 rectangle "Variante A\nDisplayName: nombre" as A
 rectangle "Variante B\nDisplayName: nombre <email>" as B
 rectangle "users_experiment_total\npor variante" as M
 U1 --> V2
 U2 --> V2
 U3 --> V2
-V2 --> A : User 2, al azar
-V2 --> B : User 1, al azar\no segmento beta
+V2 ..> UL : OpenFeature,\ncada 2 segundos
+V2 --> A : User 2,\npor porcentaje
+V2 --> B : User 1, por porcentaje,\no segmento beta
 V2 ..> M
 @enduml

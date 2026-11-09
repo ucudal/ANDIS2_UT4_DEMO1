@@ -442,6 +442,67 @@ pool_cleanup() {
     docker compose up -d --no-deps --scale users-service-v2=1 --wait users-service-v2 > /dev/null 2>&1
 }
 
+# A/B Testing: Unleash decide qué variante ve cada User, en el flag
+# users-display-name. Las demos lo configuran con la API de administración y el
+# token fijo de docker-compose.yaml.
+
+UNLEASH=${UNLEASH:-http://localhost:4242}
+EXPERIMENT_FLAG=users-display-name
+EXPERIMENT_STRATEGIES=/projects/default/features/$EXPERIMENT_FLAG/environments/development/strategies
+
+# unleash_api <método> <ruta> [cuerpo JSON]: una llamada a la API de administración.
+unleash_api() {
+    curl -s -X "$1" "$UNLEASH/api/admin$2" -H 'Authorization: *:*.andis-admin-token' \
+        -H 'Content-Type: application/json' ${3:+-d "$3"}
+}
+
+# experiment_start: levanta Unleash si no está, y crea el flag con la mitad de
+# los Users en cada variante. Si el flag ya existe, solo vuelve el reparto a la
+# mitad. El segmento es un campo de contexto propio: Unleash tiene que conocerlo
+# para usarlo en una restricción.
+experiment_start() {
+    docker compose --profile feature-flags up -d --wait unleash > /dev/null 2>&1
+    unleash_api POST /context '{"name": "segment", "stickiness": false}' > /dev/null
+    unleash_api POST /projects/default/features "{\"name\": \"$EXPERIMENT_FLAG\", \"type\": \"experiment\"}" > /dev/null
+    experiment_split 50
+}
+
+# experiment_strategy <título> <restricciones> <porcentaje de B>: el JSON de una
+# estrategia del flag. Cada variante lleva su nombre como payload: es lo que
+# devuelve OpenFeature. Una variante con peso 0 no se incluye.
+#
+# El groupId mezcla el id del User antes de elegir la variante: así un User no
+# cae en la misma variante en todos los experimentos. Con users-experiment, el
+# User 1 cae en la B y el User 2 en la A.
+experiment_strategy() {
+    jq -nc --arg title "$1" --argjson constraints "$2" --argjson b "$(( $3 * 10 ))" '
+        [{name: "A", weight: (1000 - $b)}, {name: "B", weight: $b}]
+        | map(select(.weight > 0)) as $variants
+        | {name: "flexibleRollout", title: $title, constraints: $constraints,
+           parameters: {rollout: "100", stickiness: "userId", groupId: "users-experiment"},
+           variants: [$variants[] | . + {
+               weightType: (if . == $variants[0] then "variable" else "fix" end),
+               stickiness: "userId", payload: {type: "string", value: .name}}]}'
+}
+
+# experiment_split <porcentaje>: qué porcentaje de los Users ve la variante B; el
+# resto ve la A. Reemplaza las estrategias del flag, que se evalúan en orden:
+# 1. Con X-Segment: beta, siempre la B.
+# 2. Los demás, según el porcentaje. La variante la fija el id del User: el
+#    mismo User cae siempre en la misma variante.
+# Users se entera en unos segundos, sin reiniciar ni desplegar. Al borrar la
+# última estrategia, Unleash apaga el flag: por eso se vuelve a prender al final.
+experiment_split() {
+    local id
+    for id in $(unleash_api GET "$EXPERIMENT_STRATEGIES" | jq -r '.[].id'); do
+        unleash_api DELETE "$EXPERIMENT_STRATEGIES/$id" > /dev/null
+    done
+    unleash_api POST "$EXPERIMENT_STRATEGIES" \
+        "$(experiment_strategy 'Segmento beta' '[{"contextName": "segment", "operator": "IN", "values": ["beta"]}]' 100)" > /dev/null
+    unleash_api POST "$EXPERIMENT_STRATEGIES" "$(experiment_strategy 'Todos los Users' '[]' "$1")" > /dev/null
+    unleash_api POST "${EXPERIMENT_STRATEGIES%/strategies}/on" > /dev/null
+}
+
 # Al terminar, deja los servicios sin fallas simuladas y con todos los patrones
 # prendidos.
 trap 'reset_chaos; reset_patterns' EXIT

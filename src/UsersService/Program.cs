@@ -3,7 +3,10 @@ using Ucu.Andis.Users;
 using Ucu.Andis.Users.Data;
 using Ucu.Andis.Users.Soap;
 using Microsoft.EntityFrameworkCore;
+using OpenFeature;
+using OpenFeature.Providers.Unleash;
 using SoapCore;
+using Unleash;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +27,27 @@ builder.AddObservability(Experiment.MeterName);
 builder.Services.AddSingleton<Release>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<Experiment>();
+
+// La variante del experimento la decide Unleash, y Experiment se la pregunta a
+// OpenFeature. Acá se elige el proveedor: es el único lugar que sabe de Unleash.
+// Sin Unleash:Url, como en la versión 1, OpenFeature no tiene proveedor y
+// devuelve siempre el valor por omisión.
+var unleashUrl = builder.Configuration["Unleash:Url"];
+if (!string.IsNullOrEmpty(unleashUrl))
+{
+    // Espera la primera lectura de los flags, o el primer error si Unleash no
+    // está: en ese caso, el cliente sigue intentando en segundo plano.
+    await Api.Instance.SetProviderAsync(new UnleashProvider(new UnleashSettings
+    {
+        AppName = "users-service",
+        UnleashApi = new Uri(unleashUrl),
+        CustomHttpHeaders = new() { ["Authorization"] = builder.Configuration["Unleash:Token"]! },
+        // Cada cuánto vuelve a leer los flags. Por defecto son 30 segundos: en
+        // la demo se acorta, para ver enseguida un cambio del reparto.
+        FetchTogglesInterval = TimeSpan.FromSeconds(2),
+    }));
+}
+builder.Services.AddSingleton<IFeatureClient>(Api.Instance.GetClient("users-service"));
 
 // Users expone SOAP en lugar de REST: SoapCore recibe los sobres XML, los
 // despacha a UserService y publica el WSDL.

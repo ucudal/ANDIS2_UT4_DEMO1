@@ -788,6 +788,12 @@ docker compose logs products-service --since 2m | grep '\[VALET KEY\]'
 # Tear down
 # ---------------------------------------------------------------------------
 
+# Detener los contenedores sin borrarlos: conservan su estado y se pueden volver
+# a levantar con docker compose --profile observability start
+docker compose --profile observability stop
+
+# Borrar todo: contenedores, redes, volúmenes, imágenes, caché de build y las
+# carpetas de las bases de datos
 docker compose --profile observability down -v
 
 docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest

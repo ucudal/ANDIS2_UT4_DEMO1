@@ -81,6 +81,8 @@ canary_cleanup() {
 
 ab() {
     title "A/B Testing bajo carga"
+    note "Levantando Unleash, con la mitad de los Users en cada variante..."
+    experiment_start
     mark "La versión v2, con el experimento, en producción"
     deploy_target users-service-v2:8000
     load ab-testing.js

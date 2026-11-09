@@ -30,7 +30,7 @@ public class UserService : IUserService
         var user = await _db.Users.FindAsync(id);
         // A/B Testing: solo la versión 2 trae el experimento -ver Experiment.cs-.
         if (user is not null && _release.Version >= 2)
-            _experiment.Apply(user);
+            await _experiment.ApplyAsync(user);
         return user;
     }
 

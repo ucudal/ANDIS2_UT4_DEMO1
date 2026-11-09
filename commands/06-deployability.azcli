@@ -1,16 +1,16 @@
 # Parte 6: demos de las estrategias de despliegue, de la 27 a la 30
 #
-# Las demos de disponibilidad están en 02-availability.azcli, las de rendimiento,
-# en 03-performance.azcli, las de seguridad, en 04-security.azcli y las de
-# facilidad de modificación, en 05-modifiability.azcli.
+# Las demos de disponibilidad están en 02-availability.azcli, las de
+# rendimiento, en 03-performance.azcli, las de seguridad, en 04-security.azcli y
+# las de facilidad de modificación, en 05-modifiability.azcli.
 #
-# Las cuatro ponen en producción la versión v2 de Users, que corre en
-# users-service-v2 al lado de la versión v1, en users-service. Es la misma imagen
-# con otra versión configurada, y comparte la base. Los clientes llegan por la
-# entrada de despliegue del gateway, en el puerto 8091: a qué versión va cada
-# solicitud lo define /etc/nginx/deployment-routes.conf, en el contenedor del
-# gateway. Cada respuesta dice qué versión la atendió, en el encabezado
-# X-Version.
+# Las cuatro demos en este archivo ponen en producción la versión v2 de Users,
+# que corre en users-service-v2 al lado de la versión v1, en users-service. Es
+# la misma imagen con otra versión configurada, y comparte la base. Los clientes
+# llegan por la entrada de despliegue del gateway, en el puerto 8091: a qué
+# versión va cada solicitud lo define /etc/nginx/deployment-routes.conf, en el
+# contenedor del gateway. Cada respuesta dice qué versión la atendió, en el
+# encabezado X-Version.
 
 # ---------------------------------------------------------------------------
 # Levantar todos los servicios
@@ -49,7 +49,7 @@ docker compose --profile observability up -d --wait
 # Variables
 # ---------------------------------------------------------------------------
 
-# La solicitud SOAP GetUser del User 1, y del User 2
+# Guardar en variables la solicitud SOAP GetUser del User 1, y del User 2
 soap1='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <GetUser xmlns="http://ucu.edu.uy/andis/users">
@@ -68,8 +68,8 @@ soap2='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 # ---------------------------------------------------------------------------
 # Demo 27: Blue/Green Deployment
 # ---------------------------------------------------------------------------
-# La versión v2 se despliega al lado de la v1, se prueba sin que reciba tráfico y
-# se conmuta de una vez. Volver atrás es conmutar de nuevo.
+# La versión v2 se despliega al lado de la v1, se prueba sin que reciba tráfico
+# y se conmuta de una vez. Volver atrás es conmutar de nuevo.
 
 # Las dos versiones están vivas
 docker compose ps users-service users-service-v2
@@ -108,8 +108,9 @@ map $host $users_target {
 }
 EOF
 
-# La demo completa, con una sonda que pide el User 1 cada 0,1 segundos
-# mientras se conmuta: ninguna respuesta con error
+# La demo completa, con una sonda que pide el User 1 cada 0.1 segundos mientras
+# se conmuta: ninguna respuesta con error
+
 ./demos/27-blue-green.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
@@ -117,7 +118,7 @@ EOF
 # Grafana:
 # - "Solicitudes por versión": el tráfico pasa de una versión a la otra de una
 #   vez, en cada conmutación.
-# - "Respuestas con error, por versión": vacío, sin errores.
+# - "Respuestas con error, por versión": la línea "sin errores", en 0.
 
 ./demos/load-deployment.sh bluegreen
 
@@ -128,14 +129,15 @@ EOF
 # Cada lote espera a que la instancia nueva esté sana antes de detener una vieja.
 #
 # Las instancias comparten el alias de red users-pool, y nginx reparte entre las
-# IP que devuelve el DNS de Docker. users-service no entra en el grupo, porque lo
-# usan las demás demos: las instancias de la versión v1 se crean a partir de su
-# definición.
+# IP que devuelve el DNS de Docker. users-service no entra en el grupo, porque
+# lo usan las demás demos: las instancias de la versión v1 se crean a partir de
+# su definición.
 
-# La red de la aplicación
+# Guardar en una variable la red de la aplicación
 network=$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' $(docker compose ps -q api-gateway))
 
-# Sin réplicas de la versión v2, para que el grupo empiece solo con la v1
+# Levantar el servicio sin réplicas de la versión v2, para que el grupo empiece
+# solo con la v1
 docker compose up -d --no-deps --scale users-service-v2=0 users-service-v2
 
 # Tres instancias de la versión v1, con el alias users-pool
@@ -148,37 +150,51 @@ done
 # Esperar a que estén sanas
 docker ps --filter name=users-v1 --format '{{.Names}}: {{.Status}}'
 
-# La entrada de despliegue, hacia el grupo
+# Modificar la entrada de despliegue en el contenedor del gateway, para que el
+# tráfico en el puerto 8091 vaya hacia users-pool en lugar de users-service.
 docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
 map $host $users_target {
     default users-pool:8000;
 }
 EOF
 
-# Las IP del grupo, y cuántas de 12 solicitudes atendió cada versión: todas la v1
+# Examinar as IP del grupo
 docker compose exec api-gateway getent ahostsv4 users-pool
+
+# Hacer 12 solicitudes a Users en la entrada de despliegue y ver cuantas de esas
+# solicitudes atendió cada versión: todas la v1
 for i in $(seq 12); do
   curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
     -H 'Content-Type: text/xml; charset=utf-8' \
     -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 done | sort | uniq -c
 
-# Lote 1: una réplica de la versión v2; --wait espera a que esté sana. Recién
-# entonces, se detiene una instancia de la v1. Docker Compose avisa "Found orphan
-# containers": son las instancias de la versión v1, que no están en
+# Paso 1: una réplica de la versión v2; --wait espera a que esté sana. Recién
+# entonces, se detiene una instancia de la v1. Docker Compose avisa "Found
+# orphan containers": son las instancias de la versión v1, que no están en
 # docker-compose.yaml. No hay que hacer nada.
 docker compose up -d --no-deps --scale users-service-v2=1 --wait users-service-v2
 docker stop users-v1-1
 
 # Repetir las 12 solicitudes: responden las dos versiones
+for i in $(seq 12); do
+  curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
 
-# Lotes 2 y 3
+# Pasos 2 y 3
 docker compose up -d --no-deps --scale users-service-v2=2 --wait users-service-v2
 docker stop users-v1-2
 docker compose up -d --no-deps --scale users-service-v2=3 --wait users-service-v2
 docker stop users-v1-3
 
-# Repetir las 12 solicitudes: todas la v2
+# Repetir las 12 solicitudes: todas las atiende v2
+for i in $(seq 12); do
+  curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
 
 # Dejar todo como estaba: sin las instancias de la versión v1, con una réplica
 # de la v2 y la entrada de despliegue hacia users-service
@@ -190,14 +206,15 @@ map $host $users_target {
 }
 EOF
 
-# La demo completa, con una sonda que pide el User 1 cada 0,1 segundos durante
+# La demo completa, con una sonda que pide el User 1 cada 0.1 segundos durante
 # todo el reemplazo: ninguna respuesta con error
+
 ./demos/28-rolling-upgrade.sh
 
 # Bajo carga. Resultado en Grafana:
 # - "Solicitudes por versión": la versión v2 sube en escalones, un tercio por
 #   lote, mientras la v1 baja.
-# - "Respuestas con error, por versión": vacío, sin errores.
+# - "Respuestas con error, por versión": la línea "sin errores", en 0.
 
 ./demos/load-deployment.sh rolling
 
@@ -208,7 +225,7 @@ EOF
 # buenas, la fracción crece; si no, vuelve a cero. split_clients de nginx elige
 # el destino de cada solicitud con un hash de $request_id.
 
-# El 10 % a la versión v2
+# Configurar el gateway para que el 10% del tráfico vaya a la versión v2
 docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
 split_clients "${request_id}" $users_target {
     10% users-service-v2:8000;
@@ -216,15 +233,15 @@ split_clients "${request_id}" $users_target {
 }
 EOF
 
-# Cuántas de 50 solicitudes atendió cada versión: cerca de 5 la v2
+# Ver cuántas de 50 solicitudes atendió cada versión
 for i in $(seq 50); do
   curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
     -H 'Content-Type: text/xml; charset=utf-8' \
     -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 done | sort | uniq -c
 
-# Una versión v2 con un error: se le inyectan fallas solo a ella, desde adentro
-# de la red. Por el puerto 80, /users/chaos llegaría a la versión v1.
+# Levantar una versión v2 con un error: se le inyectan fallas solo a ella, desde
+# adentro de la red. Por el puerto 80, /users/chaos llegaría a la versión v1.
 docker compose exec api-gateway curl -s -X PUT http://users-service-v2:8000/users/chaos \
   -H 'Content-Type: application/json' -d '{"failureRate": 1, "delayMs": 0}'
 
@@ -236,7 +253,9 @@ for i in $(seq 50); do
     -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 done | sort | uniq -c
 
-# Las métricas deciden: vuelta atrás, todo a la versión v1
+# Esta situación de fallas en la versión v2 se puede detectar automáticamente en
+# una aplicación de monitoreo y en ese caso también automáticamente hacer vuelta
+# atrás, y volver todo a la versión v1
 docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
 map $host $users_target {
     default users-service:8000;
@@ -244,7 +263,16 @@ map $host $users_target {
 EOF
 docker compose exec api-gateway curl -s -X DELETE http://users-service-v2:8000/users/chaos
 
+# Una vez completada la vuelta atrás, las mismas 50 solicitudes no fallan y
+# todas las responde v1
+for i in $(seq 50); do
+  curl -s -o /dev/null -w '%{http_code} %header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
+
 # La demo completa: 10 %, 50 % y 100 %, y después el canario que falla
+
 ./demos/29-canary.sh
 
 # Bajo carga. Resultado en Grafana:
@@ -257,11 +285,77 @@ docker compose exec api-gateway curl -s -X DELETE http://users-service-v2:8000/u
 # ---------------------------------------------------------------------------
 # Demo 30: A/B Testing
 # ---------------------------------------------------------------------------
-# La versión v2 trae un experimento, en src/UsersService/Experiment.cs: cada User
-# ve su nombre en una de dos variantes. La A muestra el nombre, y la B el nombre
-# y el email. La variante se elige por segmento, si la solicitud trae
-# X-Segment: beta, o al azar con el id del User, que la mantiene fija para cada
-# User. El gateway no sabe nada del experimento.
+# La versión v2 trae un experimento: cada User ve su nombre en una de dos
+# variantes. La A muestra el nombre, y la B el nombre y el email. Qué variante
+# ve cada User no lo decide el código: lo decide Unleash, en el flag
+# 'users-display-name', y Users se lo pregunta con OpenFeature. El flag tiene
+# dos estrategias, que se evalúan en orden:
+# - Por segmento: si la solicitud trae X-Segment: beta, la variante B.
+# - Por porcentaje: si no, un reparto entre A y B según un hash del id del
+#   User, que la mantiene fija para cada User, es decir, el mismo usuario tiene
+#   siempre la misma variante.
+# El reparto se cambia en Unleash, sin desplegar. El gateway no sabe nada del
+# experimento.
+
+# Levantar Unleash, del perfil feature-flags. Consola: http://localhost:4242,
+# usuario admin, contraseña unleash4all
+docker compose --profile feature-flags up -d --wait unleash
+
+# Guardar en una variable la ruta de las estrategias del flag de Unleash en el
+# entorno development, para simplificar los comandos de la demo
+strategies=http://localhost:4242/api/admin/projects/default/features/users-display-name/environments/development/strategies
+
+# Crear en Unleash el campo de contexto segment: tiene que conocerlo para usarlo
+# en una restricción
+curl -sS -X POST http://localhost:4242/api/admin/context \
+  -H 'Authorization: *:*.andis-admin-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "segment", "stickiness": false}' | jq
+
+# Crear en Unleash el flag, de tipo experimento. Si ya existe, porque ya se
+# corrió demos/30-ab-testing.sh o estos mismos comandos, Unleash responde con un
+# error, y se sigue igual
+curl -sS -X POST http://localhost:4242/api/admin/projects/default/features \
+  -H 'Authorization: *:*.andis-admin-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "users-display-name", "type": "experiment"}' | jq
+
+# Borrar en Unleash las estrategias que ya tenga el flag, para no duplicarlas al
+# crearlas de nuevo. Si el flag es nuevo, no hay ninguna
+for old in $(curl -sS $strategies -H 'Authorization: *:*.andis-admin-token' | jq -r '.[].id'); do
+  curl -sS -X DELETE $strategies/$old -H 'Authorization: *:*.andis-admin-token'
+done
+
+# La primera estrategia: con el segmento 'beta', siempre responde la variante B.
+# Como el proveedor de Unleash para OpenFeature no devuelve el nombre de la
+# variante sino su payload, cada variante lleva su nombre como payload. Por
+# último, la variante se elige con un hash del id del User y del groupId: el
+# mismo User cae siempre en la misma variante. Con 'users-experiment' como
+# groupId, el User 1 cae en la B y el User 2 en la A.
+curl -sS -X POST $strategies \
+  -H 'Authorization: *:*.andis-admin-token' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "name": "flexibleRollout", "title": "Segmento beta",
+  "constraints": [{"contextName": "segment", "operator": "IN", "values": ["beta"]}],
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "variants": [
+    {"name": "B", "weight": 1000, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}' | jq
+
+# La segunda estrategia: se aplica a las solicitudes sin el segmento 'beta', y
+# reparte los Users la mitad en cada variante, con el mismo hash del id. Los
+# pesos van de 0 a 1000: 500 es la mitad. La B tiene un peso fijo, y la A se
+# queda con el resto hasta 1000.
+curl -sS -X POST $strategies -H 'Authorization: *:*.andis-admin-token' -H 'Content-Type: application/json' -d '{
+  "name": "flexibleRollout", "title": "Todos los Users", "constraints": [],
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "variants": [
+    {"name": "A", "weight": 500, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "A"}},
+    {"name": "B", "weight": 500, "weightType": "fix", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}' | jq
+
+# Prender en Unleash el flag del experimento: Unleash lo apaga al borrar su
+# última estrategia
+curl -sS -X POST ${strategies%/strategies}/on -H 'Authorization: *:*.andis-admin-token'
 
 # Desplegar la versión v2 con Blue/Green
 docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
@@ -270,13 +364,13 @@ map $host $users_target {
 }
 EOF
 
-# alice, el User 1, cae en la variante B: el encabezado X-Variant y el campo
-# DisplayName
+# El User 1, que es 'alice', cae en la variante B: el encabezado X-Variant y el
+# campo DisplayName
 curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# bob, el User 2, cae en la A, y siempre en la A
+# El User 2, que es 'bob', cae en la A, y siempre en la A
 curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
@@ -285,6 +379,38 @@ curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
 curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
   -H 'Content-Type: text/xml; charset=utf-8' -H 'X-Segment: beta' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Cambiar el reparto en Unleash, sin desplegar: todos los Users a la variante
+# B. Se reemplaza la segunda estrategia, que se busca por su título y se guarda
+# en la variable 'id'
+id=$(curl -sS $strategies -H 'Authorization: *:*.andis-admin-token' | jq -r '.[] | select(.title == "Todos los Users") | .id')
+curl -sS -X PUT $strategies/$id -H 'Authorization: *:*.andis-admin-token' -H 'Content-Type: application/json' -d '{
+  "name": "flexibleRollout", "title": "Todos los Users", "constraints": [],
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "variants": [
+    {"name": "B", "weight": 1000, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}' | jq
+
+# Users vuelve a leer el flag cada 2 segundos: unos segundos después, bob
+# también recibe la B, sin reiniciar ni desplegar nada
+curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Detener Unleash: Users sigue respondiendo con la última configuración que
+# leyó, y bob sigue en la B. Unleash no está en el camino de cada solicitud
+docker compose stop unleash
+curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Volver a levantar Unleash, y el reparto a la mitad en cada variante
+docker compose --profile feature-flags up -d --wait unleash
+curl -sS -X PUT $strategies/$id -H 'Authorization: *:*.andis-admin-token' -H 'Content-Type: application/json' -d '{
+  "name": "flexibleRollout", "title": "Todos los Users", "constraints": [],
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "variants": [
+    {"name": "A", "weight": 500, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "A"}},
+    {"name": "B", "weight": 500, "weightType": "fix", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}'
 
 # Cuántas veces mostró cada variante la versión v2, según sus métricas
 docker compose exec api-gateway curl -s http://users-service-v2:8000/metrics | grep '^users_experiment_total'
@@ -297,6 +423,7 @@ map $host $users_target {
 EOF
 
 # La demo completa
+
 ./demos/30-ab-testing.sh
 
 # Bajo carga: los dos Users consultan a la versión v2, y la mitad de las
@@ -317,7 +444,14 @@ docker compose logs -f api-gateway | grep DEPLOY
 # Tear down
 # ---------------------------------------------------------------------------
 
-docker compose --profile observability down -v
+# Detener los contenedores sin borrarlos: conservan su estado y se pueden volver
+# a levantar con
+#   docker compose --profile observability --profile feature-flags start
+docker compose --profile observability --profile feature-flags stop
+
+# Borrar todo: contenedores, redes, volúmenes, imágenes, caché de build y las
+# carpetas de las bases de datos
+docker compose --profile observability --profile feature-flags down -v
 
 docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
 docker rmi legacy-erp:latest messaging-bridge:latest monolith:latest
@@ -326,6 +460,7 @@ docker rmi hashicorp/consul:1.21 apache/activemq-classic:6.1.7
 docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
 docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest
 docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
+docker rmi unleashorg/unleash-server:8.2.1
 docker image prune -f
 docker volume prune -f
 docker builder prune -f
