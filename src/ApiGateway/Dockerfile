@@ -15,3 +15,4 @@ RUN apk add --no-cache openssl \
 COPY ApiGateway/nginxconf/nginx.conf /etc/nginx/nginx.conf
 COPY ApiGateway/nginxconf/identity.js /etc/nginx/identity.js
 COPY ApiGateway/nginxconf/strangler-routes.conf /etc/nginx/strangler-routes.conf
+COPY ApiGateway/nginxconf/deployment-routes.conf /etc/nginx/deployment-routes.conf

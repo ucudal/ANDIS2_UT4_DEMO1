@@ -2627,6 +2627,172 @@
           "range": true
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 43,
+      "title": "Facilidad de despliegue",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 91,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 44,
+      "title": "Solicitudes por versión [Demos 27-30]",
+      "description": "Qué versión de Users atendió cada solicitud de la entrada de despliegue, según el encabezado X-Version. En Blue/Green cambia de una vez; en Rolling Upgrade, en escalones; en Canary, sigue al porcentaje.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 92,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (version) (rate(k6_deploy_requests_total[$__rate_interval]))",
+          "legendFormat": "versión {{version}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 45,
+      "title": "Respuestas con error, por versión [Demos 27-29]",
+      "description": "Solicitudes de la entrada de despliegue que no respondieron 200 OK. Sin versión, respondió el gateway: la solicitud no llegó a ninguna instancia de Users.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 92,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (version, status) (rate(k6_deploy_requests_total{status!=\"200\"}[$__rate_interval]))",
+          "legendFormat": "versión {{version}}, HTTP {{status}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 46,
+      "title": "Respuestas por variante [Demo 30]",
+      "description": "A/B Testing: cuántas veces mostró cada variante la versión 2 de Users, según sus propias métricas, por segmento.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 92,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (variant, segment) (rate(users_experiment_total[$__rate_interval]))",
+          "legendFormat": "variante {{variant}}, segmento {{segment}}",
+          "range": true
+        }
+      ]
     }
   ],
   "description": "Entre corchetes, al final del título de cada panel, las demos que lo usan: el número es el del script en demos/, por ejemplo [Demo 1] es 01-retry.sh.",

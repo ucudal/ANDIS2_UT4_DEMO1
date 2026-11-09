@@ -1,0 +1,22 @@
+@startuml
+!include PlantUML.style
+rectangle "Antes de conmutar" as P1 {
+  rectangle "Entrada de despliegue\n:8091" as G1
+  rectangle "users-service\nversión 1" as B1
+  rectangle "users-service-v2\nversión 2" as V1
+  database "users-db" as D1
+  G1 --> B1 : todo el tráfico
+  B1 --> D1
+  V1 --> D1
+}
+rectangle "Después de conmutar" as P2 {
+  rectangle "Entrada de despliegue\n:8091" as G2
+  rectangle "users-service\nversión 1" as B2
+  rectangle "users-service-v2\nversión 2" as V2
+  database "users-db" as D2
+  G2 --> V2 : todo el tráfico
+  B2 --> D2
+  V2 --> D2
+}
+P1 -right[hidden]-> P2
+@enduml

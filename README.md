@@ -10,7 +10,7 @@ width="150"/>
 
 Esta demo es la aplicación base de la UT4, una pequeña aplicación de comercio
 electrónico, con los patrones de disponibilidad, rendimiento, seguridad y
-facilidad de modificación implementados.
+facilidad de modificación, y las estrategias de despliegue, implementados.
 
 También es la demo de la [arquitectura de microservicios](ARCHITECTURE.md) en la
 UT5.
@@ -35,8 +35,9 @@ directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azu
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina [TLS](https://datatracker.ietf.org/doc/html/rfc8446), valida los tokens y las solicitudes, y comprime las respuestas | [nginx](https://nginx.org/) 1.25 | 80 HTTP, 443 HTTPS, 8090 fachada |
+| `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina [TLS](https://datatracker.ietf.org/doc/html/rfc8446), valida los tokens y las solicitudes, y comprime las respuestas | [nginx](https://nginx.org/) 1.25 | 80 HTTP, 443 HTTPS, 8090 fachada, 8091 despliegue |
 | `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por [SOAP](https://www.w3.org/TR/soap/), con el contrato publicado como [WSDL](https://www.w3.org/TR/wsdl/) | [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) 10 + [SoapCore](https://github.com/DigDes/SoapCore) + [EF Core](https://learn.microsoft.com/ef/core/) | 8002 |
+| `users-service-v2` | La versión `v2` de `Users`, con un experimento de A/B Testing; solo la usan las demos de facilidad de despliegue | La misma imagen que `users-service`, con otra versión configurada | — |
 | `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + [MongoDB Driver](https://www.mongodb.com/docs/drivers/csharp/) + [StackExchange.Redis](https://stackexchange.github.io/StackExchange.Redis/) | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
 | `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + [RabbitMQ.Client](https://www.rabbitmq.com/client-libraries/dotnet) | — |
@@ -102,9 +103,9 @@ nombres en la vista.
 | `bash` y `curl` | Los comandos de los archivos de [commands/](commands/) y los scripts de [demos/](demos/) | Incluidos | Git Bash[^gitbash] o WSL[^wsl]; PowerShell y `cmd` no sirven, porque los comandos usan sintaxis de `bash` |
 | `jq`[^jq] | Formatear las respuestas [JSON](https://www.json.org/) y convertirlas en tablas con la función `table` de los archivos de `commands/` | Incluido | En WSL, `sudo apt install jq`; en Git Bash, `winget install jqlang.jq` y volver a abrir la terminal |
 | [`column`](https://man7.org/linux/man-pages/man1/column.1.html) | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
-| [`xmllint`](https://gnome.pages.gitlab.gnome.org/libxml2/xmllint.html) | Indentar las respuestas SOAP de `Users` en `commands/01-api-gateway.azcli` y los errores de Azurite en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el [XML](https://www.w3.org/XML/) sin indentar |
+| [`xmllint`](https://gnome.pages.gitlab.gnome.org/libxml2/xmllint.html) | Indentar las respuestas [SOAP](https://www.w3.org/TR/soap/) de `Users` en `commands/01-api-gateway.azcli` y los errores de [Azurite](https://github.com/Azure/Azurite) en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el [XML](https://www.w3.org/XML/) sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir los archivos de [commands/](commands/) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
-| Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de MySQL, PostgreSQL, MongoDB y Redis; los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
+| Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de [MySQL](https://www.mysql.com/), [PostgreSQL](https://www.postgresql.org/), [MongoDB](https://www.mongodb.com/) y [Redis](https://redis.io/); los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
 [^docker]: Docker Desktop: <https://www.docker.com/products/docker-desktop/>
 [^gitbash]: Git Bash, incluido en Git para Windows: <https://git-scm.com/downloads/win>
@@ -129,7 +130,7 @@ En ese caso hay dos opciones:
 
 ### Cómo ejecutarla
 
-Los comandos están en la carpeta [commands/](commands/), en cinco archivos:
+Los comandos están en la carpeta [commands/](commands/), en seis archivos:
 
 * [01-api-gateway.azcli](commands/01-api-gateway.azcli): probar los servicios a
   través del API Gateway.
@@ -141,6 +142,8 @@ Los comandos están en la carpeta [commands/](commands/), en cinco archivos:
   seguridad, de la 17 a la 21.
 * [05-modifiability.azcli](commands/05-modifiability.azcli): demos de los
   patrones de facilidad de modificación, de la 22 a la 26.
+* [06-deployability.azcli](commands/06-deployability.azcli): demos de las
+  estrategias de despliegue, de la 27 a la 30.
 
 Cada archivo empieza levantando todos los servicios y termina con el *tear
 down*, así que se puede usar por separado. En resumen:
@@ -150,7 +153,7 @@ docker compose up -d --build --wait
 curl http://localhost/orders/user/1/details
 ```
 
-`--wait` espera a que todos los contenedores estén sanos según su `healthcheck`.
+[`--wait`](https://docs.docker.com/reference/cli/docker/compose/up/) espera a que todos los contenedores estén sanos según su [`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck).
 
 Las bases de datos se crean con datos de ejemplo la primera vez que se levantan
 los contenedores, con los scripts de `src/*/mysqlinit`, `src/*/mongoinit` y
@@ -165,10 +168,10 @@ Database Client o desde cualquier otro cliente, con estos datos:
 
 | Servicio | Motor | Host | Puerto | Base | Usuario | Contraseña |
 | -------- | ----- | ---- | ------ | ---- | ------- | ---------- |
-| `Orders` | MySQL | `localhost` | `3306` | `ordersdb` | `ordersusr` | `Pa55w0rd` |
-| `Users` | PostgreSQL | `localhost` | `5432` | `usersdb` | `usersusr` | `Pa55w0rd` |
-| `Products` | MongoDB | `localhost` | `27017` | `productsdb` | `productsusr` | `Pa55w0rd` |
-| Caché de `Products` | Redis | `localhost` | `6379` | — | — | — |
+| `Orders` | [MySQL](https://www.mysql.com/) | `localhost` | `3306` | `ordersdb` | `ordersusr` | `Pa55w0rd` |
+| `Users` | [PostgreSQL](https://www.postgresql.org/) | `localhost` | `5432` | `usersdb` | `usersusr` | `Pa55w0rd` |
+| `Products` | [MongoDB](https://www.mongodb.com/) | `localhost` | `27017` | `productsdb` | `productsusr` | `Pa55w0rd` |
+| Caché de `Products` | [Redis](https://redis.io/) | `localhost` | `6379` | — | — | — |
 
 En MongoDB el usuario `productsusr` se autentica contra la base `productsdb`,
 así que en el campo de base de autenticación -`authSource`- va `productsdb` y
@@ -179,7 +182,7 @@ contraseña y `admin` como base de autenticación.
 
 Redis no tiene usuario ni contraseña.
 
-La consola de administración de Keycloak está en <http://localhost:8080>, con
+La consola de administración de [Keycloak](https://www.keycloak.org/) está en <http://localhost:8080>, con
 el usuario `admin` y la contraseña `Pa55w0rd`. Los usuarios de la aplicación
 -alice, bob y carol, con la misma contraseña- están en el realm `andis`.
 
@@ -256,7 +259,7 @@ flowchart LR
         end
     end
 
-    client -- "HTTP :80, HTTPS :443, fachada :8090" --> gw
+    client -- "HTTP :80, HTTPS :443, fachada :8090, despliegue :8091" --> gw
     gw -- "HTTP :8000 fachada" --> mono
     os -- "HTTP :8500 configuración" --> cs
     ps -- "HTTP :8500 configuración" --> cs
@@ -294,7 +297,7 @@ flowchart LR
 
 Cada nodo `«container»` es un contenedor definido en
 [docker-compose.yaml](docker-compose.yaml). Los servicios escuchan en el puerto
-8000 dentro de la red de Docker; en el host se publican en 8000, 8001 y 8002,
+8000 dentro de la red de [Docker](https://www.docker.com/); en el host se publican en 8000, 8001 y 8002,
 para probarlos sin pasar por el gateway. Las réplicas de `orders-worker` y
 `orders-projector` no se publican en el host. `products-sidecar` no tiene red
 propia: comparte la de `products-service`, y los demás contenedores lo
@@ -307,9 +310,9 @@ encuentran como `products-service:9000`.
 | Retry | `AddRetry` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), para los `HttpClient` hacia `Users` y `Products` |
 | Circuit Breaker | `AddCircuitBreaker` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs); la degradación está en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
 | Bulkhead | `AddRateLimiter` con un `ConcurrencyLimiter` por dependencia, en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs) |
-| Throttling | `AddRateLimiter`, política `throttling`, en [OrdersService/Program.cs](src/OrdersService/Program.cs), aplicada en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs); por cliente, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): `limit_req_zone` y `limit_req` para `POST /orders/` |
+| Throttling | `AddRateLimiter`, política `throttling`, en [OrdersService/Program.cs](src/OrdersService/Program.cs), aplicada en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs); por cliente, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone) y [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req) para `POST /orders/` |
 | Rate Limiting | Del lado del cliente: [demos/05-rate-limiting.sh](demos/05-rate-limiting.sh) y [k6/rate-limiting.js](k6/rate-limiting.js) crean `Orders` sin superar el límite del gateway |
-| Health Endpoint Monitoring | `AddHealthChecks` y `MapHealthChecks` en el `Program.cs` de cada servicio; `healthcheck` en [docker-compose.yaml](docker-compose.yaml); rutas `/health/*` en `nginx.conf` |
+| Health Endpoint Monitoring | `AddHealthChecks` y `MapHealthChecks` en el `Program.cs` de cada servicio; [`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck) en [docker-compose.yaml](docker-compose.yaml); rutas `/health/*` en `nginx.conf` |
 | Competing Consumers | Los métodos `ExecuteAsync` y `ProcessAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs), consumen la cola `orders.process`; servicio `orders-worker` con 3 réplicas en [docker-compose.yaml](docker-compose.yaml) |
 | Event Sourcing | La clase `OrderEvent`, en [OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs), y el método `Replay` de la clase `OrderProjection`, en [OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs); tabla `order_events` en [OrdersService/mysqlinit/mysqlinit.sql](src/OrdersService/mysqlinit/mysqlinit.sql) |
 | Transactional Outbox | La clase `OutboxMessage`, en [OrdersService/Models/OutboxMessage.cs](src/OrdersService/Models/OutboxMessage.cs), escrita en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), y en el método `ProcessAsync` del *worker*; la publica el método `PublishPendingAsync` de la clase `OutboxRelay`, en [OrdersService/Messaging/OutboxRelay.cs](src/OrdersService/Messaging/OutboxRelay.cs) |
@@ -319,8 +322,8 @@ encuentran como `products-service:9000`.
 | Asynchronous Request-Reply | Los métodos `CreateOrder` y `GetOrderStatus` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
 | CQRS | Comandos en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), y en el método `ProcessAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs); consultas en el método `GetOrdersForUser` de la clase `OrdersQueriesController`, en [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs) |
 | Materialized View | Tabla `order_details`, mantenida por el método `ApplyAsync` de la clase `OrderDetailsProjector`, en [OrdersService/Messaging/OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs), en `orders-projector` |
-| Federated Identity | Keycloak, con el realm de [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json); `Orders` decide con los claims del token en el registro `CallerIdentity`, en [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs) |
-| Gateway Offloading | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): TLS, `auth_request` a Keycloak, los claims con [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js) y gzip |
+| Federated Identity | [Keycloak](https://www.keycloak.org/), con el realm de [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json); `Orders` decide con los claims del token en el registro `CallerIdentity`, en [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs) |
+| Gateway Offloading | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [TLS](https://datatracker.ietf.org/doc/html/rfc8446), [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request) a Keycloak, los claims con [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js) y [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) |
 | Gatekeeper | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): rutas, métodos, tipo y tamaño del cuerpo, y encabezados de identidad; [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de publicar los puertos de los servicios |
 | Sidecar | `products-sidecar` en [docker-compose.yaml](docker-compose.yaml), configurado en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) |
 | Anti-corruption Layer | Las clases `OrdersTranslator`, `UsersTranslator` y `OrdersPurchaseSource`, en [PurchasesService/AntiCorruption/](src/PurchasesService/AntiCorruption); el modelo de `Purchases` está en [PurchasesService/Purchase.cs](src/PurchasesService/Purchase.cs) |
@@ -328,13 +331,18 @@ encuentran como `products-service:9000`.
 | Messaging Bridge | Las clases `OrdersToErpBridge` y `ErpToOrdersBridge`, en [MessagingBridge/](src/MessagingBridge); la traducción está en la clase `ErpFormat` |
 | Strangler Fig | La fachada del puerto 8090 en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf), y el monolito en [Monolith/Program.cs](src/Monolith/Program.cs) |
 | Backends for Frontends | `bff-web` y `bff-mobile`, en [BffWeb/Program.cs](src/BffWeb/Program.cs) y [BffMobile/Program.cs](src/BffMobile/Program.cs), publicados por el gateway en `/web/` y `/mobile/` |
+| Blue/Green Deployment | `users-service` y `users-service-v2` en [docker-compose.yaml](docker-compose.yaml); la entrada de despliegue, en el puerto 8091 de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con el destino en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf) |
+| Rolling Upgrade | El alias `users-pool` de `users-service-v2` y las funciones `pool_start_v1` y `pool_replace` de [demos/common.sh](demos/common.sh); [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream) en la entrada de despliegue |
+| Canary Testing | [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html#split_clients) en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf), escrito por la función `deploy_canary` de [demos/common.sh](demos/common.sh); el encabezado `X-Version`, en [UsersService/Release.cs](src/UsersService/Release.cs) |
+| A/B Testing | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs), usada en el método `GetUser` de la clase `UserService`, en [UsersService/Soap/UserService.cs](src/UsersService/Soap/UserService.cs) |
 | Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
 está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad),
 [Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono),
-[Demos de seguridad](PATTERNS.md#demos-de-seguridad) y
-[Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación)
+[Demos de seguridad](PATTERNS.md#demos-de-seguridad),
+[Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación) y
+[Demos de facilidad de despliegue](PATTERNS.md#demos-de-facilidad-de-despliegue)
 de PATTERNS.md.
 
 ## Cómo probar los patrones
@@ -346,33 +354,36 @@ solicitudes, y muestra el resultado.
 Las instrucciones para ejecutar estos scripts y la explicación de lo que sucede
 en cada uno está en [02-availability.azcli](commands/02-availability.azcli),
 [03-performance.azcli](commands/03-performance.azcli),
-[04-security.azcli](commands/04-security.azcli) y
-[05-modifiability.azcli](commands/05-modifiability.azcli).
+[04-security.azcli](commands/04-security.azcli),
+[05-modifiability.azcli](commands/05-modifiability.azcli) y
+[06-deployability.azcli](commands/06-deployability.azcli).
 
 Mientras corren las pruebas, también se puede mirar:
 
 * La salud de los servicios en vivo, en otra terminal: `./demos/monitor-health.sh`.
-* Los eventos de los patrones en los logs de Docker:
+* Los eventos de los patrones en los logs de [Docker](https://www.docker.com/):
   `docker compose logs -f orders-service orders-worker orders-projector products-service`.
 * Las colas, sus consumidores y los enlaces del exchange `andis.events` en la
-  consola de RabbitMQ: <http://localhost:15672>, usuario y contraseña `guest`.
+  consola de [RabbitMQ](https://www.rabbitmq.com/): <http://localhost:15672>, usuario y contraseña `guest`.
 * El tamaño de cada cambio: `./demos/measure-change-size.sh`, explicado en
   [PATTERNS.md](PATTERNS.md#tamaño-del-cambio).
-* La configuración central en la consola de Consul: <http://localhost:8500>.
-* Las colas del ERP en la consola de ActiveMQ: <http://localhost:8161/admin/>,
+* La configuración central en la consola de [Consul](https://developer.hashicorp.com/consul): <http://localhost:8500>.
+* Las colas del ERP en la consola de [ActiveMQ](https://activemq.apache.org/): <http://localhost:8161/admin/>,
   usuario y contraseña `admin`.
+* Qué instancia y qué versión de `Users` atendió cada solicitud de la entrada de
+  despliegue: `docker compose logs -f api-gateway | grep DEPLOY`.
 
 ## Observabilidad y pruebas de carga
 
 Los scripts de [demos/](./demos/) muestran cada patrón paso a paso, con pocas
-solicitudes; la evidencia en los logs de Docker se ve con los comandos de
+solicitudes; la evidencia en los logs de [Docker](https://www.docker.com/) se ve con los comandos de
 los archivos de [commands/](commands/). Para ver cómo se comportan los patrones
-bajo carga y a lo largo del tiempo, la aplicación tiene además un perfil
+bajo carga y a lo largo del tiempo, la aplicación tiene además un [perfil](https://docs.docker.com/compose/how-tos/profiles/)
 opcional de observabilidad y escenarios de carga con [k6](https://k6.io).
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
-| `prometheus` | Consulta cada 5 s el endpoint `/metrics` de los servicios, de cada réplica de `orders-worker`, de RabbitMQ, del *sidecar* de `Products` y de Keycloak; recibe las métricas de k6 | [Prometheus](https://prometheus.io/) 3.15 | 9090 |
+| `prometheus` | Consulta cada 5 s el endpoint `/metrics` de los servicios, de cada réplica de `orders-worker` y de `users-service-v2`, de [RabbitMQ](https://www.rabbitmq.com/), del *sidecar* de `Products` y de [Keycloak](https://www.keycloak.org/); recibe las métricas de k6 | [Prometheus](https://prometheus.io/) 3.15 | 9090 |
 | `grafana` | Dashboard con todo lo anterior, ya configurado y sin login | [Grafana](https://grafana.com/oss/grafana/) 13.2 | 3000 |
 | `k6` | Genera la carga de cada escenario; no queda corriendo | k6 2.3 | — |
 
@@ -391,18 +402,18 @@ resultados se ven únicamente en la terminal.
 ### Métricas
 
 Los servicios exponen sus métricas en `GET /metrics`, con [OpenTelemetry](https://opentelemetry.io/) y el
-exporter de Prometheus, configurado en el método `AddObservability` de la clase
+exporter de [Prometheus](https://prometheus.io/), configurado en el método `AddObservability` de la clase
 `ObservabilityExtensions`, en [Common/Observability.cs](src/Common/Observability.cs). Casi todas las métricas ya
 las publican las bibliotecas que usa la aplicación; no hubo que instrumentar el
 código a mano:
 
 | Métrica | Quién la publica | Qué muestra |
 | ------- | ---------------- | ----------- |
-| `http_server_request_duration_seconds` | ASP.NET Core | Solicitudes recibidas, latencia y código HTTP, por ruta |
+| `http_server_request_duration_seconds` | [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) | Solicitudes recibidas, latencia y código [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), por ruta |
 | `aspnetcore_rate_limiting_*` | ASP.NET Core | Throttling: consultas en curso, aceptadas y rechazadas |
 | `resilience_polly_strategy_events_total` | [Polly](https://www.pollydocs.org/) | Retry, Circuit Breaker, Bulkhead y timeouts: cada evento, por dependencia |
 | `resilience_polly_pipeline_duration_milliseconds` | Polly | Duración de cada llamada a `Users` y `Products`, con los reintentos incluidos |
-| `rabbitmq_detailed_queue_*` | RabbitMQ | Mensajes esperando y en proceso en la cola, y consumidores conectados |
+| `rabbitmq_detailed_queue_*` | [RabbitMQ](https://www.rabbitmq.com/) | Mensajes esperando y en proceso en la cola, y consumidores conectados |
 | `orders_processed_total` | La clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
 | `outbox_pending`, `outbox_published_total` | La clase `OutboxRelay`, en [OrdersService/Messaging/OutboxRelay.cs](src/OrdersService/Messaging/OutboxRelay.cs) | Mensajes del *outbox* que esperan ser publicados, y los publicados |
 | `products_cache_total` | La clase `ProductCache`, en [ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
@@ -412,11 +423,13 @@ código a mano:
 | `orders_circuit_state` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
 | `products_images_received_bytes_total`, `products_images_valet_keys_total` | La clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs) | Bytes de imágenes que recibió `Products`, sin Valet Key, y URL firmadas que entregó, por permiso |
 | `envoy_http_rbac_*`, `envoy_http_jwt_authn_*` | El *sidecar* de `Products` | Solicitudes permitidas y rechazadas por la autorización, y tokens aceptados y rechazados |
+| `users_experiment_total` | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs) | Respuestas de la versión `v2` de `Users` por variante del experimento y por segmento |
 | `config_value` | La clase `ConsulConfigurationPoller`, en [Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) | Valor vigente de cada clave numérica del almacén, en cada proceso |
-| `keycloak_user_events_total` | Keycloak | Inicios de sesión y validaciones de tokens, con su error si lo hubo |
-| `k6_*` | k6 | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
+| `keycloak_user_events_total` | [Keycloak](https://www.keycloak.org/) | Inicios de sesión y validaciones de tokens, con su error si lo hubo |
+| `k6_*` | [k6](https://k6.io/) | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
 | `k6_strangler_requests_total`, `k6_strangler_details_duration_*` | Los escenarios de k6 | Solicitudes de la fachada por destino, según `X-Served-By`, y latencia del detalle |
 | `k6_acl_duration_*`, `k6_bff_requests_total`, `k6_config_requests_total` | Los escenarios de k6 | Latencia de `Orders` y de `Purchases`, respuestas de cada BFF, y respuestas de `Orders` por operación y resultado |
+| `k6_deploy_requests_total` | Los escenarios de k6 | Respuestas de la entrada de despliegue por versión de `Users`, según `X-Version`, y por código HTTP |
 
 > [!TIP]
 >
@@ -432,29 +445,36 @@ Los escenarios están en [k6/](k6/). Cada uno inyecta las fallas que necesita y
 las quita al terminar. Al principio de cada archivo se explica qué mirar en el
 dashboard.
 
-| Escenario | Qué hace | Qué hay que observar en Grafana |
+| Escenario | Qué hace | Qué hay que observar en [Grafana](https://grafana.com/oss/grafana/) |
 | --------- | -------- | ------------------------------- |
 | `circuit-breaker.js` | 5 consultas de detalle por segundo durante 80 s; `Products` falla siempre entre los 15 s y los 50 s | La latencia sube por los reintentos y vuelve a bajar cuando el circuito se abre; las respuestas siguen siendo 200, degradadas; el circuito se cierra después de la recuperación |
 | `bulkhead.js` | `Products` demora 1,5 s; 6 consultas de detalle por segundo durante 45 s | Rechazos del bulkhead solo en `Products`; `Users` sin rechazos |
 | `throttling.js` | `Orders` demora 1 s; los usuarios virtuales suben de 0 a 40 | Las consultas en curso se estabilizan en 20 y el excedente recibe 503 |
 | `rate-limiting.js` | 5 `POST /orders/` por segundo durante 30 s, sin Rate Limiting; después, 1 por segundo durante 30 s, con Rate Limiting; 5 `GET /orders/` por segundo todo el tiempo | En la primera fase pasa un POST por segundo y el resto recibe 429; en la segunda no hay 429; los GET siempre responden 200 |
 | `competing-consumers.js` | Crea 60 `Orders` de golpe | La cola crece y se vacía a unas 1,5 `Orders` por segundo, repartidas entre las 3 réplicas |
-| `load.js` | Carga base para las demos de rendimiento: lecturas mezcladas a una tasa configurable; con `-e DETAILS=view`, el detalle se lee de la vista | Throughput y latencia por servicio; k6 termina con error si no se cumple el objetivo de p95 menor a 500 ms con menos de 1 % de errores; comparando las dos corridas, la latencia de `details` contra la de `details view` |
+| `load.js` | Carga base para las demos de rendimiento: lecturas mezcladas a una tasa configurable; con `-e DETAILS=view`, el detalle se lee de la vista | Throughput y latencia por servicio; [k6](https://k6.io/) termina con error si no se cumple el objetivo de p95 menor a 500 ms con menos de 1 % de errores; comparando las dos corridas, la latencia de `details` contra la de `details view` |
 | `cache-aside.js` | 50 lecturas de `Products` por segundo, con una base que demora 100 ms: 30 s con la caché apagada y 30 s prendida | La latencia de `product` baja de unos 100 ms a unos 3 ms; las lecturas de la caché pasan de `disabled` a casi todas `hit` |
 | `load-leveling.js` | 10 `POST /orders/` por segundo durante 10 s, directamente en `orders-service` | La latencia de `create order` se mantiene baja; la cola `orders.process` crece durante el pico y se vacía a ritmo constante |
 
 | `strangler-fig.js` | 15 lecturas por segundo a la fachada, mientras se migran las rutas | El tráfico pasa del monolito a los servicios, sin errores; la latencia del detalle sube |
 | `external-configuration.js` | 2 `POST /orders/` y 20 lecturas por segundo, mientras se cambia un límite por variable de entorno y en el almacén | Solo la variable de entorno deja solicitudes sin respuesta |
-| `messaging-bridge.js` | 2 `Orders` por segundo, mientras se detiene ActiveMQ | La cola `bridge.erp` crece y se vacía; las `Orders` se siguen confirmando |
+| `messaging-bridge.js` | 2 `Orders` por segundo, mientras se detiene [ActiveMQ](https://activemq.apache.org/) | La cola `bridge.erp` crece y se vacía; las `Orders` se siguen confirmando |
 | `anti-corruption-layer.js` | 10 lecturas por segundo, mitad a `Orders` y mitad a `Purchases`, mientras se demora `Users` | `Purchases` tarda más que `Orders`; con `Users` demorado, solo sube `Purchases` |
 | `backends-for-frontends.js` | 20 lecturas por segundo, mitad por cada BFF, mientras se redespliega `bff-mobile` | La web sigue respondiendo `200 OK`; la app puede recibir algún error |
+| `blue-green.js` | 20 lecturas de `Users` por segundo a la entrada de despliegue, mientras se conmuta a la versión `v2` y se vuelve atrás | El tráfico pasa de una versión a la otra de una vez, sin errores |
+| `rolling-upgrade.js` | Lo mismo, mientras se reemplazan tres instancias de la versión `v1` en tres lotes | La versión `v2` sube en escalones, sin errores |
+| `canary.js` | Lo mismo, mientras la versión `v2` recibe el 10 % y el 50 %, falla y se vuelve atrás | La versión `v2` sigue al porcentaje; los errores son solo suyos |
+| `ab-testing.js` | 20 lecturas por segundo de los dos `Users` a la versión `v2`; la mitad de las de bob, con `X-Segment: beta` | Cada `User` recibe siempre su variante, salvo con el segmento |
 
-Los últimos cinco necesitan que alguien haga el cambio mientras corren: se lanzan
-con [demos/load-modifiability.sh](demos/load-modifiability.sh), que además marca
-cada cambio en el dashboard:
+Los últimos nueve necesitan que alguien haga el cambio mientras corren. Los de
+facilidad de modificación se lanzan con
+[demos/load-modifiability.sh](demos/load-modifiability.sh), y los de facilidad de
+despliegue, con [demos/load-deployment.sh](demos/load-deployment.sh). Los dos
+marcan cada cambio en el dashboard:
 
 ```bash
 ./demos/load-modifiability.sh strangler   # también: acl, config, bridge, bff
+./demos/load-deployment.sh canary         # también: bluegreen, rolling, ab
 ```
 
 `load.js` acepta la tasa y la duración como parámetros:

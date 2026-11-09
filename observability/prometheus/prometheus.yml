@@ -8,6 +8,15 @@ scrape_configs:
     static_configs:
       - targets: ["users-service:8000"]
 
+  # La versión 2 de Users, de las demos de facilidad de despliegue. Como en
+  # orders-worker, el DNS devuelve una IP por réplica.
+  - job_name: users-service-v2
+    dns_sd_configs:
+      - names: ["users-service-v2"]
+        type: A
+        port: 8000
+        refresh_interval: 5s
+
   - job_name: products-service
     static_configs:
       - targets: ["products-service:8000"]

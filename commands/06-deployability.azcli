@@ -1,0 +1,336 @@
+# Parte 6: demos de las estrategias de despliegue, de la 27 a la 30
+#
+# Las demos de disponibilidad están en 02-availability.azcli, las de rendimiento,
+# en 03-performance.azcli, las de seguridad, en 04-security.azcli y las de
+# facilidad de modificación, en 05-modifiability.azcli.
+#
+# Las cuatro ponen en producción la versión v2 de Users, que corre en
+# users-service-v2 al lado de la versión v1, en users-service. Es la misma imagen
+# con otra versión configurada, y comparte la base. Los clientes llegan por la
+# entrada de despliegue del gateway, en el puerto 8091: a qué versión va cada
+# solicitud lo define /etc/nginx/deployment-routes.conf, en el contenedor del
+# gateway. Cada respuesta dice qué versión la atendió, en el encabezado
+# X-Version.
+
+# ---------------------------------------------------------------------------
+# Levantar todos los servicios
+# ---------------------------------------------------------------------------
+
+# Estos comandos deben ejecutarse desde la raíz del repositorio. Usar el comando
+# 'Azure CLI: Run Line in Terminal'.
+
+# Inicia Docker si no está iniciado
+docker desktop start
+
+# Crear las carpetas que serán montadas como volúmenes para contener las bases
+# de datos
+mkdir -p src/UsersService/pgdata
+mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/OrdersService/mysqldata
+
+# Levantar todos los contenedores
+docker compose build
+docker compose up -d --wait
+
+# ---------------------------------------------------------------------------
+# Observabilidad -opcional, recomendada para las demos-
+# ---------------------------------------------------------------------------
+
+# Levantar también Prometheus y Grafana. Si la aplicación ya está levantada,
+# solo agrega los dos contenedores nuevos.
+docker compose --profile observability up -d --wait
+
+# Abrir en el navegador el dashboard de Grafana. Los paneles de estas demos están
+# en la fila "Facilidad de despliegue":
+#
+#    http://localhost:3000
+
+# ---------------------------------------------------------------------------
+# Variables
+# ---------------------------------------------------------------------------
+
+# La solicitud SOAP GetUser del User 1, y del User 2
+soap1='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://ucu.edu.uy/andis/users">
+      <id>1</id>
+    </GetUser>
+  </soap:Body>
+</soap:Envelope>'
+soap2='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://ucu.edu.uy/andis/users">
+      <id>2</id>
+    </GetUser>
+  </soap:Body>
+</soap:Envelope>'
+
+# ---------------------------------------------------------------------------
+# Demo 27: Blue/Green Deployment
+# ---------------------------------------------------------------------------
+# La versión v2 se despliega al lado de la v1, se prueba sin que reciba tráfico y
+# se conmuta de una vez. Volver atrás es conmutar de nuevo.
+
+# Las dos versiones están vivas
+docker compose ps users-service users-service-v2
+
+# La entrada de despliegue manda todo a la versión v1
+docker compose exec api-gateway cat /etc/nginx/deployment-routes.conf
+curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Probar la versión v2 directamente, desde adentro de la red, antes de exponerla.
+# Trae un campo nuevo, DisplayName.
+docker compose exec api-gateway curl -si -X POST http://users-service-v2:8000/users/UserService.svc -d "$soap1" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Conmutar: todo el tráfico a la versión v2, y recargar nginx sin cortar el
+# servicio
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-service-v2:8000;
+}
+EOF
+
+# Cuántas de 10 solicitudes atendió cada versión: todas la v2
+for i in $(seq 10); do
+  curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
+
+# Vuelta atrás: la versión v1 sigue viva, así que volver es conmutar de nuevo
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-service:8000;
+}
+EOF
+
+# La demo completa, con una sonda que pide el User 1 cada 0,1 segundos
+# mientras se conmuta: ninguna respuesta con error
+./demos/27-blue-green.sh
+
+# Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
+# cambio queda marcado con una línea vertical en los paneles. Resultado en
+# Grafana:
+# - "Solicitudes por versión": el tráfico pasa de una versión a la otra de una
+#   vez, en cada conmutación.
+# - "Respuestas con error, por versión": vacío, sin errores.
+
+./demos/load-deployment.sh bluegreen
+
+# ---------------------------------------------------------------------------
+# Demo 28: Rolling Upgrade
+# ---------------------------------------------------------------------------
+# Tres instancias de la versión v1 se reemplazan de a una por réplicas de la v2.
+# Cada lote espera a que la instancia nueva esté sana antes de detener una vieja.
+#
+# Las instancias comparten el alias de red users-pool, y nginx reparte entre las
+# IP que devuelve el DNS de Docker. users-service no entra en el grupo, porque lo
+# usan las demás demos: las instancias de la versión v1 se crean a partir de su
+# definición.
+
+# La red de la aplicación
+network=$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' $(docker compose ps -q api-gateway))
+
+# Sin réplicas de la versión v2, para que el grupo empiece solo con la v1
+docker compose up -d --no-deps --scale users-service-v2=0 users-service-v2
+
+# Tres instancias de la versión v1, con el alias users-pool
+for name in users-v1-1 users-v1-2 users-v1-3; do
+  docker compose run -d --no-deps --name $name users-service
+  docker network disconnect $network $name
+  docker network connect --alias users-pool $network $name
+done
+
+# Esperar a que estén sanas
+docker ps --filter name=users-v1 --format '{{.Names}}: {{.Status}}'
+
+# La entrada de despliegue, hacia el grupo
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-pool:8000;
+}
+EOF
+
+# Las IP del grupo, y cuántas de 12 solicitudes atendió cada versión: todas la v1
+docker compose exec api-gateway getent ahostsv4 users-pool
+for i in $(seq 12); do
+  curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
+
+# Lote 1: una réplica de la versión v2; --wait espera a que esté sana. Recién
+# entonces, se detiene una instancia de la v1. Docker Compose avisa "Found orphan
+# containers": son las instancias de la versión v1, que no están en
+# docker-compose.yaml. No hay que hacer nada.
+docker compose up -d --no-deps --scale users-service-v2=1 --wait users-service-v2
+docker stop users-v1-1
+
+# Repetir las 12 solicitudes: responden las dos versiones
+
+# Lotes 2 y 3
+docker compose up -d --no-deps --scale users-service-v2=2 --wait users-service-v2
+docker stop users-v1-2
+docker compose up -d --no-deps --scale users-service-v2=3 --wait users-service-v2
+docker stop users-v1-3
+
+# Repetir las 12 solicitudes: todas la v2
+
+# Dejar todo como estaba: sin las instancias de la versión v1, con una réplica
+# de la v2 y la entrada de despliegue hacia users-service
+docker rm -f users-v1-1 users-v1-2 users-v1-3
+docker compose up -d --no-deps --scale users-service-v2=1 --wait users-service-v2
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-service:8000;
+}
+EOF
+
+# La demo completa, con una sonda que pide el User 1 cada 0,1 segundos durante
+# todo el reemplazo: ninguna respuesta con error
+./demos/28-rolling-upgrade.sh
+
+# Bajo carga. Resultado en Grafana:
+# - "Solicitudes por versión": la versión v2 sube en escalones, un tercio por
+#   lote, mientras la v1 baja.
+# - "Respuestas con error, por versión": vacío, sin errores.
+
+./demos/load-deployment.sh rolling
+
+# ---------------------------------------------------------------------------
+# Demo 29: Canary Testing
+# ---------------------------------------------------------------------------
+# Una fracción de las solicitudes va a la versión v2. Si sus métricas son
+# buenas, la fracción crece; si no, vuelve a cero. split_clients de nginx elige
+# el destino de cada solicitud con un hash de $request_id.
+
+# El 10 % a la versión v2
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+split_clients "${request_id}" $users_target {
+    10% users-service-v2:8000;
+    *   users-service:8000;
+}
+EOF
+
+# Cuántas de 50 solicitudes atendió cada versión: cerca de 5 la v2
+for i in $(seq 50); do
+  curl -s -o /dev/null -w '%header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
+
+# Una versión v2 con un error: se le inyectan fallas solo a ella, desde adentro
+# de la red. Por el puerto 80, /users/chaos llegaría a la versión v1.
+docker compose exec api-gateway curl -s -X PUT http://users-service-v2:8000/users/chaos \
+  -H 'Content-Type: application/json' -d '{"failureRate": 1, "delayMs": 0}'
+
+# Las mismas 50 solicitudes, con el código HTTP: fallan solo las de la versión
+# v2, cerca del 10 %
+for i in $(seq 50); do
+  curl -s -o /dev/null -w '%{http_code} %header{x-version}\n' -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
+
+# Las métricas deciden: vuelta atrás, todo a la versión v1
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-service:8000;
+}
+EOF
+docker compose exec api-gateway curl -s -X DELETE http://users-service-v2:8000/users/chaos
+
+# La demo completa: 10 %, 50 % y 100 %, y después el canario que falla
+./demos/29-canary.sh
+
+# Bajo carga. Resultado en Grafana:
+# - "Solicitudes por versión": la versión v2 sigue al porcentaje del canario.
+# - "Respuestas con error, por versión": solo la versión v2, mientras falla,
+#   hasta la vuelta atrás.
+
+./demos/load-deployment.sh canary
+
+# ---------------------------------------------------------------------------
+# Demo 30: A/B Testing
+# ---------------------------------------------------------------------------
+# La versión v2 trae un experimento, en src/UsersService/Experiment.cs: cada User
+# ve su nombre en una de dos variantes. La A muestra el nombre, y la B el nombre
+# y el email. La variante se elige por segmento, si la solicitud trae
+# X-Segment: beta, o al azar con el id del User, que la mantiene fija para cada
+# User. El gateway no sabe nada del experimento.
+
+# Desplegar la versión v2 con Blue/Green
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-service-v2:8000;
+}
+EOF
+
+# alice, el User 1, cae en la variante B: el encabezado X-Variant y el campo
+# DisplayName
+curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# bob, el User 2, cae en la A, y siempre en la A
+curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
+  -H 'Content-Type: text/xml; charset=utf-8' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Con el segmento beta, bob recibe la B
+curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
+  -H 'Content-Type: text/xml; charset=utf-8' -H 'X-Segment: beta' \
+  -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+
+# Cuántas veces mostró cada variante la versión v2, según sus métricas
+docker compose exec api-gateway curl -s http://users-service-v2:8000/metrics | grep '^users_experiment_total'
+
+# Volver a la versión v1
+docker compose exec -T api-gateway sh -c 'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<'EOF'
+map $host $users_target {
+    default users-service:8000;
+}
+EOF
+
+# La demo completa
+./demos/30-ab-testing.sh
+
+# Bajo carga: los dos Users consultan a la versión v2, y la mitad de las
+# consultas de bob traen el segmento beta. Resultado en Grafana:
+# - "Respuestas por variante": alice siempre en la B; bob en la A, salvo con el
+#   segmento, en la B.
+
+./demos/load-deployment.sh ab
+
+# ---------------------------------------------------------------------------
+# Logs de la entrada de despliegue
+# ---------------------------------------------------------------------------
+
+# Cada solicitud, con la instancia que la atendió y su versión
+docker compose logs -f api-gateway | grep DEPLOY
+
+# ---------------------------------------------------------------------------
+# Tear down
+# ---------------------------------------------------------------------------
+
+docker compose --profile observability down -v
+
+docker rmi api-gateway:latest orders-service:latest users-service:latest products-service:latest
+docker rmi legacy-erp:latest messaging-bridge:latest monolith:latest
+docker rmi purchases-service:latest bff-web:latest bff-mobile:latest
+docker rmi hashicorp/consul:1.21 apache/activemq-classic:6.1.7
+docker rmi mysql:26 mongo:9 postgres:18 rabbitmq:4.4-management redis:8 nginx:1.25-alpine
+docker rmi quay.io/keycloak/keycloak:26.8 mcr.microsoft.com/azure-storage/azurite:3.37.0 envoyproxy/envoy:v1.40-latest
+docker rmi prom/prometheus:v3.15.1 grafana/grafana:13.2.5 grafana/k6:2.3.0
+docker image prune -f
+docker volume prune -f
+docker builder prune -f
+
+rm -rf ./src/OrdersService/mysqldata
+rm -rf ./src/ProductsService/mongodbdata
+rm -rf ./src/UsersService/pgdata
+rm -f gateway.crt

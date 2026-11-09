@@ -12,6 +12,9 @@ services:
       # Strangler Fig: la fachada, con la tabla de rutas que se migra de a una
       # -ver ApiGateway/nginxconf/nginx.conf-.
       - "8090:8090"
+      # Facilidad de despliegue: la entrada de las demos 27 a 30, hacia las dos
+      # versiones de Users -ver ApiGateway/nginxconf/deployment-routes.conf-.
+      - "8091:8091"
     depends_on:
       # Solo la entrada HTTPS usa Keycloak, al validar cada token: alcanza con
       # que arranque.
@@ -75,13 +78,13 @@ services:
     image: orders-service:latest
     environment:
       SERVICE_NAME: "orders-service"
-      ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
-      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
-      ProductsService__BaseUrl: "http://products-service:8000/products/"
-      RabbitMq__Host: "rabbitmq"
-      Consul__Url: "http://consul:8500"
+      CONNECTIONSTRINGS__ORDERSDB: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      USERSSERVICE__BASEURL: "http://users-service:8000/users/UserService.svc"
+      PRODUCTSSERVICE__BASEURL: "http://products-service:8000/products/"
+      RABBITMQ__HOST: "rabbitmq"
+      CONSUL__URL: "http://consul:8500"
       # Transactional Outbox: el relay publica los eventos que quedan en la base.
-      Outbox__Enabled: "true"
+      OUTBOX__ENABLED: "true"
     ports:
       - "8000:8000"
     healthcheck:
@@ -112,13 +115,13 @@ services:
     image: orders-service:latest
     environment:
       SERVICE_NAME: "orders-worker"
-      ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
-      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
-      ProductsService__BaseUrl: "http://products-service:8000/products/"
-      RabbitMq__Host: "rabbitmq"
-      Consul__Url: "http://consul:8500"
-      Worker__Enabled: "true"
-      Worker__ProcessingDelayMs: "2000"
+      CONNECTIONSTRINGS__ORDERSDB: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      USERSSERVICE__BASEURL: "http://users-service:8000/users/UserService.svc"
+      PRODUCTSSERVICE__BASEURL: "http://products-service:8000/products/"
+      RABBITMQ__HOST: "rabbitmq"
+      CONSUL__URL: "http://consul:8500"
+      WORKER__ENABLED: "true"
+      WORKER__PROCESSINGDELAYMS: "2000"
     deploy:
       replicas: 3
     healthcheck:
@@ -144,12 +147,12 @@ services:
     image: orders-service:latest
     environment:
       SERVICE_NAME: "orders-projector"
-      ConnectionStrings__OrdersDb: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
-      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
-      ProductsService__BaseUrl: "http://products-service:8000/products/"
-      RabbitMq__Host: "rabbitmq"
-      Consul__Url: "http://consul:8500"
-      Projector__Enabled: "true"
+      CONNECTIONSTRINGS__ORDERSDB: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+      USERSSERVICE__BASEURL: "http://users-service:8000/users/UserService.svc"
+      PRODUCTSSERVICE__BASEURL: "http://products-service:8000/products/"
+      RABBITMQ__HOST: "rabbitmq"
+      CONSUL__URL: "http://consul:8500"
+      PROJECTOR__ENABLED: "true"
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
       # verifica que /health responda 200.
@@ -191,14 +194,14 @@ services:
       MONGO_DB: "productsdb"
       MONGO_USER: "productsusr"
       MONGO_PASSWORD: "Pa55w0rd"
-      Redis__Host: "redis"
-      RabbitMq__Host: "rabbitmq"
-      Consul__Url: "http://consul:8500"
+      REDIS__HOST: "redis"
+      RABBITMQ__HOST: "rabbitmq"
+      CONSUL__URL: "http://consul:8500"
       # Valet Key: la cuenta de almacenamiento de las imágenes. Products la usa
       # con su clave para firmar las URL que entrega a los clientes, que suben y
       # bajan las imágenes directamente de Azurite, en localhost:10000.
-      Storage__ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
-      Storage__PublicBlobEndpoint: "http://localhost:10000/devstoreaccount1"
+      STORAGE__CONNECTIONSTRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      STORAGE__PUBLICBLOBENDPOINT: "http://localhost:10000/devstoreaccount1"
     ports:
       - "8001:8000"
     healthcheck:
@@ -319,7 +322,7 @@ services:
       dockerfile: ./LegacyErp/Dockerfile
     image: legacy-erp:latest
     environment:
-      LegacyBroker__Host: "legacy-broker"
+      LEGACYBROKER__HOST: "legacy-broker"
     depends_on:
       legacy-broker:
         condition: service_healthy
@@ -332,8 +335,8 @@ services:
       dockerfile: ./MessagingBridge/Dockerfile
     image: messaging-bridge:latest
     environment:
-      RabbitMq__Host: "rabbitmq"
-      LegacyBroker__Host: "legacy-broker"
+      RABBITMQ__HOST: "rabbitmq"
+      LEGACYBROKER__HOST: "legacy-broker"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -357,8 +360,8 @@ services:
       dockerfile: ./PurchasesService/Dockerfile
     image: purchases-service:latest
     environment:
-      OrdersService__BaseUrl: "http://orders-service:8000/orders/"
-      UsersService__BaseUrl: "http://users-service:8000/users/UserService.svc"
+      ORDERSSERVICE__BASEURL: "http://orders-service:8000/orders/"
+      USERSSERVICE__BASEURL: "http://users-service:8000/users/UserService.svc"
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
       # verifica que /health responda 200.
@@ -382,8 +385,8 @@ services:
       dockerfile: ./BffWeb/Dockerfile
     image: bff-web:latest
     environment:
-      OrdersService__BaseUrl: "http://orders-service:8000/orders/"
-      ProductsService__BaseUrl: "http://products-service:8000/products/"
+      ORDERSSERVICE__BASEURL: "http://orders-service:8000/orders/"
+      PRODUCTSSERVICE__BASEURL: "http://products-service:8000/products/"
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
       # verifica que /health responda 200.
@@ -405,7 +408,7 @@ services:
       dockerfile: ./BffMobile/Dockerfile
     image: bff-mobile:latest
     environment:
-      OrdersService__BaseUrl: "http://orders-service:8000/orders/"
+      ORDERSSERVICE__BASEURL: "http://orders-service:8000/orders/"
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
       # verifica que /health responda 200.
@@ -443,10 +446,43 @@ services:
     image: users-service:latest
     environment:
       SERVICE_NAME: "users-service"
-      ConnectionStrings__UsersDb: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
-      RabbitMq__Host: "rabbitmq"
+      CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+      RABBITMQ__HOST: "rabbitmq"
     ports:
       - "8002:8000"
+    healthcheck:
+      # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
+      # verifica que /health responda 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 30s
+      start_interval: 2s
+    depends_on:
+      users-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  # Demos de facilidad de despliegue: la versión 2 de Users, la que trae el
+  # experimento de A/B Testing. Es la misma imagen que users-service, con otra
+  # versión configurada -ver UsersService/Release.cs-, y comparte la base. No
+  # publica puertos: se llega por la entrada de despliegue del gateway, en el
+  # 8091. Los demás servicios siguen llamando a users-service, la versión 1.
+  users-service-v2:
+    image: users-service:latest
+    environment:
+      SERVICE_NAME: "users-service-v2"
+      CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+      RABBITMQ__HOST: "rabbitmq"
+      RELEASE__VERSION: "2"
+    networks:
+      default:
+        # Rolling Upgrade: el grupo de instancias que atiende la entrada de
+        # despliegue. Las réplicas de esta versión y las instancias de la 1 que
+        # crea la demo 28 comparten el nombre, y el DNS de Docker devuelve todas.
+        aliases: ["users-pool"]
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
       # verifica que /health responda 200.

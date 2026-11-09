@@ -1,0 +1,42 @@
+@startuml
+!include PlantUML.style
+rectangle "Al principio" as P1 {
+  rectangle "users-pool" as G1
+  rectangle "v1" as A1
+  rectangle "v1" as B1
+  rectangle "v1" as C1
+  G1 --> A1
+  G1 --> B1
+  G1 --> C1
+}
+rectangle "Paso 1" as P2 {
+  rectangle "users-pool" as G2
+  rectangle "v2" as A2
+  rectangle "v1" as B2
+  rectangle "v1" as C2
+  G2 --> A2
+  G2 --> B2
+  G2 --> C2
+}
+rectangle "Paso 2" as P3 {
+  rectangle "users-pool" as G3
+  rectangle "v2" as A3
+  rectangle "v2" as B3
+  rectangle "v1" as C3
+  G3 --> A3
+  G3 --> B3
+  G3 --> C3
+}
+rectangle "Paso 3" as P4 {
+  rectangle "users-pool" as G4
+  rectangle "v2" as A4
+  rectangle "v2" as B4
+  rectangle "v2" as C4
+  G4 --> A4
+  G4 --> B4
+  G4 --> C4
+}
+P1 -right[hidden]-> P2
+P2 -right[hidden]-> P3
+P3 -right[hidden]-> P4
+@enduml

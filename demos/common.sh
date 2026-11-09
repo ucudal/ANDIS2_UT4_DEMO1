@@ -262,11 +262,13 @@ config_delete() {
     sleep 3
 }
 
-# annotate <texto>: marca el momento en el dashboard de Grafana, para distinguir
-# el antes y el después de un cambio. Si Grafana no está levantado, no hace nada.
+# annotate <texto> [etiqueta]: marca el momento en el dashboard de Grafana, para
+# distinguir el antes y el después de un cambio. La etiqueta es
+# "modificabilidad" si no se indica otra. Si Grafana no está levantado, no hace
+# nada.
 annotate() {
     curl -s -m 2 -o /dev/null -X POST "$GRAFANA/api/annotations" -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg text "$1" '{dashboardUID: "ut4-demo1", tags: ["modificabilidad"], text: $text}')" || true
+        -d "$(jq -nc --arg text "$1" --arg tag "${2:-modificabilidad}" '{dashboardUID: "ut4-demo1", tags: [$tag], text: $text}')" || true
 }
 
 # strangler_route <users|products|orders> <destino>: cambia el destino de una
@@ -276,6 +278,168 @@ strangler_route() {
     docker compose exec -T api-gateway sh -c \
         "sed -i 's|^set \\\$$1_route .*|set \\\$$1_route $2;|' /etc/nginx/strangler-routes.conf && nginx -s reload" 2> /dev/null
     sleep 1
+}
+
+# Funciones de los demos de facilidad de despliegue, de la 27 en adelante.
+
+DEPLOY=${DEPLOY:-http://localhost:8091}
+
+# El sobre SOAP de GetUser para el User <id>.
+get_user_envelope() {
+    echo "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetUser xmlns=\"http://ucu.edu.uy/andis/users\"><id>$1</id></GetUser></soap:Body></soap:Envelope>"
+}
+
+# get_user <id> [argumentos de curl]: GetUser por la entrada de despliegue. No
+# sabe qué versión de Users lo atiende: lo dice el encabezado X-Version.
+get_user() {
+    local id=$1
+    shift
+    curl -s -X POST "$DEPLOY/users/UserService.svc" -H 'Content-Type: text/xml; charset=utf-8' \
+        -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' -d "$(get_user_envelope "$id")" "$@"
+}
+
+# get_user_inside <instancia> <id> [argumentos de curl]: GetUser directamente a
+# una instancia, desde adentro de la red de Docker, sin pasar por la entrada de
+# despliegue. Sirve para probar una versión antes de que reciba tráfico.
+get_user_inside() {
+    local host=$1 id=$2
+    shift 2
+    docker compose exec -T api-gateway curl -s -X POST "http://$host:8000/users/UserService.svc" \
+        -H 'Content-Type: text/xml; charset=utf-8' \
+        -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' -d "$(get_user_envelope "$id")" "$@"
+}
+
+# user_summary: lee una respuesta de GetUser con sus encabezados -curl -i- y la
+# resume en una línea: la versión, la variante del experimento si la hay, y los
+# campos del User.
+user_summary() {
+    local out
+    out=$(tr -d '\r')
+    printf '  versión v%s' "$(grep -i '^x-version:' <<< "$out" | awk '{ print $2 }')"
+    grep -qi '^x-variant:' <<< "$out" && printf ', variante %s' "$(grep -i '^x-variant:' <<< "$out" | awk '{ print $2 }')"
+    printf '  ->  %s\n' "$(grep -oE '<([a-z]+:)?(Id|Name|Email|DisplayName)>[^<]*' <<< "$out" \
+        | sed -E 's/<([a-z]+:)?([A-Za-z]+)>/\2: /; s/&lt;/</g; s/&gt;/>/g' | paste -sd ',' - | sed 's/,/, /g')"
+}
+
+# deploy_routes <configuración>: reemplaza el contenido de deployment-routes.conf
+# en el contenedor del gateway y recarga nginx, sin cortar el servicio. El
+# archivo del repositorio no cambia.
+deploy_routes() {
+    docker compose exec -T api-gateway sh -c \
+        'cat > /etc/nginx/deployment-routes.conf && nginx -s reload' <<< "$1" 2> /dev/null
+    sleep 1
+}
+
+# deploy_target <destino>: todo el tráfico a un destino, por ejemplo
+# users-service-v2:8000. Es Blue/Green: conmutar es cambiar el destino.
+deploy_target() {
+    deploy_routes "map \$host \$users_target {
+    default $1;
+}"
+}
+
+# deploy_canary <porcentaje>: ese porcentaje de las solicitudes a la versión v2,
+# y el resto a la v1. nginx elige al azar en cada solicitud, con $request_id.
+deploy_canary() {
+    deploy_routes "split_clients \"\${request_id}\" \$users_target {
+    $1% users-service-v2:8000;
+    *   users-service:8000;
+}"
+}
+
+# tally <archivo>: cuenta las líneas "código versión" de un archivo, y muestra
+# cuántas respuestas hubo de cada combinación. Sin versión, respondió el
+# gateway, porque no llegó a ninguna instancia.
+tally() {
+    sort "$1" | uniq -c | awk '{ printf "  HTTP %s, versión %s: %s respuestas\n", $2, ($3 == "" ? "-" : "v" $3), $1 }'
+}
+
+# versions <n> [argumentos de curl]: n solicitudes de GetUser del User 1, y
+# cuántas respondió cada versión.
+versions() {
+    local n=$1 file
+    shift
+    file=$(mktemp)
+    for _ in $(seq "$n"); do
+        get_user 1 -m 2 -o /dev/null -w '%{http_code} %header{x-version}\n' "$@" >> "$file" || true
+    done
+    tally "$file"
+    rm -f "$file"
+}
+
+# deploy_probe <salida> <bandera>: mientras exista el archivo bandera, pide el
+# User 1 cada 0,1 segundos y anota en salida el código HTTP y la versión de cada
+# respuesta. Se lanza en segundo plano, para ver qué pasa durante un cambio.
+deploy_probe() {
+    while [ -f "$2" ]; do
+        get_user 1 -m 2 -o /dev/null -w '%{http_code} %header{x-version}\n' >> "$1" || true
+        sleep 0.1
+    done
+}
+
+# v2_chaos <failureRate> <delayMs> y v2_reset_chaos: inyecta fallas solo en la
+# versión v2, desde adentro de la red de Docker. Por el puerto 80, /users/chaos
+# llega a la versión v1.
+v2_chaos() {
+    printf '  chaos en users-service-v2: '
+    docker compose exec -T api-gateway curl -s -X PUT http://users-service-v2:8000/users/chaos \
+        -H 'Content-Type: application/json' -d "{\"failureRate\": $1, \"delayMs\": $2}"
+    echo
+}
+v2_reset_chaos() {
+    docker compose exec -T api-gateway curl -s -o /dev/null -X DELETE http://users-service-v2:8000/users/chaos 2> /dev/null || true
+}
+
+# Rolling Upgrade: el grupo users-pool, con instancias de las dos versiones.
+#
+# users-service no entra en el grupo, porque lo usan las demás demos. Las
+# instancias de la versión v1 se crean con docker compose run, a partir de su
+# definición y sin publicar puertos, y se suman al grupo con el alias
+# users-pool. Las de la versión v2 son réplicas de users-service-v2, que ya tiene
+# el alias.
+
+POOL_V1="users-v1-1 users-v1-2 users-v1-3"
+
+# La red de Docker de la aplicación, la del gateway.
+app_network() {
+    docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' "$(docker compose ps -q api-gateway)"
+}
+
+# wait_healthy <contenedor>: espera a que su healthcheck diga healthy.
+wait_healthy() {
+    until [ "$(docker inspect -f '{{.State.Health.Status}}' "$1" 2> /dev/null)" = healthy ]; do sleep 1; done
+}
+
+# pool_start_v1: crea las tres instancias de la versión v1, les agrega el alias
+# users-pool y espera a que estén sanas. Antes deja users-service-v2 sin
+# réplicas, para que el grupo empiece solo con la versión v1.
+pool_start_v1() {
+    local network name
+    network=$(app_network)
+    docker compose up -d --no-deps --scale users-service-v2=0 users-service-v2 > /dev/null 2>&1
+    for name in $POOL_V1; do
+        docker compose run -d --no-deps --name "$name" users-service > /dev/null 2>&1
+        docker network disconnect "$network" "$name"
+        docker network connect --alias users-pool "$network" "$name"
+    done
+    for name in $POOL_V1; do wait_healthy "$name"; done
+}
+
+# pool_replace <n>: un lote del Rolling Upgrade. Lleva users-service-v2 a n
+# réplicas, espera a que la nueva esté sana -con --wait- y recién entonces
+# detiene la instancia n de la versión v1. Así el grupo nunca tiene menos de
+# tres instancias sanas.
+pool_replace() {
+    docker compose up -d --no-deps --scale users-service-v2="$1" --wait users-service-v2 > /dev/null 2>&1
+    docker stop "users-v1-$1" > /dev/null
+}
+
+# pool_cleanup: borra las instancias de la versión v1 y deja users-service-v2 con
+# una réplica, como en docker-compose.yaml.
+pool_cleanup() {
+    local name
+    for name in $POOL_V1; do docker rm -f "$name" > /dev/null 2>&1 || true; done
+    docker compose up -d --no-deps --scale users-service-v2=1 --wait users-service-v2 > /dev/null 2>&1
 }
 
 # Al terminar, deja los servicios sin fallas simuladas y con todos los patrones

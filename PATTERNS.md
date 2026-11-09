@@ -1,6 +1,7 @@
 # Demos de la UT4: patrones de arquitectura sobre una misma aplicación
 
 * [Aplicación base](#aplicación-base)
+* [Cobertura](#cobertura)
 * [Demos de disponibilidad](#demos-de-disponibilidad)
   * [Qué agrega a la aplicación base](#qué-agrega-a-la-aplicación-base)
   * [Patrones de disponibilidad](#patrones-de-disponibilidad)
@@ -42,7 +43,13 @@
   * [Antes y después en Grafana](#antes-y-después-en-grafana)
   * [Tamaño del cambio](#tamaño-del-cambio)
 * [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
-* [Cobertura](#cobertura)
+  * [Qué agrega a las demos de facilidad de modificación](#qué-agrega-a-las-demos-de-facilidad-de-modificación)
+  * [Patrones de facilidad de despliegue](#patrones-de-facilidad-de-despliegue)
+    * [Blue/Green Deployment](#bluegreen-deployment)
+    * [Rolling Upgrade](#rolling-upgrade)
+    * [Canary Testing](#canary-testing)
+    * [A/B Testing](#ab-testing)
+  * [Las estrategias en Grafana](#las-estrategias-en-grafana)
 
 ## Aplicación base
 
@@ -73,6 +80,16 @@ La dependencia que más se aprovecha es la de `GET
 `Products`. Es el punto natural para mostrar fallas en cascada, cachés y vistas
 materializadas.
 
+## Cobertura
+
+| Categoría | Patrones | Demo |
+| --------- | -------- | ---- |
+| Disponibilidad | Bulkhead, Circuit Breaker, Competing Consumers, Event Sourcing, Health Endpoint Monitoring, Rate Limiting, Retry, Throttling, Transactional Outbox | 1 |
+| Rendimiento | Cache-Aside, Queue-Based Load Leveling, Competing Consumers, Publisher/Subscriber, Asynchronous Request-Reply, CQRS, Materialized View | 2 |
+| Seguridad | Gatekeeper, Federated Identity, Gateway Offloading, Sidecar, Valet Key | 3 |
+| Facilidad de modificación | Anti-corruption Layer, External Configuration Store, Messaging Bridge, Strangler Fig, Backends for Frontends | 4 |
+| Facilidad de despliegue: estrategias de lanzamiento | Blue/Green, Rolling Upgrade, Canary Testing, A/B Testing | 5 |
+
 ## Demos de disponibilidad
 
 Escenario: [`Users`](src/UsersService) o [`Products`](src/ProductsService) fallan o
@@ -102,11 +119,11 @@ sus propias rutas.
 | Componente | Para qué |
 | ---------- | -------- |
 | `rabbitmq` | Exchange `andis.events`, donde se publican los eventos, y cola `orders.process` con las `Orders` pendientes de procesar. Consola en <http://localhost:15672> -usr: `guest` pwd: `guest`-. |
-| `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`Worker__Enabled=true`-. Consume la cola y confirma o rechaza cada `Order`. |
+| `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`WORKER__ENABLED=true`-. Consume la cola y confirma o rechaza cada `Order`. |
 | Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
 | Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). |
 | Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
-| Observabilidad y carga -opcional- | Perfil `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6/](k6). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en el [README](README.md#observabilidad-y-pruebas-de-carga). |
+| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6/](k6). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en el [README](README.md#observabilidad-y-pruebas-de-carga). |
 
 Ejemplo de inyección de fallas:
 
@@ -136,7 +153,7 @@ separado. Cómo ejecutarlos está en el
 aparecen en los *logs* de [Docker](https://www.docker.com/) de `orders-service`, con una etiqueta: `[RETRY]`,
 `[CIRCUIT BREAKER]`, `[BULKHEAD]`, `[THROTTLING]` y `[OUTBOX]`. Los patrones que dependen de
 la carga -Circuit Breaker, Bulkhead, Throttling, Rate Limiting y Competing
-Consumers- tienen además un escenario de k6 para verlos en el dashboard.
+Consumers- tienen además un escenario de [k6](https://k6.io/) para verlos en el dashboard.
 
 #### Retry
 
@@ -335,7 +352,7 @@ máximo 1 `Order` por segundo, con una ráfaga de hasta 5. Lo que excede el lím
 recibe `429 Too Many Requests` sin llegar a `orders-service`; las consultas no
 tienen límite. Está en
 [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
--`limit_req_zone` y `limit_req`-. Es el límite que respeta el cliente de la
+-[`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone) y [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req)-. Es el límite que respeta el cliente de la
 demo de Rate Limiting.
 
 **Cómo funciona:**
@@ -455,9 +472,9 @@ detecta cuando un usuario se queja.
 dependencias y devuelve un [JSON](https://www.json.org/) con el resultado de cada chequeo -200 si está
 sano, 503 en caso contrario-:
 
-* `users-service`: conexión a PostgreSQL.
-* `products-service`: *ping* a MongoDB.
-* `orders-service`: conexión a MySQL y a RabbitMQ. Si RabbitMQ no está, queda
+* `users-service`: conexión a [PostgreSQL](https://www.postgresql.org/).
+* `products-service`: *ping* a [MongoDB](https://www.mongodb.com/).
+* `orders-service`: conexión a [MySQL](https://www.mysql.com/) y a [RabbitMQ](https://www.rabbitmq.com/). Si RabbitMQ no está, queda
   `Degraded` y responde 200, porque gracias al [Transactional
   Outbox](#transactional-outbox) sigue aceptando `Orders`. `orders-worker` y
   `orders-projector` quedan `Unhealthy`, porque sin RabbitMQ no reciben nada.
@@ -465,17 +482,17 @@ sano, 503 en caso contrario-:
 `Orders` **no** chequea a `Users` ni a `Products`: si se cae una dependency,
 `Orders` sigue funcionando degradado y no debe figurar como caído. El gateway
 publica los tres en `/health/users`, `/health/products` y `/health/orders`.
-Docker los consulta cada 5 segundos -`healthcheck` en
+Docker los consulta cada 5 segundos -[`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck) en
 [docker-compose.yaml](docker-compose.yaml)- y los usa para no levantar un
-servicio hasta que sus dependencias estén sanas -`depends_on: condition:
-service_healthy`-.
+servicio hasta que sus dependencias estén sanas -[`depends_on: condition:
+service_healthy`](https://docs.docker.com/reference/compose-file/services/#depends_on)-.
 
 **Cómo funciona:**
 
 ![Quién consulta /health y qué chequea cada servicio](assets/06-health.svg)
 
 `Orders` no chequea a `Users` ni a `Products`: si se caen, sigue funcionando
-degradado. Grafana no consulta `/health`: cada servicio publica el resultado de
+degradado. [Grafana](https://grafana.com/oss/grafana/) no consulta `/health`: cada servicio publica el resultado de
 sus chequeos como la métrica `service_health`.
 
 **Código:**
@@ -682,7 +699,7 @@ Qué se muestra:
 Resultado observable: latencias de lectura estables durante el pico, *backlog*
 absorbido por la cola y throughput que crece al agregar *workers*. El pico se
 genera con [k6/load.js](k6/load.js) y [k6/load-leveling.js](k6/load-leveling.js),
-y se compara antes y después de cada patrón en el dashboard de Grafana, en la
+y se compara antes y después de cada patrón en el dashboard de [Grafana](https://grafana.com/oss/grafana/), en la
 fila "Rendimiento: caché, CQRS y outbox".
 
 ### Qué agrega a las demos de disponibilidad
@@ -690,10 +707,10 @@ fila "Rendimiento: caché, CQRS y outbox".
 | Componente | Para qué |
 | ---------- | -------- |
 | `redis` | Caché de `Products`. |
-| `orders-projector` | La misma imagen que `orders-service`, con el proyector habilitado -`Projector__Enabled=true`-. Mantiene la vista materializada `order_details`. |
+| `orders-projector` | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
 | Exchange `andis.events` | Eventos `order.created`, `order.confirmed`, `order.rejected`, `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación [SOAP](https://www.w3.org/TR/soap/) `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
-| Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de MongoDB, sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
+| Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [MongoDB](https://www.mongodb.com/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
 
 ```bash
 # Caché apagada y cada lectura de MongoDB demora 200 ms
@@ -707,7 +724,7 @@ curl -X DELETE http://localhost/products/cache
 ### Patrones de rendimiento
 
 Como en las demos de disponibilidad, cada patrón tiene un script en
-[demos/](demos), del `10` al `16`. Los *logs* de Docker muestran los eventos con
+[demos/](demos), del `10` al `16`. Los *logs* de [Docker](https://www.docker.com/) muestran los eventos con
 una etiqueta: `[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en
 `users-service`, `products-service` y `orders-projector`; y `[MATERIALIZED
 VIEW]` en `orders-projector`.
@@ -718,7 +735,7 @@ VIEW]` en `orders-projector`.
 la base se vuelve el cuello de botella de un pico de lecturas.
 
 **Implementación:** `Products` busca primero en [Redis](https://redis.io/). Si el dato no está
--*miss*-, lo lee de MongoDB y lo guarda en Redis por 60 segundos; la próxima
+-*miss*-, lo lee de [MongoDB](https://www.mongodb.com/) y lo guarda en Redis por 60 segundos; la próxima
 lectura sale de Redis -*hit*-. Al crear o cambiar un `Product`, `Products`
 borra de Redis las claves afectadas, y la próxima lectura trae el dato nuevo.
 Es la aplicación la que maneja la caché: Redis no sabe nada de MongoDB. Si Redis
@@ -814,7 +831,7 @@ unos 12 segundos. Al final vuelve a 3 réplicas.
 tiene que conocerlos a todos, y cada interesado nuevo obliga a cambiarlo.
 
 **Implementación:** `Orders`, `Users` y `Products` publican eventos en el
-exchange `andis.events`, de tipo *topic*. En RabbitMQ, un exchange y una cola
+exchange `andis.events`, de tipo *topic*. En [RabbitMQ](https://www.rabbitmq.com/), un exchange y una cola
 son piezas distintas:
 
 * Un **exchange** es donde se publica. No guarda mensajes: según la clave de
@@ -916,7 +933,7 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
   `GetOrdersForUser` de la clase `OrdersQueriesController`, en
   [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
-  Es una consulta a MySQL, sin llamadas a `Users` ni a `Products`, y sin
+  Es una consulta a [MySQL](https://www.mysql.com/), sin llamadas a `Users` ni a `Products`, y sin
   Throttling.
 
 `GET /orders/user/{userId}/details`, la consulta síncrona de la demo de
@@ -1017,7 +1034,7 @@ Qué se muestra:
   cambiar su código.
 * Acceso directo, temporal y acotado al almacenamiento de las imágenes.
 
-Resultado observable: por la entrada HTTP del gateway, cualquiera llega a
+Resultado observable: por la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway, cualquiera llega a
 cualquier ruta, incluidas las de administración; por la entrada HTTPS, cada
 solicitud necesita un token, los servicios no implementan autenticación ni TLS,
 las políticas se aplican en el borde y cada acceso tiene el mínimo privilegio
@@ -1028,7 +1045,7 @@ necesario.
 | Componente | Para qué |
 | ---------- | -------- |
 | `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
-| Entrada HTTPS del gateway | `https://localhost`, con los patrones de seguridad. La entrada HTTP, `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
+| Entrada HTTPS del gateway | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
 | `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al sidecar; la HTTP, directamente a `Products`. Está en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml). |
 | `azurite` | El emulador de [Azure Storage](https://azure.microsoft.com/products/storage/), con las imágenes de los `Products`, en <http://localhost:10000>. |
 | Imágenes de los `Products` | `PUT /products/{id}/image` sube la imagen a través de `Products`; `POST /products/{id}/image/upload-url` entrega una URL firmada para subirla directamente a [Azurite](https://github.com/Azure/Azurite); `GET /products/{id}/image` redirige a una URL firmada para bajarla. |
@@ -1068,8 +1085,8 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 
 Cada patrón tiene un script en [demos/](demos), del `17` al `21`, y un paso a
 paso en [commands/04-security.azcli](commands/04-security.azcli) que compara la
-misma solicitud por la entrada HTTP, sin el patrón, y por la HTTPS, con él. Los
-*logs* de Docker muestran los eventos con una etiqueta: `[HTTPS]` en
+misma solicitud por la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la HTTPS, con él. Los
+*logs* de [Docker](https://www.docker.com/) muestran los eventos con una etiqueta: `[HTTPS]` en
 `api-gateway`, una línea por solicitud; `[FEDERATED IDENTITY]` en
 `orders-service`; `[SIDECAR]` en `products-sidecar`; y `[VALET KEY]` en
 `products-service`.
@@ -1085,7 +1102,7 @@ contraseñas e implementa el inicio de sesión, la recuperación de contraseñas
 el bloqueo de cuentas, y el usuario tiene una cuenta distinta en cada una. Una
 falla en cualquiera de ellas expone las contraseñas.
 
-**Implementación:** la autenticación se delega en Keycloak, un proveedor de
+**Implementación:** la autenticación se delega en [Keycloak](https://www.keycloak.org/), un proveedor de
 identidad que habla [OpenID Connect](https://openid.net/developers/how-connect-works/). El usuario inicia sesión en Keycloak, que
 emite un token firmado -un JWT- con sus claims:
 
@@ -1145,7 +1162,7 @@ es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta sus
 pero no puede crear. Sin token, o con el `user_id` del token cambiado por el de
 alice, el gateway responde 401, porque la firma ya no corresponde a los claims.
 Como en las demás demos, las `Orders` se crean solo para el `User` 2: las del
-`User` 1 son la base de las demos de disponibilidad. En Grafana, el panel
+`User` 1 son la base de las demos de disponibilidad. En [Grafana](https://grafana.com/oss/grafana/), el panel
 "Eventos de Keycloak por segundo" muestra los inicios de sesión.
 
 > [!TIP]
@@ -1158,7 +1175,7 @@ Como en las demás demos, las `Orders` se crean solo para el `User` 2: las del
 
 #### Gateway Offloading
 
-**Problema:** TLS, la validación de tokens y la compresión son funciones
+**Problema:** [TLS](https://datatracker.ietf.org/doc/html/rfc8446), la validación de tokens y la compresión son funciones
 especializadas, que necesitan configuración y certificados. Si cada servicio
 las implementa, cada uno lo hace a su manera, en su lenguaje, y actualizar un
 certificado o una política obliga a cambiar todos los servicios.
@@ -1172,14 +1189,14 @@ HTTPS, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
   [ApiGateway/Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
   privada en el repositorio; en producción lo emitiría una autoridad de
   certificación.
-* **Validación de tokens:** antes de reenviar cada solicitud, `auth_request`
+* **Validación de tokens:** antes de reenviar cada solicitud, [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request)
   hace una subsolicitud a `/userinfo` de Keycloak con el token. Si Keycloak
   responde 200, la solicitud sigue; si no, el gateway responde 401 y la
   solicitud no llega al servicio. Después, `identity.js`, en
   [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js), lee
   los claims del token, ya validado, y el gateway se los pasa al servicio en los
   encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
-* **Compresión:** el gateway comprime con gzip las respuestas de más de 1 KB,
+* **Compresión:** el gateway comprime con [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) las respuestas de más de 1 KB,
   si el cliente lo acepta.
 * **Throttling por cliente:** el de la [demo de Throttling](#throttling), que
   el gateway ya aplicaba en la entrada HTTP.
@@ -1226,7 +1243,7 @@ chica por HTTPS que por HTTP, comprimida por el gateway. En Grafana, el panel
 > Consulta [Authentication Based on Subrequest
 > Result](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-subrequest-authentication/)
 > para tener más información sobre `auth_request`, y la [documentación de
-> njs](https://nginx.org/en/docs/njs/) sobre el JavaScript de nginx que usa
+> njs](https://nginx.org/en/docs/njs/) sobre el JavaScript de [nginx](https://nginx.org/) que usa
 > `identity.js`.
 
 #### Gatekeeper
@@ -1248,7 +1265,7 @@ reenviarla, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.
   `Order` o un `User` es un número; si no, 404.
 * **Métodos:** cada ruta acepta solo los que usa la aplicación; un `DELETE`
   responde 403.
-* **Cuerpo:** los `POST` y `PUT` tienen que ser JSON -415 si no- y medir hasta
+* **Cuerpo:** los `POST` y `PUT` tienen que ser [JSON](https://www.json.org/) -415 si no- y medir hasta
   64 KB -413 si no-.
 * **Encabezados de identidad:** el gateway arma `X-User-Name`, `X-User-Id` y
   `X-User-Roles` con los claims del token y reemplaza los que haya mandado el
@@ -1264,7 +1281,7 @@ cualquiera llega a la administración o manda encabezados de identidad falsos.
 [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de
 publicarlos: los servicios siguen hablando entre sí por la red de Docker, pero
 desde afuera la única entrada es el gateway. Se aplica junto con el otro
-archivo, y Docker Compose vuelve a crear solo los contenedores que cambian:
+archivo, y [Docker Compose](https://docs.docker.com/compose/) vuelve a crear solo los contenedores que cambian:
 
 ```bash
 docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --wait
@@ -1326,18 +1343,18 @@ y a repetirlo en cada servicio; y un servicio de terceros o legado tal vez no
 se pueda cambiar. Además, el gateway protege solo lo que entra por el gateway:
 dentro de la red, cualquier contenedor llama a cualquier servicio.
 
-**Implementación:** un proxy Envoy, `products-sidecar`, corre junto a
-`products-service`, en su mismo espacio de red -`network_mode:
-service:products-service` en [docker-compose.yaml](docker-compose.yaml)-. Para
+**Implementación:** un proxy [Envoy](https://www.envoyproxy.io/), `products-sidecar`, corre junto a
+`products-service`, en su mismo espacio de red -[`network_mode:
+service:products-service`](https://docs.docker.com/reference/compose-file/services/#network_mode) en [docker-compose.yaml](docker-compose.yaml)-. Para
 Envoy, `Products` es `127.0.0.1:8000`; para los demás contenedores, el sidecar
 es `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
 configura con [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
 
-* **Autenticación:** el filtro `jwt_authn` verifica la firma del token con las
+* **Autenticación:** el filtro [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) verifica la firma del token con las
   claves públicas de Keycloak, que pide una vez cada 5 minutos, además del
   emisor y el vencimiento. Un token inválido recibe 401; sin token, la
   solicitud sigue como anónima.
-* **Autorización:** el filtro `rbac` deja leer a cualquiera -`GET`- y exige el
+* **Autorización:** el filtro [`rbac`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter) deja leer a cualquiera -`GET`- y exige el
   rol `admin` para todo lo demás. Si no, 403.
 * **Registro de accesos:** una línea `[SIDECAR]` por solicitud, con el código,
   el usuario del token y el motivo del rechazo.
@@ -1413,8 +1430,8 @@ gateway tiene que aceptar cuerpos grandes. Si en cambio el cliente accede
 directamente al almacenamiento con las credenciales de la aplicación, puede
 hacer cualquier cosa con todos los datos.
 
-**Implementación:** las imágenes de los `Products` se guardan en Azurite, el
-emulador de Azure Storage. `Products` tiene la clave de la cuenta, pero no la
+**Implementación:** las imágenes de los `Products` se guardan en [Azurite](https://github.com/Azure/Azurite), el
+emulador de [Azure Storage](https://azure.microsoft.com/products/storage/). `Products` tiene la clave de la cuenta, pero no la
 entrega: le da al cliente una URL firmada -una SAS, *Shared Access
 Signature*- que permite una sola operación, sobre la imagen de un solo
 `Product`, durante 2 minutos como máximo. Con esa URL, el cliente sube o baja
@@ -1489,7 +1506,7 @@ Qué se muestra:
 * Un backend para la web y otro para la app móvil.
 
 Resultado observable: un cliente nuevo que se agrega sin conocer el modelo de
-`Orders` ni el SOAP de `Users`, cambios de configuración sin reiniciar ningún
+`Orders` ni el [SOAP](https://www.w3.org/TR/soap/) de `Users`, cambios de configuración sin reiniciar ningún
 contenedor, una `Order` que se factura en un ERP aunque el broker del ERP haya
 estado caído, un monolito que se apaga sin que el cliente lo note, y un backend que
 se redespliega sin que el otro cliente lo note.
@@ -1498,11 +1515,11 @@ se redespliega sin que el otro cliente lo note.
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService/](src/PurchasesService). El gateway lo publica en `/purchases/`, solo en la entrada HTTP. |
+| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService/](src/PurchasesService). El gateway lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
 | `consul` | El almacén de configuración, con la consola en <http://localhost:8500>. |
 | `legacy-broker` | [ActiveMQ](https://activemq.apache.org/), el broker del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
 | `legacy-erp` | Un ERP simulado, en [LegacyErp/Program.cs](src/LegacyErp/Program.cs). |
-| `messaging-bridge` | El puente entre RabbitMQ y ActiveMQ, en [MessagingBridge/](src/MessagingBridge). |
+| `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge/](src/MessagingBridge). |
 | `monolith` | El sistema que se reemplaza, en [Monolith/Program.cs](src/Monolith/Program.cs). |
 | Fachada del gateway | `http://localhost:8090`, con la tabla de rutas en [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
 | `bff-web` y `bff-mobile` | Un backend para la web y otro para la app móvil, en [BffWeb/](src/BffWeb) y [BffMobile/](src/BffMobile). El gateway los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
@@ -1511,7 +1528,7 @@ se redespliega sin que el otro cliente lo note.
 
 Cada patrón tiene un script en [demos/](demos), del `22` al `26`, y un paso a
 paso en [commands/05-modifiability.azcli](commands/05-modifiability.azcli). Los
-*logs* de Docker muestran los eventos con una etiqueta: `[EXTERNAL CONFIG]` en
+*logs* de [Docker](https://www.docker.com/) muestran los eventos con una etiqueta: `[EXTERNAL CONFIG]` en
 los servicios, `[MESSAGING BRIDGE]` en `messaging-bridge` y en
 `orders-projector`, `[ERP]` en `legacy-erp` y `[STRANGLER]` en `api-gateway`.
 
@@ -1537,7 +1554,7 @@ cambiarlo, y su propio modelo queda atado a decisiones de otro equipo.
 **Escenario:** `Purchases`, un cliente nuevo, muestra para un `Product` todas sus
 compras: quién lo compró, cuántas unidades y si la compra está confirmada. Los
 datos están en `Orders`, que habla de `user_id`, `product_id` y estados
-`Pending`, `Confirmed` y `Rejected`, y en `Users`, que habla SOAP.
+`Pending`, `Confirmed` y `Rejected`, y en `Users`, que habla [SOAP](https://www.w3.org/TR/soap/).
 
 **Implementación:** [PurchasesService/](src/PurchasesService) separa el modelo de
 `Purchases` de la capa que traduce.
@@ -1557,7 +1574,7 @@ datos están en `Orders`, que habla de `user_id`, `product_id` y estados
   campos, como la fecha de creación que la demo le agrega con un flag, la capa no
   cambia.
 * **El endpoint:** `GET /purchases/product/{productId}`, publicado por el gateway en
-  la entrada HTTP.
+  la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).
 
 La capa puede ser parte del servicio, como acá, o un servicio aparte que comparten
 varios clientes. En Azure, una capa compartida podría ser una aplicación de [Azure
@@ -1667,7 +1684,7 @@ que leerla en cada uso, y no guardarla al arrancar. Los valores de la demo:
 | `andis/Orders/MaxQuantity` | El método `CreateOrder` de la clase `OrdersController` | Límite: cuántas unidades de un `Product` se pueden pedir en una `Order`. Sin valor, no hay límite |
 | `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | Feature flag: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
 | `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | Feature flag: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 22, para cambiar el modelo de `Orders` |
-| `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de Redis |
+| `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de [Redis](https://redis.io/) |
 | `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [OrdersService/Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
 
 **Cómo funciona:**
@@ -1722,7 +1739,7 @@ Secrets Manager](https://aws.amazon.com/secrets-manager/), con control de acceso
 pueden cambiar. Integrarlos por HTTP obliga a modificar a los dos, los acopla en
 el tiempo y hay que construir los reintentos a mano.
 
-**Qué es ActiveMQ:** un broker de mensajes de código abierto de Apache
+**Qué es [ActiveMQ](https://activemq.apache.org/):** un broker de mensajes de código abierto de Apache
 Foundation, escrito en Java. Es un intermediario que recibe mensajes, los guarda
 y los entrega, para que quien envía y quien recibe no tengan que estar
 disponibles al mismo tiempo. Implementa [JMS](https://jakarta.ee/specifications/messaging/), la API estándar de mensajería de
@@ -1752,7 +1769,7 @@ await producer.SendAsync(await session.CreateTextMessageAsync(record));
 La consola, en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-,
 muestra las colas y sus mensajes.
 
-| | RabbitMQ | ActiveMQ Classic |
+| | [RabbitMQ](https://www.rabbitmq.com/) | ActiveMQ Classic |
 | - | -------- | ---------------- |
 | Ecosistema | Erlang, muchos lenguajes | Java, JMS |
 | Protocolo nativo | AMQP 0-9-1 | OpenWire |
@@ -1766,7 +1783,7 @@ que puentear. En Azure, el lado moderno sería [Azure Service Bus](https://azure
 
 **El ERP simulado:** [LegacyErp/Program.cs](src/LegacyErp/Program.cs) representa
 el sistema que no se puede cambiar. Simula la creación de una factura para cada
-orden de compra. No conoce RabbitMQ, ni JSON, ni la aplicación, y no comparte
+orden de compra. No conoce RabbitMQ, ni [JSON](https://www.json.org/), ni la aplicación, y no comparte
 código con ella: solo sabe leer pedidos de la cola `ERP.PEDIDOS` de ActiveMQ y
 escribir facturas en la cola `ERP.FACTURAS`. El método `ExecuteAsync` de la
 clase `Erp` repite este ciclo:
@@ -1897,12 +1914,12 @@ Tres detalles que lo diferencian de los microservicios:
 al monolito o al servicio que la reemplaza. El nombre del patrón viene de la
 higuera estranguladora, que crece alrededor de un árbol hasta reemplazarlo.
 
-* **La fachada:** un tercer `server` de
+* **La fachada:** un tercer [`server`](https://nginx.org/en/docs/http/ngx_http_core_module.html#server) de
   [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), en el
   puerto 8090. Responde quién atendió en `X-Served-By`.
 * **La tabla de rutas:**
   [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf).
-  Migrar una ruta es cambiar una línea y recargar nginx, sin cortar el servicio.
+  Migrar una ruta es cambiar una línea y recargar [nginx](https://nginx.org/), sin cortar el servicio.
   Volver atrás es lo mismo.
 
 En Azure, la fachada podría ser Azure API Management o [Azure Front Door](https://azure.microsoft.com/products/frontdoor/), y en
@@ -1935,7 +1952,7 @@ solicitudes siguen respondiendo. Al terminar, deja la fachada como estaba.
 | ------ | ------------- | ----------- |
 | Migrar una ruta completa, o volverla atrás | Sí | Una línea en la tabla de rutas |
 | Apagar el monolito | Sí | Nada, cuando ya no le quedan rutas |
-| Migrar solo una parte de una ruta | En parte | Una entrada nueva en la tabla y otro `location` en la fachada |
+| Migrar solo una parte de una ruta | En parte | Una entrada nueva en la tabla y otro [`location`](https://nginx.org/en/docs/http/ngx_http_core_module.html#location) en la fachada |
 | Cambiar el contrato de una ruta | No | La fachada no traduce: los clientes lo notan |
 | Cambiar un dato que los dos sistemas leen | No | Los datos divergen hasta resolver la sincronización |
 
@@ -1954,7 +1971,7 @@ responden igual a las consultas. Tampoco es igual todo el comportamiento: el
 monolito confirma la `Order` al crearla, y `Orders` lo hace después.
 
 **Cómo resolver la divergencia de datos:** en la demo, el nombre de un `Product`
-cambia en MongoDB, y el JOIN del monolito sigue leyendo su copia en SQLite. La
+cambia en [MongoDB](https://www.mongodb.com/), y el JOIN del monolito sigue leyendo su copia en SQLite. La
 regla de fondo es que cada dato tenga un solo dueño en cada momento: quien lo
 escribe. Las demás copias son de lectura y se actualizan desde ese dueño. Las
 formas de lograrlo, de más simple a más invasiva para el monolito:
@@ -2086,8 +2103,8 @@ irían detrás de la entrada HTTPS, con los patrones de seguridad.
 
 El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes ni
 reinicios. Para mostrarlo, [demos/load-modifiability.sh](demos/load-modifiability.sh)
-lanza un escenario de k6 y hace los cambios mientras corre. Cada cambio queda
-marcado con una línea vertical en el dashboard, con una anotación de Grafana,
+lanza un escenario de [k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
+marcado con una línea vertical en el dashboard, con una anotación de [Grafana](https://grafana.com/oss/grafana/),
 para distinguir el antes y el después. Los scripts del `22` al `26` también marcan
 sus pasos si Grafana está levantado.
 
@@ -2103,19 +2120,19 @@ segundo: ilustran el efecto y no son una prueba de rendimiento.
 | Patrón | Qué se hace | Qué mirar | Resultado |
 | ------ | ----------- | --------- | --------- |
 | Strangler Fig | Se migran las tres rutas y se apaga el monolito, con 15 solicitudes por segundo | "Solicitudes de la fachada, por destino" y "Respuestas de la fachada con error" | 1051 solicitudes, sin errores. El tráfico del monolito llega a cero |
-| Strangler Fig | Lo mismo | "Latencia p95 del detalle, por destino" | Sube de unos 8 ms a unos 18 ms: el costo de reemplazar el JOIN por llamadas HTTP |
-| Messaging Bridge | Se detiene ActiveMQ durante unos 30 segundos, con 2 `Orders` por segundo | "Cola bridge.erp" y "Orders confirmadas por segundo" | La cola llega a 89 mensajes y vuelve a cero. Las 161 `Orders` se aceptaron, y se siguieron confirmando durante la caída |
+| Strangler Fig | Lo mismo | "Latencia p95 del detalle, por destino" | Sube de unos 8 ms a unos 18 ms: el costo de reemplazar el JOIN por llamadas [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) |
+| Messaging Bridge | Se detiene [ActiveMQ](https://activemq.apache.org/) durante unos 30 segundos, con 2 `Orders` por segundo | "Cola bridge.erp" y "Orders confirmadas por segundo" | La cola llega a 89 mensajes y vuelve a cero. Las 161 `Orders` se aceptaron, y se siguieron confirmando durante la caída |
 | Anti-corruption Layer | 10 solicitudes por segundo, mitad a `Orders` y mitad a `Purchases`, y 25 segundos con `Users` demorado 200 ms | "Latencia p95: Orders y `Purchases`" | Sin demora, `Purchases` tarda unos 18 a 33 ms y `Orders`, unos 11 ms: el costo de la capa. Con la demora, `Purchases` sube a unos 420 ms y `Orders` no cambia. Las 700 solicitudes respondieron `200 OK` |
 | External Configuration Store | El mismo límite, por variable de entorno y en el almacén, con 22 solicitudes por segundo | "Solicitudes a Orders por resultado" | Las dos formas pasan de `202 Accepted` a `400 Bad Request`. Con la variable de entorno se perdieron 24 solicitudes de 2531, en los dos momentos en que se recreó el contenedor; con el almacén, ninguna |
 | Backends for Frontends | 20 solicitudes por segundo, mitad de cada cliente, y se redespliega `bff-mobile` | "Respuestas por cliente" | La web respondió `200 OK` las 600 veces. La app recibió 11 `502 Bad Gateway` de 600, mientras se reemplazaba su contenedor |
 
 Las métricas que dependen de quién respondió las informa k6 con el encabezado
-`X-Served-By`, para no tener que instrumentar nginx. El p95 que informa k6 se
+`X-Served-By`, para no tener que instrumentar [nginx](https://nginx.org/). El p95 que informa k6 se
 calcula desde que empieza la corrida: después de un pico, baja despacio.
 
 ### Tamaño del cambio
 
-Grafana muestra el efecto de un cambio en ejecución, pero la facilidad de
+[Grafana](https://grafana.com/oss/grafana/) muestra el efecto de un cambio en ejecución, pero la facilidad de
 modificación se mide con otra pregunta: cuánto cuesta hacer el cambio. En un
 escenario de calidad -UT1-, esa es la medida de respuesta. Los números salen de
 [demos/measure-change-size.sh](demos/measure-change-size.sh), que se puede volver a
@@ -2142,19 +2159,24 @@ Cómo se calcula:
 * **Línea efectiva:** una línea que no está vacía ni es un comentario, es decir,
   que no empieza con `//` o `#`. Los comentarios de este repositorio son
   extensos y distorsionarían la comparación.
-* **Qué se cuenta:** código [C#](https://learn.microsoft.com/dotnet/csharp/), proyectos, `Dockerfile`, YAML de Docker Compose
-  y configuración de nginx. No se cuentan la documentación, los diagramas, los
+* **Qué se cuenta:** código [C#](https://learn.microsoft.com/dotnet/csharp/), proyectos, `Dockerfile`, YAML de [Docker Compose](https://docs.docker.com/compose/)
+  y configuración de [nginx](https://nginx.org/). No se cuentan la documentación, los diagramas, los
   scripts de `demos/`, los escenarios de `k6/`, el dashboard ni el archivo
   `.sln`: son parte de la demostración, no de la aplicación.
 * **Líneas nuevas:** las líneas efectivas de los archivos que el patrón agrega.
-* **Líneas en archivos existentes:** las agregadas más las borradas según `git
-  diff` contra el commit `3a02c77`, el último sin estos patrones. Una línea
-  modificada cuenta dos veces, como una borrada y una agregada.
+* **Líneas en archivos existentes:** las agregadas más las borradas según un
+  `diff` contra el commit `3a02c77`, el último sin estos patrones. Una línea
+  modificada cuenta dos veces, como una borrada y una agregada. No cuentan los
+  cambios que son solo de mayúsculas y minúsculas, como pasar las variables de
+  entorno a mayúsculas.
 * **Archivos compartidos:** `docker-compose.yaml` y `nginx.conf` los tocan
   varios patrones, y cada línea se le asigna al patrón al que pertenece: por el
   servicio en `docker-compose.yaml`, y por el bloque en `nginx.conf`. El script
   verifica que lo repartido, más las 51 líneas que quedan fuera de los patrones,
-  sume lo que dice `git`: 145 líneas en ambos casos. Los archivos de `Orders` y
+  sume lo que dice `git`: 145 líneas en ambos casos. Lo que agregan las
+  [demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue) no se
+  cuenta: el servicio `users-service-v2`, el puerto 8091 y su bloque en
+  `nginx.conf`. Los archivos de `Orders` y
   `Products` también se reparten, por su contenido.
 * **Lo que queda fuera:** no se cuentan el ERP, su broker ni el monolito, porque
   representan sistemas que ya existirían, ni `Purchases`, que es el cliente nuevo: de
@@ -2204,38 +2226,426 @@ Cómo leerlo:
 
 ## Demos de facilidad de despliegue
 
-Escenario: publicar una nueva versión de un servicio, por ejemplo `Products`,
-con riesgo controlado y medir su impacto.
+**Estado: implementada en este repositorio, sobre las demos de facilidad de
+modificación.**
+
+Escenario: `Users` tiene una versión nueva, que agrega un campo a la respuesta y
+trae un experimento. Hay que ponerla en producción sin cortar el servicio, con
+la posibilidad de volver atrás, exponiendo primero a pocos clientes y comparando
+las dos variantes del experimento.
+
+La versión nueva de `Users` se simula: `users-service` leyó siempre una variable
+de entorno `RELEASE__VERSION` al arrancar; en las demos anteriores esa variable
+de entorno falta y toma el valor predeterminado `1`. Para esas demos que
+despliegan una nueva versión, los contenedores de la nueva versión configuran
+`RELEASE__VERSION` en `2`.
+
+Desplegar un servicio sin tocar los demás es una de las ventajas de una
+arquitectura de microservicios: estas estrategias cambian solo `Users`, y
+`Orders`, `Products` y los demás servicios no se enteran.
 
 Qué se muestra:
 
-* Dos entornos vivos y conmutación inmediata.
-* Reemplazo de instancias por lotes.
-* Una fracción del tráfico derivada a la versión nueva.
-* Experimentos por segmento de usuarios.
+* Dos versiones están en ejecución al mismo tiempo, con sus contenedores
+levantados y sanos, aunque solo una reciba tráfico. Pasar de una a otra
+-connmutarlas- y volver atrás es inmediato: no hay que levantar nada.
+* Reemplazo de instancias por pasos, verificando su salud.
+* Una fracción del tráfico derivada a la versión nueva, y la vuelta atrás cuando
+  falla.
+* Un experimento con dos variantes, elegidas por segmento o al azar.
 
-Patrones y estrategias cubiertos:
+Resultado observable: la versión nueva entra y sale de producción sin errores, o
+con errores solo en porcentaje de solicitudes que Canary Testing manda a la
+versión nueva, el 10 % o el 50 % en la demo; y cada respuesta dice qué versión y
+qué variante la atendió.
 
-* **Arquitectura de microservicios**: el estilo común sobre el que se apoyan
-  todas las demos.
-* **Blue/Green Deployment**: dos versiones de `Products` detrás del gateway, con
-  cambio y *rollback* inmediatos.
-* **Rolling Upgrade**: varias réplicas que se reemplazan por lotes, verificando
-  su salud.
-* **Canary Testing**: entre 1 % y 10 % del tráfico a la versión nueva, por
-  ejemplo con `split_clients` de nginx.
-* **A/B Testing**: segmentos por usuario, con cookie o encabezado, y comparación
-  de métricas.
+### Qué agrega a las demos de facilidad de modificación
 
-Resultado observable: despliegues frecuentes con impacto acotado y decisiones
-basadas en métricas.
+| Componente | Para qué |
+| ---------- | -------- |
+| `users-service-v2` | La versión `v2` de `Users`: la misma imagen que `users-service`, con `RELEASE__VERSION: "2"`, y la misma base. No publica puertos, y tiene el [alias de red](https://docs.docker.com/reference/compose-file/services/#aliases) `users-pool`. Solo lo usan estas demos; `Orders`, `Purchases` y la fachada siguen llamando a `users-service`. |
+| Entrada de despliegue del gateway | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [ApiGateway/nginxconf/deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
+| Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [UsersService/Release.cs](src/UsersService/Release.cs). |
+| El experimento | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
 
-## Cobertura
+La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión `v1` con
+otra configuración y en otros contenedores, para simplificar la demo. En
+producción cada versión sería una imagen distinta: en
+[Kubernetes](https://kubernetes.io/), por ejemplo, un
+[Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+cuyos pods cambian de imagen.
 
-| Categoría | Patrones | Demo |
-| --------- | -------- | ---- |
-| Disponibilidad | Bulkhead, Circuit Breaker, Competing Consumers, Event Sourcing, Health Endpoint Monitoring, Rate Limiting, Retry, Throttling, Transactional Outbox | 1 |
-| Rendimiento | Cache-Aside, Queue-Based Load Leveling, Competing Consumers, Publisher/Subscriber, Asynchronous Request-Reply, CQRS, Materialized View | 2 |
-| Seguridad | Gatekeeper, Federated Identity, Gateway Offloading, Sidecar, Valet Key | 3 |
-| Modificabilidad y despliegue | Anti-corruption Layer, External Configuration Store, Messaging Bridge, Strangler Fig, Backends for Frontends | 4 |
-| Modificabilidad y despliegue: estrategias de lanzamiento | Arquitectura de microservicios, Blue/Green, Rolling Upgrade, Canary Testing, A/B Testing | 5 |
+### Patrones de facilidad de despliegue
+
+Cada estrategia tiene un script en [demos/](demos), del `27` al `30`, y un paso
+a paso en [commands/06-deployability.azcli](commands/06-deployability.azcli).
+Los *logs* de `api-gateway` muestran cada solicitud de la entrada de despliegue
+publicada en el puerto 8091 con la etiqueta `[DEPLOY]`, la instancia que la
+atendió y su versión.
+
+Como las demos de facilidad de modificación, estas no se conectan a ninguna nube:
+corren con [Docker](https://www.docker.com/). Cada estrategia nombra los servicios equivalentes de Azure y de
+AWS. Cómo verlas bajo carga está en [Las estrategias en
+Grafana](#las-estrategias-en-grafana).
+
+Cambiar de estrategia de despliegue -pasar de Blue/Green a Canary, o cambiar la
+configuración de Canary- es reescribir `deployment-routes.conf` en el contenedor
+del gateway y recargar [nginx](https://nginx.org/), sin cortar el servicio. La función `deploy_routes`
+de [demos/common.sh](demos/common.sh) lo hace en los scripts; el archivo del
+repositorio no cambia.
+
+Las cuatro estrategias de despliegue facilitan el mismo tipo de despliegue: una
+versión nueva de un servicio que es compatible con la anterior. Ninguna resuelve
+un cambio que rompe el contrato o el esquema de la base: mientras las dos
+versiones conviven, comparten clientes y datos.
+
+#### Blue/Green Deployment
+
+**Problema:** desplegar una versión nueva que reemplace la que está en
+producción corta el servicio mientras se reemplaza y, si la versión nueva falla,
+volver atrás es otro despliegue, igual de lento y riesgoso.
+
+**Escenario:** la versión `v2` de `Users` se despliega al lado de la `v1`, se
+prueba directamente, y después se pasa todo el tráfico de una vez a la versión
+`v2` -a esto se le llama ≪conmutar≫- la versión; si algo sale mal, se vuelve a
+la `v1`.
+
+**Implementación:**
+
+* **Dos entornos:** `users-service`, la versión `v1` -el azul-, y
+  `users-service-v2`, la versión `v2` -el verde-. Están siempre levantados y
+  activos los dos.
+* **El conmutador:** la entrada de despliegue publicada en el puerto 8091 manda
+  todo el tráfico al destino del [`map`](https://nginx.org/en/docs/http/ngx_http_map_module.html#map). Conmutar `v1` con `v2` es cambiar ese
+  destino y recargar nginx.
+* **La prueba previa:** antes de cambiar de versión, se le pide un `User` a la
+  versión `v2` directamente, desde adentro de la red de Docker, con la función
+  `get_user_inside`.
+* **La base:** las dos versiones comparten `users-db`. La versión `v2` no cambia
+  el esquema: su campo nuevo no se guarda.
+
+En caso de que haya que migrar también la base de datos, las opciones habituales
+son -resumidas-:
+
+  1. Base compartida con cambios compatibles -expand and contract-: primero se
+     agrega lo nuevo sin quitar nada, se conmuta, y se quita lo viejo cuando ya
+     no hay vuelta atrás. Es lo que permite la demo, porque comparten users-db.
+  2. Una base por entorno, con replicación o sincronización de la azul a la
+     verde: aísla las versiones, pero hay que resolver las escrituras durante la
+     conmutación y la divergencia si se vuelve atrás.
+  3. Migrar la base en el momento de conmutar: simple, pero con un corte, y la
+     vuelta atrás necesita revertir la migración.
+  4. Separar el cambio de esquema del cambio de código, en despliegues
+     distintos, a veces con un feature flag que activa el uso de lo nuevo.
+
+En Azure, [Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/blue-green-deployment)
+lo hace con revisiones y etiquetas, y [App
+Service](https://azure.microsoft.com/products/app-service/), con [*deployment
+slots*](https://learn.microsoft.com/en-us/azure/app-service/deploy-staging-slots)
+que se intercambian. En AWS, [CodeDeploy](https://aws.amazon.com/codedeploy/) lo
+hace con [ECS](https://aws.amazon.com/ecs/), cambiando el [grupo de
+destino](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-target-groups.html)
+de un [Application Load
+Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/).
+
+**Cómo funciona:**
+
+![La entrada de despliegue conmuta de la versión `v1` a la
+`v2`](assets/27-blue-green.svg)
+
+**Código:** el destino, en el archivo de estrategia, después de conmutar:
+
+```nginx
+map $host $users_target {
+    default users-service-v2:8000;
+}
+```
+
+**Cómo verlo:** [demos/27-blue-green.sh](demos/27-blue-green.sh) muestra que la
+versión `v1` atiende la entrada de despliegue publicada en el puerto 8091 y prueba
+la `v2` por adentro, con su campo nuevo. Después cambia de versión mientras una
+sonda pide el `User` 1 cada 0,1 segundos: las respuestas pasan de la versión `v1` a
+la `v2`, todas con `200 OK`. Al final vuelve atrás de la misma forma.
+
+**Qué facilita en el despliegue:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| Desplegar una versión compatible con la base y con los clientes | Sí | Se despliega al lado, se prueba y se conmuta de una vez |
+| Volver atrás si la versión nueva falla después de conmutar | Sí | Se conmuta de nuevo, en segundos, sin desplegar nada |
+| Desplegar un cambio de esquema que la versión anterior no entiende | No | Después de conmutar, la vuelta atrás rompe: hay que migrar la base en pasos compatibles con las dos versiones |
+| Exponer la versión nueva a una parte de los clientes | No | La conmutación es todo o nada: para eso está [Canary Testing](#canary-testing) |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Blue/Green | Conmutación y vuelta atrás inmediatas, y la versión nueva se prueba en su entorno real antes de recibir tráfico | Dos entornos completos al mismo tiempo, y todos los clientes pasan a la versión nueva a la vez |
+| Reemplazar en el lugar | Un solo entorno | Corte durante el reemplazo, y volver atrás es otro despliegue |
+
+> [!TIP]
+>
+> Consulta [Blue/Green
+> Deployment](https://martinfowler.com/bliki/BlueGreenDeployment.html), de Martin
+> Fowler, sobre el origen de la técnica, y [Blue/Green Deployments on
+> AWS](https://docs.aws.amazon.com/whitepapers/latest/blue-green-deployments/welcome.html)
+> sobre cómo aplicarla en AWS.
+
+#### Rolling Upgrade
+
+**Problema:** con varias instancias de un servicio, tener un segundo entorno
+completo para Blue/Green duplica el costo. Reemplazarlas todas a la vez corta el
+servicio.
+
+**Escenario:** `Users` corre en tres instancias de la versión `v1`, que se
+reemplazan de a una por instancias de la `v2`, sin cortar el servicio -se asume que Users ya corre en tres instancias, por disponibilidad
+o por carga, y Rolling Upgrade no las agrega-.
+
+**Implementación:**
+
+* **El grupo:** la entrada de despliegue publicada en el puerto 8091 manda el
+  tráfico a `users-pool`, un [alias de red](https://docs.docker.com/reference/compose-file/services/#aliases). El [DNS de Docker](https://docs.docker.com/engine/network/#dns-services) devuelve una IP por
+  cada instancia que lo tiene, y nginx actúa como balanceador de carga y reparte
+  las solicitudes entre ellas. Cada 5 segundos vuelve a resolver el nombre, por
+  el [resolver](https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver) de nginx.conf, y así se entera de las instancias que entran y
+  salen.
+* **La versión `v1`:** `users-service` publica el puerto 8002 y lo usan las demás
+  demos, así que no entra en el grupo. El script crea tres instancias a partir de
+  su definición, con [`docker compose run`](https://docs.docker.com/reference/cli/docker/compose/run/), y les agrega el alias `users-pool`.
+* **La versión `v2`:** son réplicas de `users-service-v2`, que ya tiene el alias.
+* **Cada paso**, en la función `pool_replace`: suma una réplica de la versión `v2`,
+  espera a que su [*healthcheck*](https://docs.docker.com/reference/compose-file/services/#healthcheck) diga que está sana y recién entonces detiene una
+  instancia de la `v1`.
+* **Las instancias que se van:** si nginx todavía tiene la IP de una instancia
+  detenida, la conexión falla en menos de un segundo y reintenta en otra, con
+  [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream). Como la solicitud no llegó a enviarse, se reintenta
+  aunque sea un POST: con [SOAP](https://www.w3.org/TR/soap/), hasta `GetUser`, que es una lectura, es un POST,
+  y nginx no reintenta un POST que ya envió.
+
+Es la estrategia por defecto de un Deployment de [Kubernetes](https://kubernetes.io/), de Azure Container
+Apps y de los [servicios de
+ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html).
+En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
+`maxUnavailable`.
+
+**Cómo funciona:**
+
+![Las instancias del grupo se reemplazan de a una por la versión
+`v2`](assets/28-rolling-upgrade.svg)
+
+**Código:** un paso, en la función `pool_replace` de
+[demos/common.sh](demos/common.sh):
+
+```bash
+docker compose up -d --no-deps --scale users-service-v2="$1" --wait users-service-v2
+docker stop "users-v1-$1"
+```
+
+**Cómo verlo:** [demos/28-rolling-upgrade.sh](demos/28-rolling-upgrade.sh) arma
+el grupo con tres instancias de la versión `v1` y las reemplaza en tres pasos.
+Después de cada paso muestra qué instancias tiene el grupo y cuántas respuestas
+dio cada versión. Durante todo el reemplazo, una sonda pide el `User` 1 cada 0,1
+segundos: todas las respuestas son `200 OK`, de las dos versiones.
+
+**Qué facilita en el despliegue:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| Desplegar una versión compatible con la anterior | Sí | Se reemplazan las instancias de a una, sin cortar el servicio y sin un segundo entorno |
+| Detenerse si una instancia nueva no arranca sana | Sí | El paso se detiene antes de sacar una instancia vieja |
+| Desplegar dos versiones que no pueden convivir | No | Durante el reemplazo responden las dos: un cliente puede recibir una respuesta de cada una |
+| Volver atrás rápido | No | Es otro Rolling Upgrade, hacia la versión anterior |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Rolling Upgrade | Sin un segundo entorno, y sin corte | Las dos versiones conviven durante el reemplazo, y volver atrás lleva tanto como desplegar |
+| Blue/Green | Conmutación y vuelta atrás inmediatas | Dos entornos completos |
+
+> [!TIP]
+>
+> Consulta [Performing a Rolling
+> Update](https://kubernetes.io/docs/tutorials/kubernetes-basics/update/update-intro/),
+> de la documentación de Kubernetes, y [Safe deployment
+> practices](https://learn.microsoft.com/en-us/azure/well-architected/operational-excellence/safe-deployments),
+> de Azure Well-Architected Framework, sobre cómo desplegar por etapas.
+
+#### Canary Testing
+
+**Problema:** una versión nueva puede fallar con tráfico real aunque haya pasado
+las pruebas. Con Blue/Green o con Rolling Upgrade, la falla llega a todos los
+clientes antes de detectarla.
+
+**Escenario:** la versión `v2` de `Users` recibe primero el 10 % de las
+solicitudes, después el 50 % y después todas. Después, la versión `v2` empieza a
+fallar, simulado con fallas inyectadas: con el 10 %, se detecta y se vuelve
+atrás.
+
+**Implementación:**
+
+* **El reparto:** la entrada de despliegue publicada en el puerto 8091 usa
+  [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html),
+  que elige el destino según un hash de `$request_id`, distinto en cada
+  solicitud. Cambiar el porcentaje es cambiar una línea y recargar nginx, con la
+  función `deploy_canary`.
+* **La métrica por versión:** con `X-Version`, cada respuesta dice qué versión la
+  atendió. La demo y [k6](https://k6.io/) cuentan las respuestas y los errores de cada una.
+* **La falla:** el `/users/chaos` de la versión `v2`, por adentro de la red de Docker:
+  esa versión responde `503 Service Unavailable` a todo.
+
+El reparto es por solicitud: el mismo cliente puede recibir una versión y después
+la otra. Para que cada cliente vea siempre la misma, el hash puede usar una cookie
+o el `User`.
+
+En Azure, Azure Container Apps [reparte el
+tráfico](https://learn.microsoft.com/en-us/azure/container-apps/traffic-splitting)
+entre revisiones por porcentaje. En AWS, CodeDeploy hace despliegues *canary* en
+ECS y en [AWS Lambda](https://aws.amazon.com/lambda/), y un Application Load
+Balancer reparte por pesos entre grupos de destino.
+
+**Cómo funciona:**
+
+![La entrada de despliegue manda el 10 % a la versión `v2`, y las métricas deciden
+si sigue](assets/29-canary.svg)
+
+**Código:** el reparto, en el archivo de estrategia:
+
+```nginx
+split_clients "${request_id}" $users_target {
+    10% users-service-v2:8000;
+    *   users-service:8000;
+}
+```
+
+**Cómo verlo:** [demos/29-canary.sh](demos/29-canary.sh) manda a la versión `v2` el
+10 %, el 50 % y el 100 % de las solicitudes, y con cada porcentaje cuenta
+cuántas respuestas dio cada versión. Después vuelve al 10 % con una versión `v2`
+que falla: fallan solo sus respuestas, cerca del 10 %. Al final vuelve todo a la
+versión `v1`.
+
+**Qué facilita en el despliegue:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| Desplegar una versión que puede fallar con tráfico real | Sí | La falla la ve solo el porcentaje de solicitudes que va a la versión nueva, y se vuelve atrás bajando el porcentaje a cero |
+| Aumentar la exposición de a poco | Sí | Una línea por paso |
+| Detectar una falla que no se ve en las métricas que se miran | No | El canario avanza igual: hay que elegir bien qué métricas deciden |
+| Que un cliente vea siempre la misma versión | No | Con `$request_id`, cada solicitud se reparte por separado |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Canary Testing | La falla llega a pocos clientes, y la decisión se toma con tráfico real | Dos versiones a la vez, y hacen falta métricas por versión para decidir |
+| Blue/Green | Simple: todo o nada | La falla llega a todos hasta que se vuelve atrás |
+
+> [!TIP]
+>
+> Consulta [Canary Release](https://martinfowler.com/bliki/CanaryRelease.html), de
+> Martin Fowler, y [Traffic splitting in Azure Container
+> Apps](https://learn.microsoft.com/en-us/azure/container-apps/traffic-splitting)
+> sobre cómo repartir el tráfico en Azure.
+
+#### A/B Testing
+
+**Problema:** para elegir entre dos formas de una funcionalidad hay que medir cuál
+funciona mejor con clientes reales. Si cada cliente ve una variante distinta en
+cada consulta, no se puede atribuir el efecto a ninguna.
+
+**Escenario:** la versión `v2` de `Users` muestra el nombre de cada `User` en una de
+dos variantes: la A, solo el nombre, y la B, el nombre y el email. Algunos `Users`
+se anotaron para probar lo nuevo y ven siempre la B.
+
+**Implementación:** el experimento está en la versión `v2`, en la clase
+`Experiment`, que usa el método `GetUser` de la clase `UserService`.
+
+* **Por segmento:** si la solicitud trae `X-Segment: beta`, la variante es la B.
+* **Al azar:** si no, la decide un hash del id del `User`. Es aleatoria entre los
+  `Users`, pero el mismo `User` cae siempre en la misma variante.
+* **La respuesta:** el campo `DisplayName` con la variante, y el encabezado
+  `X-Variant`.
+* **La medida:** la métrica `users_experiment_total`, por variante y por segmento.
+
+A diferencia de Canary Testing, el reparto no está en el gateway, sino en el código
+de la versión que trae el experimento. Canary decide qué versión atiende; A/B,
+qué variante ve cada `User` dentro de una versión.
+
+En Azure, [Azure App
+Configuration](https://azure.microsoft.com/products/app-configuration/) asigna
+variantes con [*feature
+flags*](https://learn.microsoft.com/en-us/azure/azure-app-configuration/concept-experimentation).
+En AWS, [AWS AppConfig](https://aws.amazon.com/systems-manager/features/appconfig/)
+tiene [*feature flags* con
+variantes](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-creating-multi-variant-feature-flags.html).
+
+**Cómo funciona:**
+
+![La versión `v2` elige la variante de cada User, por segmento o al
+azar](assets/30-ab-testing.svg)
+
+**Código:** la elección de la variante, en el método `Apply` de la clase
+`Experiment`:
+
+```csharp
+var segment = context?.Request.Headers[SegmentHeader].ToString();
+var variant = segment == "beta" ? "B" : VariantFor(user.Id);
+
+user.DisplayName = variant == "A" ? user.Name : $"{user.Name} <{user.Email}>";
+```
+
+**Cómo verlo:** [demos/30-ab-testing.sh](demos/30-ab-testing.sh) muestra que la
+versión `v1` no tiene experimento y despliega la `v2` con Blue/Green. Pide los
+dos `Users`: 'alice' cae en la B y 'bob' en la A. Pide a 'bob' tres veces, y
+siempre recibe la A; con `X-Segment: beta`, recibe la B. Al final muestra
+cuántas veces se mostró cada variante, según las métricas de `Users`.
+
+**Qué facilita en el despliegue:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| Desplegar dos formas de una funcionalidad y compararlas | Sí | Cada `User` ve siempre la misma variante, y se cuenta cuántas veces se mostró cada una |
+| Mostrarle una variante a un segmento | Sí | Un encabezado, o cualquier propiedad del `User` |
+| Agregar una tercera variante | En parte | Un cambio en la clase `Experiment` y una versión nueva |
+| Saber qué variante funciona mejor | No | La demo cuenta cuántas veces se mostró cada una; falta medir qué hizo cada `User` después |
+
+**Ventajas y desventajas:**
+
+| Decisión | Una opción | La otra |
+| -------- | ---------- | ------- |
+| Dónde se elige la variante | En el código, como acá: se puede usar cualquier propiedad del `User`, pero cambiar el experimento es desplegar | En un servicio de *feature flags*: se cambia sin desplegar, a cambio de otro componente |
+| Cómo se elige | Por segmento: se elige a quién, pero el grupo no es representativo | Al azar: los grupos son comparables, pero nadie elige quién ve qué |
+
+> [!TIP]
+>
+> Consulta [Feature Toggles](https://martinfowler.com/articles/feature-toggles.html),
+> de Martin Fowler, sobre los *flags* de experimentos, y [Experimentation in Azure
+> App
+> Configuration](https://learn.microsoft.com/en-us/azure/azure-app-configuration/concept-experimentation)
+> sobre cómo hacerlos en Azure.
+
+### Las estrategias en Grafana
+
+[demos/load-deployment.sh](demos/load-deployment.sh) lanza un escenario de [k6](https://k6.io/) y
+despliega la versión `v2` mientras corre. Cada paso queda marcado con una línea
+vertical en el dashboard, con la etiqueta `despliegue`. Los scripts del `27` al
+`30` también marcan sus pasos si [Grafana](https://grafana.com/oss/grafana/) está levantado.
+
+```bash
+docker compose --profile observability up -d --wait
+./demos/load-deployment.sh bluegreen   # también: rolling, canary, ab
+```
+
+Los paneles están en la fila "Facilidad de despliegue". Como en las demos
+anteriores, son resultados de una corrida en una sola máquina, con 20 solicitudes
+por segundo: ilustran el efecto y no son una prueba de rendimiento.
+
+| Estrategia | Qué se hace | Qué mirar | Resultado |
+| ---------- | ----------- | --------- | --------- |
+| Blue/Green | Se conmuta a la versión `v2` y, 20 segundos después, se vuelve a la `v1` | "Solicitudes por versión" y "Respuestas con error, por versión" | El tráfico pasa de una versión a la otra de una vez, en cada conmutación. Las 1201 solicitudes respondieron `200 OK` |
+| Rolling Upgrade | Se reemplazan tres instancias de la versión `v1` en tres pasos | Lo mismo | La versión `v2` sube en escalones, un tercio por paso, y cada paso tarda unos 4 segundos. Las 2398 solicitudes respondieron `200 OK` |
+| Canary Testing | 10 % y 50 % a la versión `v2`, que después falla, y vuelta atrás | Lo mismo | La versión `v2` sigue al porcentaje. Durante la falla, 164 solicitudes de 1801 respondieron `503 Service Unavailable`, todas de la versión `v2`; la versión `v1` no tuvo errores |
+| A/B Testing | Los dos `Users` consultan a la versión `v2`, y la mitad de las consultas de bob traen `X-Segment: beta` | "Respuestas por variante" | alice recibió la B las 601 veces; bob, la A 300 veces y la B las 300 en que trajo el segmento |
+
+Las métricas por versión las informa k6 con el encabezado `X-Version`, para no
+tener que instrumentar [nginx](https://nginx.org/). Las del experimento son de `Users`.

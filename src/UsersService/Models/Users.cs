@@ -21,4 +21,12 @@ public class User
     [Column("email")]
     [DataMember]
     public string Email { get; set; } = string.Empty;
+
+    // A/B Testing: el nombre que se muestra, según la variante del experimento
+    // -ver Experiment.cs-. Solo lo completa la versión 2, y no está en la base.
+    // Sin valor, no se envía: para los clientes de la versión 1, el XML es el
+    // mismo de antes.
+    [NotMapped]
+    [DataMember(EmitDefaultValue = false)]
+    public string? DisplayName { get; set; }
 }

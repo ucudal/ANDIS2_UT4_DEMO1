@@ -19,6 +19,7 @@ que implementa están en [PATTERNS.md](PATTERNS.md).
 * [Acoplamiento](#acoplamiento)
 * [Seguridad](#seguridad)
 * [Facilidad de modificación](#facilidad-de-modificación)
+* [Facilidad de despliegue](#facilidad-de-despliegue)
 * [Decisiones abiertas a discusión](#decisiones-abiertas-a-discusión)
 
 ## Servicios y datos
@@ -82,7 +83,7 @@ configuración, y comparten la base de `Orders`.
 ## Comunicación entre servicios
 
 La aplicación usa los dos estilos de comunicación entre servicios: síncrono,
-con HTTP, y asíncrono, con eventos en RabbitMQ. Los eventos se publican en el
+con [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), y asíncrono, con eventos en [RabbitMQ](https://www.rabbitmq.com/). Los eventos se publican en el
 exchange `andis.events`, y cada suscriptor recibe los que le interesan en su
 propia cola.
 
@@ -156,7 +157,7 @@ Retry, Circuit Breaker y Bulkhead.
 `POST /orders/` guarda la `Order` como `Pending` junto con el evento
 `order.created` en el *outbox*, y responde `202 Accepted` de inmediato, sin
 consultar a `Users` ni a `Products`. El *relay* del *outbox* publica el evento
-en RabbitMQ un momento después. Una de las réplicas de `orders-worker` lo
+en [RabbitMQ](https://www.rabbitmq.com/) un momento después. Una de las réplicas de `orders-worker` lo
 recibe por la cola `orders.process`, verifica que el `User` y el `Product`
 existan, y confirma o rechaza la `Order`.
 
@@ -304,10 +305,10 @@ recién cambiado, en actualizarse.
 
 | | Consulta de detalle | Consulta desde la vista | Creación de una `Order` |
 | - | ------------------- | ----------------------- | ----------------------- |
-| Estilo | Síncrono, HTTP | Asíncrono, eventos que actualizan una copia | Asíncrono, eventos |
+| Estilo | Síncrono, [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) | Asíncrono, eventos que actualizan una copia | Asíncrono, eventos |
 | El cliente espera a `Users` y `Products` | Sí | No | No |
 | Si `Users` no responde | La respuesta llega sin el nombre del cliente | La respuesta llega con el nombre copiado; las `Orders` nuevas aparecen cuando `Users` vuelve | La `Order` queda `Pending` y se procesa cuando `Users` vuelve |
-| Si llegan muchas solicitudes juntas | Cada una llama a `Users` y `Products` en el momento | Cada una es una consulta a MySQL | Se acumulan en la cola y los *workers* las procesan a su ritmo |
+| Si llegan muchas solicitudes juntas | Cada una llama a `Users` y `Products` en el momento | Cada una es una consulta a [MySQL](https://www.mysql.com/) | Se acumulan en la cola y los *workers* las procesan a su ritmo |
 | Cuándo se sabe el resultado | En la respuesta | En la respuesta, con datos que pueden estar atrasados | Después, consultando el estado |
 
 **Para analizar:**
@@ -364,7 +365,7 @@ disponible el 99,9 % del tiempo, unos 43 minutos sin servicio por mes:
 
 Cada servicio que se agrega a una cadena síncrona baja la disponibilidad de la
 operación, aunque cada servicio por separado sea muy confiable. La entrada HTTPS
-agrega Keycloak a todas las operaciones, porque el gateway le pregunta si cada
+agrega [Keycloak](https://www.keycloak.org/) a todas las operaciones, porque el gateway le pregunta si cada
 token es válido. Hay tres formas de romper la cadena, y la aplicación usa las
 tres:
 
@@ -374,11 +375,11 @@ tres:
   `orders-service` y `orders-db`.
 * **Comunicarse de forma asíncrona:** aceptar una `Order` no depende de `Users`
   ni de `Products`; si no están, la `Order` se confirma más tarde. Gracias al
-  *outbox*, tampoco depende de RabbitMQ: si no está, el evento se publica
+  *outbox*, tampoco depende de [RabbitMQ](https://www.rabbitmq.com/): si no está, el evento se publica
   cuando vuelve.
 * **Leer una copia:** la consulta desde la vista no depende de `Users` ni de
   `Products`, porque los nombres ya están copiados. Del mismo modo, una lectura
-  de `Products` que sale de Redis no depende de MongoDB, mientras el dato esté
+  de `Products` que sale de [Redis](https://redis.io/) no depende de [MongoDB](https://www.mongodb.com/), mientras el dato esté
   en la caché.
 
 **Para analizar:**
@@ -432,7 +433,7 @@ distintos servicios no coincidan.
   `Products`.** `Orders` guarda el evento en el *outbox* en la misma
   transacción que el cambio, y el *relay* lo publica después: ver
   Transactional Outbox en [PATTERNS.md](PATTERNS.md#transactional-outbox).
-  `Users` y `Products` guardan el cambio y después publican: si RabbitMQ no
+  `Users` y `Products` guardan el cambio y después publican: si [RabbitMQ](https://www.rabbitmq.com/) no
   está, el evento se pierde.
 * **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
   el mismo evento, si se cae entre publicar y marcarlo. Los suscriptores son
@@ -443,7 +444,7 @@ distintos servicios no coincidan.
   pero puede estar atrasada, y si se pierde un `product.updated`, queda con el
   nombre anterior hasta que el `Product` vuelva a cambiar.
 * **La caché de `Products` se invalida al escribir.** Un cambio borra la clave
-  de Redis; si Redis no está en ese momento, el dato viejo puede volver a
+  de [Redis](https://redis.io/); si Redis no está en ese momento, el dato viejo puede volver a
   leerse hasta que venza, a los 60 segundos.
 * **El precio no se guarda en la `Order`.** Si cambia el precio de un `Product`,
   no queda registro de cuánto valía cuando se creó la `Order`.
@@ -490,7 +491,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   `Products`: los registros `UserDto`, en [Common/UserDto.cs](src/Common/UserDto.cs),
   y `ProductDto`, en [Common/ProductDto.cs](src/Common/ProductDto.cs).
   `Products` no usa `ProductDto`: tiene su propio modelo. También tiene la
-  conexión con RabbitMQ, en la clase `RabbitMq`, y los contratos de los
+  conexión con [RabbitMQ](https://www.rabbitmq.com/), en la clase `RabbitMq`, y los contratos de los
   eventos, en la clase `Events` y sus registros, en
   [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a recompilar y
   redesplegar los tres servicios.
@@ -500,7 +501,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   sus eventos, ni necesita que esté funcionando. Pero no desacopla del
   contrato: si `Products` cambia la forma del evento, el proyector deja de
   entenderlo, y `Products` no se entera.
-* **Los contratos HTTP.** `Orders` espera que `GET /products/{id}` devuelva un
+* **Los contratos [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).** `Orders` espera que `GET /products/{id}` devuelva un
   [JSON](https://www.json.org/) con el nombre. Si `Products` lo renombra, `Orders` deja de mostrar el
   nombre del producto, y nada lo detecta hasta que se ejecuta. No hay versiones
   en las rutas.
@@ -523,13 +524,13 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   pueden atender sin él.
 * **Los claims del token.** `Orders` espera que el gateway le pase el `User` en
   el encabezado `X-User-Id`, y el gateway lo saca del claim `user_id`, que
-  Keycloak arma a partir de un atributo de cada usuario. Si cambia el nombre del
+  [Keycloak](https://www.keycloak.org/) arma a partir de un atributo de cada usuario. Si cambia el nombre del
   claim, del encabezado o del atributo, `Orders` deja de reconocer a los
   clientes. El *sidecar*, además, espera los roles en `realm_access.roles`,
   donde los pone Keycloak.
 * **La ubicación de cada servicio.** Las URL de `Users` y `Products` se pasan a
   `Orders` por variables de entorno, y [nginx](https://nginx.org/) encuentra cada servicio por su nombre
-  en el DNS de Docker. No hay un registro de servicios.
+  en el [DNS de Docker](https://docs.docker.com/engine/network/#dns-services). No hay un registro de servicios.
 
 **Para analizar:**
 
@@ -615,7 +616,7 @@ En la demo, [docker-compose.yaml](docker-compose.yaml) publica en el host los
 puertos de los servicios y de las bases, para probarlos directamente y para las
 demos que los usan.
 [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) muestra el
-efecto de dejar de publicarlos. Dentro de la red de Docker no hay reglas:
+efecto de dejar de publicarlos. Dentro de la red de [Docker](https://www.docker.com/) no hay reglas:
 cualquier contenedor llega a cualquier otro.
 
 **La identidad: cada servicio verifica quién lo llama.**
@@ -646,13 +647,13 @@ solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
 
 | Control | En la demo | En producción |
 | ------- | ---------- | ------------- |
-| Entrada al gateway | HTTP y HTTPS abiertas, para comparar con y sin los patrones | Solo HTTPS; HTTP redirige a HTTPS |
+| Entrada al gateway | [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) y HTTPS abiertas, para comparar con y sin los patrones | Solo HTTPS; HTTP redirige a HTTPS |
 | Certificado del gateway | Autofirmado, generado al construir la imagen | Emitido por una autoridad de certificación y renovado automáticamente |
 | Puertos de los servicios y de las bases | Publicados en el host; `docker-compose.gatekeeper.yaml` los quita | Sin dirección pública, con reglas de red |
 | Tráfico entre servicios | HTTP sin cifrar; cualquier contenedor llega a cualquier otro | TLS mutuo y reglas de red |
 | Identidad en los servicios | `Orders` confía en los encabezados del gateway; el *sidecar* de `Products` verifica la firma | Cada servicio, o su *sidecar*, verifica el token |
 | Secretos | En texto plano en `docker-compose.yaml` y en `andis-realm.json` | En un almacén de secretos, o reemplazados por identidades administradas |
-| Keycloak | Modo desarrollo, sin base propia; el cliente de las demos acepta usuario y contraseña | Con su propia base y varias réplicas; los clientes inician sesión en el navegador |
+| [Keycloak](https://www.keycloak.org/) | Modo desarrollo, sin base propia; el cliente de las demos acepta usuario y contraseña | Con su propia base y varias réplicas; los clientes inician sesión en el navegador |
 
 **Para analizar:**
 
@@ -712,7 +713,7 @@ afuera de cada uno está en
 | Componente | Es dueño de | Lo llaman | Llama a |
 | ---------- | ----------- | --------- | ------- |
 | `consul` | La configuración central | `orders-service`, `orders-worker`, `orders-projector`, `products-service` | — |
-| `messaging-bridge` | Nada: reenvía y traduce | RabbitMQ y [ActiveMQ](https://activemq.apache.org/) le entregan mensajes | RabbitMQ, ActiveMQ |
+| `messaging-bridge` | Nada: reenvía y traduce | [RabbitMQ](https://www.rabbitmq.com/) y [ActiveMQ](https://activemq.apache.org/) le entregan mensajes | RabbitMQ, ActiveMQ |
 | `legacy-erp` | Las facturas | ActiveMQ le entrega mensajes | ActiveMQ |
 | `monolith` | Su propia copia de `Users`, `Products` y `Orders`, en [SQLite](https://www.sqlite.org/) | gateway, por la fachada | — |
 | `purchases-service` | Nada: traduce desde `Orders` y `Users` | gateway | `orders-service`, `users-service` |
@@ -741,6 +742,53 @@ afuera de cada uno está en
   mantiene aislados los formatos y las fallas; uno solo centraliza la operación,
   pero tiende a volverse un bus con lógica de negocio. -->
 
+## Facilidad de despliegue
+
+Cuatro formas de poner en producción la versión `v2` de `Users`, que conviven
+con la versión `v1`. Cómo se implementó cada una está en
+[PATTERNS.md](PATTERNS.md#demos-de-facilidad-de-despliegue).
+
+Las cuatro dependen de que cada servicio se pueda desplegar solo: la versión
+`v2` de `Users` entra y sale de producción sin que `Orders`, `Products` ni los
+demás cambien. Y las cuatro suponen que la versión nueva es compatible con la
+anterior, porque mientras conviven comparten la base y los clientes.
+
+| Estrategia | Qué se toca | Qué no se toca | Cómo se vuelve atrás |
+| ---------- | ----------- | -------------- | -------------------- |
+| Blue/Green | El destino de la entrada de despliegue | Las dos versiones, que siguen vivas | Se conmuta de nuevo, en segundos |
+| Rolling Upgrade | Las instancias del grupo, de a una | El destino, que es el grupo | Otro Rolling Upgrade, hacia la versión anterior |
+| Canary Testing | El porcentaje de la versión `v2` | Las dos versiones | El porcentaje vuelve a cero |
+| A/B Testing | Nada: el experimento viene en la versión `v2` | El gateway, que no sabe del experimento | Se despliega una versión sin el experimento |
+
+| Componente | Es dueño de | Lo llaman | Llama a |
+| ---------- | ----------- | --------- | ------- |
+| `users-service-v2` | Nada propio: comparte la base de `users-service` | gateway, por la entrada de despliegue | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
+
+**Para analizar:**
+
+* Si la versión `v2` de `Users` necesitara una columna nueva en `users`, ¿cómo se
+  haría Blue/Green sin perder la vuelta atrás?
+  <!-- → En pasos compatibles con las dos versiones: primero se agrega la columna
+  sin que la versión `v1` la necesite, después se conmuta, y recién cuando no hay
+  vuelta atrás se quita lo que solo usaba la `v1`. Es el patrón expand and contract:
+  la base cambia en un despliegue distinto al del código. -->
+* Durante un Rolling Upgrade, un cliente puede recibir una respuesta de cada
+  versión. ¿Qué cambios de `Users` no se podrían desplegar así?
+  <!-- → Los que rompen el contrato: un campo que se quita o cambia de significado,
+  o una operación nueva que el cliente usa y una instancia vieja no tiene. Se
+  despliegan primero los cambios compatibles, y los clientes se adaptan antes de
+  quitar lo viejo. -->
+* ¿Con qué métricas decidirían si el canario de `Users` avanza o vuelve atrás?
+  <!-- → La tasa de errores y la latencia por versión, comparadas con las de la
+  versión `v1` en el mismo período, y las de quien llama a Users, como Orders. Con
+  pocas solicitudes, el 10 % no alcanza para decidir: hay que esperar o subir el
+  porcentaje. -->
+* El experimento de A/B Testing cuenta cuántas veces se mostró cada variante.
+  ¿Qué falta para saber cuál es mejor?
+  <!-- → Medir qué hizo cada User después, por ejemplo si creó una Order, y
+  comparar por variante con suficientes Users para que la diferencia no sea
+  casual. El segmento beta no sirve para comparar: no es representativo. -->
+
 ## Decisiones abiertas a discusión
 
 Algunas decisiones simplifican la demo y no son las que se tomarían en
@@ -749,24 +797,26 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 
 | Decisión | Qué se gana | Qué cuesta | Dónde se aborda |
 | -------- | ----------- | ---------- | --------------- |
-| La entrada HTTP del gateway sigue abierta, sin autenticación ni TLS, junto a la HTTPS | Las demos anteriores funcionan igual, y se compara cada solicitud con y sin los patrones de seguridad | Por HTTP, cualquiera puede crear `Orders` o `Users` sin identificarse | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Federated Identity, Gateway Offloading; en producción quedaría solo la HTTPS |
+| La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway sigue abierta, sin autenticación ni [TLS](https://datatracker.ietf.org/doc/html/rfc8446), junto a la HTTPS | Las demos anteriores funcionan igual, y se compara cada solicitud con y sin los patrones de seguridad | Por HTTP, cualquiera puede crear `Orders` o `Users` sin identificarse | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Federated Identity, Gateway Offloading; en producción quedaría solo la HTTPS |
 | Los endpoints de inyección de fallas son accesibles a través de la entrada HTTP del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, que no los publica por HTTPS |
 | Los puertos de los servicios y de las bases se publican en el host | Se pueden probar sin pasar por el gateway | Cualquiera se saltea los controles del gateway, y puede hacerse pasar por otro usuario mandando los encabezados de identidad | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, con `docker-compose.gatekeeper.yaml` |
-| El gateway valida cada token preguntándole a Keycloak | Se entera enseguida si una sesión se cerró | Una llamada a Keycloak por solicitud; si Keycloak no responde, nadie entra | — |
+| El gateway valida cada token preguntándole a [Keycloak](https://www.keycloak.org/) | Se entera enseguida si una sesión se cerró | Una llamada a Keycloak por solicitud; si Keycloak no responde, nadie entra | — |
 | Un solo *sidecar*, sin TLS entre los servicios | Menos infraestructura | El tráfico dentro de la red viaja sin cifrar, y `Orders` y `Users` no tienen *sidecar* | — |
 | Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
-| `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; MongoDB sin réplicas no tiene transacciones | Si RabbitMQ no está, el evento se pierde y la vista queda con el nombre anterior | — |
+| `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | — |
 | El proyector tiene una sola réplica | Los eventos de cada `Order` se aplican en orden | Si se cae, la vista se atrasa hasta que vuelva | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
 | Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
-| Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de Azurite y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
-| Consul en modo desarrollo, en un solo nodo y sin persistencia | Arranca con un comando | Si se vuelve a crear el contenedor, se pierden los valores; si se cae, nadie recibe cambios | — |
+| Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de [Azurite](https://github.com/Azure/Azurite) y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
+| [Consul](https://developer.hashicorp.com/consul) en modo desarrollo, en un solo nodo y sin persistencia | Arranca con un comando | Si se vuelve a crear el contenedor, se pierden los valores; si se cae, nadie recibe cambios | — |
 | Una sola instancia del puente | Se conserva el orden de los pedidos | Si se cae, los mensajes esperan hasta que vuelva | — |
 | `Purchases` y los BFF solo en la entrada HTTP | No hace falta agregarlos a las reglas de autorización | Cualquiera puede consultar las compras de un `Product` o las `Orders` de un `User`, sin identificarse | — |
 | La migración del monolito no sincroniza los datos | La demo se concentra en el enrutamiento | Durante la convivencia, los dos sistemas pueden responder distinto | [Strangler Fig](PATTERNS.md#strangler-fig) lo muestra y explica cómo resolverlo |
+| La versión `v2` de `Users` es la misma imagen con otra configuración | No hace falta construir otra imagen | No se ve un cambio de código real entre versiones, ni el tiempo de construir y publicar una imagen | — |
+| La estrategia de despliegue se cambia a mano en el gateway | Se ve cada paso | Nadie decide con las métricas: en producción, una herramienta avanza o vuelve atrás sola | — |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
-| Métricas y logs de Docker, sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
+| Métricas y logs de [Docker](https://www.docker.com/), sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 
 **Para analizar:**
 

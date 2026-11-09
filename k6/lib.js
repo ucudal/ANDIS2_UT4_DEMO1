@@ -1,7 +1,7 @@
 // Funciones comunes de los escenarios de k6. No se ejecuta directamente.
 import http from 'k6/http';
 import { check } from 'k6';
-import { Rate } from 'k6/metrics';
+import { Counter, Rate } from 'k6/metrics';
 
 export const GATEWAY = __ENV.BASE_URL || 'http://localhost';
 export const ORDERS_DIRECT = __ENV.ORDERS_DIRECT || 'http://localhost:8000';
@@ -62,4 +62,53 @@ export function createOrder(baseUrl = GATEWAY) {
 
 export function checkStatus(res, ...expected) {
     check(res, { [`status ${expected.join(' o ')}`]: (r) => expected.includes(r.status) });
+}
+
+// Facilidad de despliegue: la entrada del gateway hacia las dos versiones de
+// Users, en el puerto 8091.
+export const DEPLOY = __ENV.DEPLOY || GATEWAY.replace(/:\d+$/, '') + ':8091';
+
+// Cuántas respuestas dio cada versión de Users, y con qué código HTTP. La versión
+// la informa Users en el encabezado X-Version: sin él, respondió el gateway,
+// porque la solicitud no llegó a ninguna instancia.
+export const deployRequests = new Counter('deploy_requests');
+
+// getUser(1): GetUser por la entrada de despliegue, contado por versión. Con
+// headers se agregan encabezados, como X-Segment para A/B Testing, y con tags,
+// etiquetas a la métrica.
+export function getUser(id, headers = {}, tags = {}) {
+    const envelope = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>'
+        + `<GetUser xmlns="http://ucu.edu.uy/andis/users"><id>${id}</id></GetUser></soap:Body></soap:Envelope>`;
+    const res = http.post(`${DEPLOY}/users/UserService.svc`, envelope, {
+        headers: Object.assign({
+            'Content-Type': 'text/xml; charset=utf-8',
+            SOAPAction: '"http://ucu.edu.uy/andis/users/IUserService/GetUser"',
+        }, headers),
+        tags: { name: 'deploy users' },
+        timeout: '2s',
+    });
+    deployRequests.add(1, Object.assign({
+        version: res.headers['X-Version'] || 'ninguna',
+        // La variante del experimento de A/B Testing: solo la trae la versión 2.
+        variant: res.headers['X-Variant'] || 'ninguna',
+        status: String(res.status),
+    }, tags));
+    checkStatus(res, 200);
+    return res;
+}
+
+// Una carga constante de GetUser del User 1 por la entrada de despliegue, para
+// los escenarios de Blue/Green, Rolling Upgrade y Canary.
+export function deployOptions(rate, duration) {
+    return {
+        scenarios: {
+            reads: {
+                executor: 'constant-arrival-rate',
+                rate,
+                timeUnit: '1s',
+                duration: __ENV.DURATION || duration,
+                preAllocatedVUs: 20,
+            },
+        },
+    };
 }

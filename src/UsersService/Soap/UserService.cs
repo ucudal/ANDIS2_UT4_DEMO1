@@ -11,18 +11,27 @@ public class UserService : IUserService
 {
     private readonly UsersDbContext _db;
     private readonly RabbitMq _rabbitMq;
+    private readonly Release _release;
+    private readonly Experiment _experiment;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(UsersDbContext db, RabbitMq rabbitMq, ILogger<UserService> logger)
+    public UserService(UsersDbContext db, RabbitMq rabbitMq, Release release, Experiment experiment,
+        ILogger<UserService> logger)
     {
         _db = db;
         _rabbitMq = rabbitMq;
+        _release = release;
+        _experiment = experiment;
         _logger = logger;
     }
 
     public async Task<User?> GetUser(int id)
     {
-        return await _db.Users.FindAsync(id);
+        var user = await _db.Users.FindAsync(id);
+        // A/B Testing: solo la versión 2 trae el experimento -ver Experiment.cs-.
+        if (user is not null && _release.Version >= 2)
+            _experiment.Apply(user);
+        return user;
     }
 
     public async Task<User[]> ListUsers()

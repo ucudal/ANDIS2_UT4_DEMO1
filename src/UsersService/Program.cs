@@ -1,4 +1,5 @@
 using Ucu.Andis.Common;
+using Ucu.Andis.Users;
 using Ucu.Andis.Users.Data;
 using Ucu.Andis.Users.Soap;
 using Microsoft.EntityFrameworkCore;
@@ -13,8 +14,16 @@ builder.Services.AddDbContext<UsersDbContext>(options =>
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<UsersDbContext>("users-db");
 
-// Métricas para Prometheus en /metrics -ver Common/Observability.cs-.
-builder.AddObservability();
+// Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más las
+// respuestas por variante del experimento de la versión 2.
+builder.AddObservability(Experiment.MeterName);
+
+// Qué versión de Users es este contenedor -ver Release.cs-, y el experimento
+// de A/B Testing que trae la versión 2 -ver Experiment.cs-. El experimento lee
+// el encabezado X-Segment de la solicitud, por eso necesita el HttpContext.
+builder.Services.AddSingleton<Release>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<Experiment>();
 
 // Users expone SOAP en lugar de REST: SoapCore recibe los sobres XML, los
 // despacha a UserService y publica el WSDL.
@@ -27,6 +36,9 @@ builder.Services.AddSingleton<RabbitMq>();
 
 var app = builder.Build();
 
+// Primero, para que también las respuestas de /health y de la inyección de
+// fallas digan qué versión respondió.
+app.UseReleaseHeader();
 // La inyección de fallas va antes que el endpoint SOAP, para que también lo afecte.
 app.UseChaos("/users");
 app.MapMetrics();

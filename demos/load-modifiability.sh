@@ -52,7 +52,7 @@ strangler_cleanup() {
 # recrearlo es el costo de esta forma de cambiar un valor.
 recreate_orders() {
     if [ "$1" = limite ]; then
-        printf 'services:\n  orders-service:\n    environment:\n      Orders__MaxQuantity: "3"\n' > "$OVERRIDE"
+        printf 'services:\n  orders-service:\n    environment:\n      ORDERS__MAXQUANTITY: "3"\n' > "$OVERRIDE"
         docker compose -f docker-compose.yaml -f "$OVERRIDE" up -d --no-deps --wait orders-service > /dev/null 2>&1
     else
         docker compose up -d --no-deps --wait orders-service > /dev/null 2>&1

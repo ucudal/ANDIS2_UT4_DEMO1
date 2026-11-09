@@ -28,10 +28,20 @@ new_files() {
         | wc -l | tr -d ' '
 }
 
+# diff_base <archivo>: el diff del archivo contra BASE, sin contar los cambios
+# que son solo de mayúsculas y minúsculas, como renombrar una variable de entorno
+# de Consul__Url a CONSUL__URL: no son parte de ningún patrón.
+diff_base() {
+    diff -i -U0 <(git show "$BASE:$1" 2> /dev/null) "$1" || true
+}
+
 # changed <archivos>: líneas agregadas y borradas de archivos existentes, sin
 # líneas vacías ni comentarios.
 changed() {
-    git diff -U0 "$BASE" -- "$@" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cut -c2- || true
+    local f
+    for f in "$@"; do
+        diff_base "$f" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cut -c2- || true
+    done
 }
 
 # Los archivos que tocan varios patrones se reparten: cada línea cuenta para el
@@ -45,7 +55,7 @@ nginx_location() { # <ruta>: líneas de ese location en la entrada HTTP de nginx
 }
 nginx_bff=$(($(nginx_location /web/) + $(nginx_location /mobile/)))
 nginx_strangler=$(($(awk '/log_format strangler/ { print } /listen 8090;/ { on = 1 } on { print } on && /^    }/ { on = 0 }' src/ApiGateway/nginxconf/nginx.conf | count) + 1))
-compose_consul=$(($(compose_service consul) + $(grep -c 'Consul__Url' docker-compose.yaml)))
+compose_consul=$(($(compose_service consul) + $(grep -c 'CONSUL__URL' docker-compose.yaml)))
 compose_bridge=$(compose_service messaging-bridge)
 compose_bff=$(($(compose_service bff-web) + $(compose_service bff-mobile)))
 # El puerto 8090 de la fachada, en api-gateway.
@@ -54,11 +64,16 @@ compose_strangler=1
 # y Purchases, el cliente nuevo de Anti-corruption Layer. Del patrón es solo su capa.
 outside=$(($(compose_service legacy-broker) + $(compose_service legacy-erp) + $(compose_service monolith) \
     + $(compose_service purchases-service) + $(nginx_location /purchases/)))
+# Las demos de facilidad de despliegue: la versión v2 de Users, el puerto 8091 del
+# gateway y su bloque en nginx.conf. No son de estos patrones, y el control las
+# descuenta de lo que dice git.
+deployment=$(($(compose_service users-service-v2) + $(grep -c '"8091:8091"' docker-compose.yaml) \
+    + $(awk '/log_format deployment/ { on = 1 } on { print } on && /^    }/ { on = 0 }' src/ApiGateway/nginxconf/nginx.conf | count)))
 
 # changed_in <archivo> <desde> <hasta>: como changed, pero solo los cambios entre
 # esas líneas del archivo actual.
 changed_in() {
-    git diff -U0 "$BASE" -- "$1" | awk -v from="$2" -v to="$3" '
+    diff_base "$1" | awk -v from="$2" -v to="$3" '
         /^(\+\+\+|---)/ { next }
         /^@@/ { split($3, n, ","); line = substr(n[1], 2); next }
         /^\+/ { if (line >= from && line <= to) print substr($0, 2); line++; next }
@@ -77,7 +92,7 @@ config_existing=$(($(changed "$controller" src/OrdersService/Program.cs \
 bridge_existing=$(($(changed src/Common/Events.cs src/OrdersService/Models/OrderEvent.cs \
     src/OrdersService/Messaging/OrderDetailsProjector.cs | count) \
     + $(changed src/OrdersService/Messaging/OrderProcessingWorker.cs | grep -c 'OrderConfirmed')))
-strangler_existing=$(changed src/ApiGateway/Dockerfile | count)
+strangler_existing=$(changed src/ApiGateway/Dockerfile | grep -v 'deployment-routes' | count)
 
 title "Costo de introducir cada patrón, en líneas efectivas"
 # printf cuenta bytes y no caracteres: una tilde correría la columna.
@@ -100,7 +115,7 @@ total "Strangler Fig" 1 "$(new_lines src/ApiGateway/nginxconf/strangler-routes.c
 total "Backends for Frontends" "$(new_files src/BffWeb src/BffMobile)" "$(new_lines src/BffWeb src/BffMobile)" "$((nginx_bff + compose_bff))"
 
 # Control: lo repartido tiene que sumar lo que dice git.
-expected=$(changed docker-compose.yaml src/ApiGateway/nginxconf/nginx.conf | count)
+expected=$(($(changed docker-compose.yaml src/ApiGateway/nginxconf/nginx.conf | count) - deployment))
 split=$((nginx_strangler + compose_consul + compose_bridge + compose_strangler + nginx_bff + compose_bff))
 note "Control de docker-compose.yaml y nginx.conf: repartidas $split, fuera de los patrones $outside, según git $expected."
 
@@ -147,7 +162,7 @@ curl -s -X DELETE "$CONSUL/v1/kv/andis/Orders/MaxQuantity" > /dev/null
 sleep 3
 
 snapshot > "$BEFORE"
-printf 'services:\n  orders-service:\n    environment:\n      Orders__MaxQuantity: "3"\n' > "$OVERRIDE"
+printf 'services:\n  orders-service:\n    environment:\n      ORDERS__MAXQUANTITY: "3"\n' > "$OVERRIDE"
 start=$(now_ms)
 docker compose -f docker-compose.yaml -f "$OVERRIDE" up -d --no-deps orders-service > /dev/null 2>&1
 wait_limit
