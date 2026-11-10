@@ -25,12 +25,12 @@ send_order() {
 report() {
     jq -s . <<< "$rows" | table
     echo
-    echo "  Solicitudes: $(jq -s length <<< "$rows"); rechazadas con 429: $(jq -s 'map(select(.HTTP == 429)) | length' <<< "$rows"); tiempo: $(jq -n --argjson s "$started" "now - \$s | round") s"
+    echo "  Solicitudes: $(jq -s length <<< "$rows"); rechazadas con 429: $(jq -s 'map(select(.HTTP == 429)) | length' <<< "$rows"); tiempo: $(jq -n --argjson s "$started" "now - \$s | round")\""
 }
 
 title "Rate Limiting"
 
-step "Sin Rate Limiting: se envían $ORDERS Orders de golpe y se reintentan las rechazadas cada 1 segundo"
+step "Sin Rate Limiting: se envían $ORDERS Orders de golpe y se reintentan las rechazadas cada 1\""
 pending=$(seq "$ORDERS")
 attempt=1
 started=$(jq -n now)
@@ -43,7 +43,7 @@ while [ -n "$pending" ]; do
 done
 report
 
-note "Se esperan 10 segundos, para que el gateway vuelva a admitir una ráfaga y en Grafana se distingan las dos tandas..."
+note "Se esperan 10\", para que el gateway vuelva a admitir una ráfaga y en Grafana se distingan las dos tandas..."
 sleep 10
 
 step "Con Rate Limiting: se envían $ORDERS Orders, una ráfaga de 5 y después 1 por segundo"

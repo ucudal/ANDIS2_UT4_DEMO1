@@ -24,11 +24,11 @@ que implementa están en [PATTERNS.md](PATTERNS.md).
 
 ## Servicios y datos
 
-Cada servicio es dueño de sus datos: tiene su propia base, y ningún otro
-servicio la lee ni la escribe. Si `Orders` necesita el nombre de un `User`, se
-lo pide a `Users` por [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), o guarda una copia que se actualiza con los eventos
-que publica `Users`. Además, cada servicio usa la tecnología de base de datos
-que mejor le sirve.
+Cada servicio es dueño de sus datos: tiene su propia base y ningún otro servicio
+la lee ni la escribe. Si `Orders` necesita el nombre de un `User`, se lo pide a
+`Users` por [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) o guarda una
+copia que se actualiza con los eventos que publica `Users`. Además, cada
+servicio usa la tecnología de base de datos que mejor le sirve.
 
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
@@ -40,17 +40,20 @@ que mejor le sirve.
 | `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y [Keycloak](https://www.keycloak.org/) |
 | `products-sidecar` | Nada: autoriza las solicitudes a `products-service` | — | gateway, por HTTPS, y cualquier contenedor de la red | `products-service`; Keycloak, para obtener sus claves públicas |
 | `keycloak` | Las identidades: usuarios, contraseñas y roles | Su propia base, en memoria en modo desarrollo | clientes, para iniciar sesión; gateway, para validar tokens | — |
+<!--TODO: ¿pueden faltar servicios luego de implementar las demás demos?-->
 
 Una `Order` guarda el identificador del `User` y el del `Product`, pero no hay
 clave foránea que los relacione, porque están en bases distintas. El
 identificador del `User` es un entero de PostgreSQL; el del `Product`, un
 `ObjectId` de MongoDB que `Orders` guarda como texto. Nada impide crear una
 `Order` con un identificador que no existe; eso se detecta más tarde, como se
-ve en la sección de consistencia.
+ve en la sección de consistencia.<!--TODO: agregar link a la sección de consistencia-->
 
 `orders-service`, `orders-worker` y `orders-projector` son la misma imagen de
 [Docker](https://www.docker.com/), con el *relay* del *outbox*, el *worker* o el proyector habilitados por
-configuración, y comparten la base de `Orders`.
+configuración, y comparten la base de `Orders`.<!--TODO: ver si "relay" está
+explicado en algún lado; lo mismo para "outbox" y "worker"; si está, agregar
+link; si no está, explicarlo.-->
 
 **Para analizar:**
 
@@ -72,7 +75,8 @@ configuración, y comparten la base de `Orders`.
   Para un borrado haría falta un evento, como user.deleted, al que Orders
   reaccione. -->
 * `orders-service`, `orders-worker` y `orders-projector` comparten código y
-  base. ¿Son un servicio o tres? ¿Qué criterio usarían para decidirlo?
+  base. ¿Son un servicio o tres? ¿Qué criterio usarían para decidirlo? <!--TODO:
+  confirmar que esto esté explicado en algún lado.-->
   <!-- → Son un servicio con tres procesos. El criterio es la propiedad de los
   datos y el despliegue independiente: comparten la base y la imagen, y un
   cambio en el modelo de Orders obliga a desplegar los tres juntos. Que escalen
@@ -82,10 +86,11 @@ configuración, y comparten la base de `Orders`.
 
 ## Comunicación entre servicios
 
-La aplicación usa los dos estilos de comunicación entre servicios: síncrono,
-con [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), y asíncrono, con eventos en [RabbitMQ](https://www.rabbitmq.com/). Los eventos se publican en el
-exchange `andis.events`, y cada suscriptor recibe los que le interesan en su
-propia cola.
+La aplicación usa los dos estilos de comunicación entre servicios: síncrono, con
+[HTTP](https://datatracker.ietf.org/doc/html/rfc9110), y asíncrono, con eventos
+en [RabbitMQ](https://www.rabbitmq.com/). Los eventos se publican en el exchange
+<!--TODO: ver si la diferencia entre "exchange" y "queue" está explicada en algún lado, y vincular a esa explicación; si no está explicado, explicarlo.-->
+`andis.events`, y cada suscriptor recibe los que le interesan en su propia cola.
 
 ### Consulta de detalle: síncrona
 
@@ -148,8 +153,8 @@ sequenceDiagram
 ```
 
 Cada consulta hace 1 llamada a `Users` y 1 a `Products` por cada `Order`. Si
-`Users` o `Products` no responden, `Orders` devuelve igual las `Orders`, con
-"no disponible" en lugar del nombre: es la degradación que muestran las demos de
+`Users` o `Products` no responden, `Orders` devuelve igual las `Orders`, con "no
+disponible" en lugar del nombre: es la degradación que muestran las demos de
 Retry, Circuit Breaker y Bulkhead.
 
 ### Creación de una Order: asíncrona
@@ -157,9 +162,10 @@ Retry, Circuit Breaker y Bulkhead.
 `POST /orders/` guarda la `Order` como `Pending` junto con el evento
 `order.created` en el *outbox*, y responde `202 Accepted` de inmediato, sin
 consultar a `Users` ni a `Products`. El *relay* del *outbox* publica el evento
-en [RabbitMQ](https://www.rabbitmq.com/) un momento después. Una de las réplicas de `orders-worker` lo
-recibe por la cola `orders.process`, verifica que el `User` y el `Product`
-existan, y confirma o rechaza la `Order`.
+en [RabbitMQ](https://www.rabbitmq.com/) un momento después. Una de las réplicas
+de `orders-worker` lo recibe por la cola `orders.process`, verifica que el
+`User` y el `Product` existan, y confirma o rechaza la `Order`.<!--TODO: ídem
+anterior sobre relay y outbox-->
 
 ```mermaid
 ---
@@ -227,9 +233,9 @@ sequenceDiagram
     end
 ```
 
-El cliente sabe que la `Order` fue aceptada, pero no si fue confirmada: para
-eso consulta `GET /orders/{id}/status` cada tanto, como indica `Retry-After`,
-hasta que la respuesta lo redirige a la `Order` con su resultado.
+El cliente sabe que la `Order` fue aceptada, pero no si fue confirmada: para eso
+consulta `GET /orders/{id}/status` cada tanto, como indica `Retry-After`, hasta
+que la respuesta lo redirige a la `Order` con su resultado.
 
 ### Consulta de detalle desde la vista: eventos
 
@@ -299,7 +305,7 @@ sequenceDiagram
 
 La consulta no depende de que `Users` y `Products` respondan, pero puede estar
 atrasada: una `Order` recién creada tarda un momento en aparecer, y un nombre
-recién cambiado, en actualizarse.
+recién cambiado, tarda en actualizarse.
 
 ### Comparación
 
@@ -323,8 +329,8 @@ recién cambiado, en actualizarse.
   pero lo haría esperar y fallaría si Users o Products no responden. Una
   consulta asíncrona tiene sentido si es muy cara, como un informe: el cliente
   lo pide y vuelve a buscarlo, con Asynchronous Request-Reply. -->
-* ¿Qué servicios tienen que estar funcionando para que un cliente pueda crear una
-  `Order`? ¿Y para que la `Order` quede confirmada?
+* ¿Qué servicios tienen que estar funcionando para que un cliente pueda crear
+  una `Order`? ¿Y para que la `Order` quede confirmada?
   <!-- → Para crearla: el gateway, orders-service y orders-db; RabbitMQ no,
   gracias al outbox, y por la entrada HTTPS, también Keycloak. Para que quede
   confirmada, además: RabbitMQ, al menos una réplica de orders-worker,
@@ -353,34 +359,34 @@ recién cambiado, en actualizarse.
 
 Cuando una operación necesita varios componentes a la vez, su disponibilidad es
 el producto de las disponibilidades de esos componentes. Si cada componente está
-disponible el 99,9 % del tiempo, unos 43 minutos sin servicio por mes:
+disponible el 99,9% del tiempo, unos 43 minutos sin servicio por mes:
 
 | Operación | Componentes que necesita | Disponibilidad | Sin servicio por mes |
 | --------- | ------------------------ | -------------- | -------------------- |
-| Consultar un `User` | gateway, `users-service`, `users-db` | 99,9 % ^ 3 ≈ 99,7 % | unas 2 horas |
-| Consulta de detalle completa | gateway, `orders-service`, `orders-db`, `users-service`, `users-db`, `products-service`, `products-db` | 99,9 % ^ 7 ≈ 99,3 % | unas 5 horas |
-| Consulta de detalle desde la vista | gateway, `orders-service`, `orders-db` | 99,9 % ^ 3 ≈ 99,7 % | unas 2 horas |
-| Aceptar una `Order` | gateway, `orders-service`, `orders-db` | 99,9 % ^ 3 ≈ 99,7 % | unas 2 horas |
-| Consulta de detalle desde la vista, por la entrada HTTPS | gateway, `keycloak`, `orders-service`, `orders-db` | 99,9 % ^ 4 ≈ 99,6 % | unas 3 horas |
+| Consultar un `User` | gateway, `users-service`, `users-db` | 99,9% ^ 3 ≈ 99,7% | unas 2 horas |
+| Consulta de detalle completa | gateway, `orders-service`, `orders-db`, `users-service`, `users-db`, `products-service`, `products-db` | 99,9% ^ 7 ≈ 99,3% | unas 5 horas |
+| Consulta de detalle desde la vista | gateway, `orders-service`, `orders-db` | 99,9% ^ 3 ≈ 99,7% | unas 2 horas |
+| Aceptar una `Order` | gateway, `orders-service`, `orders-db` | 99,9% ^ 3 ≈ 99,7% | unas 2 horas |
+| Consulta de detalle desde la vista, por la entrada HTTPS | gateway, `keycloak`, `orders-service`, `orders-db` | 99,9% ^ 4 ≈ 99,6% | unas 3 horas |
 
 Cada servicio que se agrega a una cadena síncrona baja la disponibilidad de la
 operación, aunque cada servicio por separado sea muy confiable. La entrada HTTPS
-agrega [Keycloak](https://www.keycloak.org/) a todas las operaciones, porque el gateway le pregunta si cada
-token es válido. Hay tres formas de romper la cadena, y la aplicación usa las
-tres:
+agrega [Keycloak](https://www.keycloak.org/) a todas las operaciones, porque el
+gateway le pregunta si cada token es válido. Hay tres formas de romper la
+cadena, y la aplicación usa las tres:
 
 * **Degradar la respuesta:** la consulta de detalle responde aunque falten
   `Users` o `Products`, con "no disponible" en lugar del nombre. La respuesta
-  completa sigue en 99,3 %, pero una respuesta útil depende solo de gateway,
+  completa sigue en 99,3%, pero una respuesta útil depende solo de gateway,
   `orders-service` y `orders-db`.
 * **Comunicarse de forma asíncrona:** aceptar una `Order` no depende de `Users`
   ni de `Products`; si no están, la `Order` se confirma más tarde. Gracias al
-  *outbox*, tampoco depende de [RabbitMQ](https://www.rabbitmq.com/): si no está, el evento se publica
-  cuando vuelve.
+  *outbox*, tampoco depende de [RabbitMQ](https://www.rabbitmq.com/): si no
+  está, el evento se publica cuando vuelve.
 * **Leer una copia:** la consulta desde la vista no depende de `Users` ni de
   `Products`, porque los nombres ya están copiados. Del mismo modo, una lectura
-  de `Products` que sale de [Redis](https://redis.io/) no depende de [MongoDB](https://www.mongodb.com/), mientras el dato esté
-  en la caché.
+  de `Products` que sale de [Redis](https://redis.io/) no depende de
+  [MongoDB](https://www.mongodb.com/), mientras el dato esté en la caché.
 
 **Para analizar:**
 
@@ -402,8 +408,8 @@ tres:
 * ¿Qué cambia en la tabla si se agregan tres réplicas de `products-service`?
   <!-- → products-service deja de ser un eslabón débil: con tres réplicas
   independientes, falla solo si fallan las tres, y su disponibilidad pasa a ser
-  casi del 100 %. La consulta de detalle completa queda con seis componentes de
-  99,9 %, unos 99,4 %, y el punto único de falla de Products pasa a ser
+  casi del 100%. La consulta de detalle completa queda con seis componentes de
+  99,9%, unos 99,4%, y el punto único de falla de Products pasa a ser
   products-db, que sigue siendo una sola instancia. -->
 * El gateway le pregunta a Keycloak por cada solicitud HTTPS, y el *sidecar*
   verifica la firma del token con las claves públicas de Keycloak, sin
@@ -416,7 +422,7 @@ tres:
   Keycloak, pero acepta un token hasta que vence aunque se haya revocado; por
   eso los tokens duran poco. Si el gateway hiciera lo mismo, Keycloak saldría de
   la cadena de cada operación: la consulta desde la vista por HTTPS volvería a
-  gateway, orders-service y orders-db, unos 99,7 %, y Keycloak haría falta solo
+  gateway, orders-service y orders-db, unos 99,7%, y Keycloak haría falta solo
   para iniciar sesión. -->
 
 ## Consistencia de los datos
@@ -430,27 +436,31 @@ distintos servicios no coincidan.
   `Pending`; si el `User` no existe, termina `Rejected`. Es consistencia
   eventual: el sistema llega a un estado correcto, pero no de inmediato.
 * **Guardar y publicar es atómico en `Orders`, pero no en `Users` ni en
-  `Products`.** `Orders` guarda el evento en el *outbox* en la misma
-  transacción que el cambio, y el *relay* lo publica después: ver
-  Transactional Outbox en [PATTERNS.md](PATTERNS.md#transactional-outbox).
-  `Users` y `Products` guardan el cambio y después publican: si [RabbitMQ](https://www.rabbitmq.com/) no
-  está, el evento se pierde.
+  `Products`.** `Orders` guarda el evento en el *outbox* en la misma transacción
+  que el cambio, y el *relay* lo publica después: ver Transactional Outbox en
+  [PATTERNS.md](PATTERNS.md#transactional-outbox). `Users` y `Products` guardan
+  el cambio y después publican: si [RabbitMQ](https://www.rabbitmq.com/) no
+  está, el evento se pierde.<!--TODO: considerar agregar el patrón Saga o
+  Transactional Saga-->
 * **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
-  el mismo evento, si se cae entre publicar y marcarlo. Los suscriptores son
+  el mismo evento, si se cae entre publicar el evento y marcarlo como
+  publicado<!--TODO: confirmar cambio de redacción-->. Los suscriptores son
   idempotentes: aplicar el mismo evento dos veces deja el mismo resultado.
 * **Los nombres se piden o se copian.** La consulta síncrona los pide cada vez:
   siempre están al día, pero dependen de que `Users` y `Products` respondan. La
   vista los copia una vez y los actualiza con los eventos: no depende de nadie,
-  pero puede estar atrasada, y si se pierde un `product.updated`, queda con el
-  nombre anterior hasta que el `Product` vuelva a cambiar.
+  pero puede estar desactualizada, y si se pierde un `product.updated`, queda
+  con el nombre anterior hasta que el `Product` vuelva a cambiar.
 * **La caché de `Products` se invalida al escribir.** Un cambio borra la clave
-  de [Redis](https://redis.io/); si Redis no está en ese momento, el dato viejo puede volver a
-  leerse hasta que venza, a los 60 segundos.
+  de [Redis](https://redis.io/); si Redis no está en ese momento, el dato viejo
+  puede volver a leerse hasta que venza, a los 60 segundos.
 * **El precio no se guarda en la `Order`.** Si cambia el precio de un `Product`,
   no queda registro de cuánto valía cuando se creó la `Order`.
 * **Los eventos son la fuente de verdad de `Orders`.** Cada cambio de una `Order`
   se guarda como un evento, y la tabla de `Orders` se puede reconstruir a partir
-  de ellos: ver Event Sourcing en [PATTERNS.md](PATTERNS.md#event-sourcing).
+  de ellos: ver Event Sourcing en
+  [PATTERNS.md](PATTERNS.md#event-sourcing).<!--TODO: ¿porqué sólo este patrón
+  está mencionado?-->
 
 **Para analizar:**
 
@@ -485,38 +495,42 @@ distintos servicios no coincidan.
 Los microservicios buscan que cada servicio se pueda cambiar y desplegar sin
 coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
 
-* **La biblioteca [Common](src/Common/).** Los tres servicios la referencian. Tiene
-  código transversal -inyección de fallas, métricas, la respuesta de salud- y
-  también los contratos que `Orders` usa para leer las respuestas de `Users` y
-  `Products`: los registros `UserDto`, en [Common/UserDto.cs](src/Common/UserDto.cs),
-  y `ProductDto`, en [Common/ProductDto.cs](src/Common/ProductDto.cs).
-  `Products` no usa `ProductDto`: tiene su propio modelo. También tiene la
-  conexión con [RabbitMQ](https://www.rabbitmq.com/), en la clase `RabbitMq`, y los contratos de los
-  eventos, en la clase `Events` y sus registros, en
-  [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a recompilar y
-  redesplegar los tres servicios.
+* **La biblioteca [Common](src/Common/).** Los tres servicios la referencian.
+  Tiene código transversal -inyección de fallas, métricas, la respuesta de
+  salud- y también los contratos que `Orders` usa para leer las respuestas de
+  `Users` y `Products`: los registros `UserDto`, en
+  [Common/UserDto.cs](src/Common/UserDto.cs), y `ProductDto`, en
+  [Common/ProductDto.cs](src/Common/ProductDto.cs). `Products` no usa
+  `ProductDto`: tiene su propio modelo. También tiene la conexión con
+  [RabbitMQ](https://www.rabbitmq.com/), en la clase `RabbitMq`, y los contratos
+  de los eventos, en la clase `Events` y sus registros, en
+  [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a
+  recompilar y redesplegar los tres servicios.
 * **Los contratos de los eventos.** El proyector espera que `product.updated`
   traiga el identificador y el nombre del `Product`. Publisher/Subscriber
   desacopla en el tiempo y en el conocimiento: `Products` no sabe quién recibe
-  sus eventos, ni necesita que esté funcionando. Pero no desacopla del
-  contrato: si `Products` cambia la forma del evento, el proyector deja de
-  entenderlo, y `Products` no se entera.
-* **Los contratos [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).** `Orders` espera que `GET /products/{id}` devuelva un
-  [JSON](https://www.json.org/) con el nombre. Si `Products` lo renombra, `Orders` deja de mostrar el
-  nombre del producto, y nada lo detecta hasta que se ejecuta. No hay versiones
-  en las rutas.
-* **El contrato [SOAP](https://www.w3.org/TR/soap/) de `Users`.** `Users` no es [REST](https://roy.gbiv.com/pubs/dissertation/rest_arch_style.htm): expone SOAP y publica su
-  contrato como [WSDL](https://www.w3.org/TR/wsdl/) en `/users/UserService.svc?wsdl`. `Orders` arma a mano el
-  sobre de `GetUser` y lee el [XML](https://www.w3.org/XML/) de la respuesta -ver el método `GetUserAsync`
-  de la clase `Dependencies`, en
-  [OrdersService/Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que depende del
-  namespace, del nombre de la operación y de los nombres de los elementos. El
-  WSDL documenta el contrato, pero `Orders` no lo usa para generar el cliente:
-  un cliente [WCF](https://learn.microsoft.com/dotnet/framework/wcf/) generado tendría su propio canal HTTP y dejaría afuera el
-  pipeline de resiliencia. Un detalle de SOAP 1.1 afecta a los patrones: todo
-  SOAP Fault viaja como HTTP 500, que el Retry y el Circuit Breaker tratan como
-  falla transitoria. Por eso `GetUser` responde sin resultado, y no con un
-  Fault, cuando el `User` no existe.
+  sus eventos, ni necesita que esté funcionando. Pero no desacopla del contrato:
+  si `Products` cambia la forma del evento, el proyector deja de entenderlo, y
+  `Products` no se entera.
+* **Los contratos HTTP.**. `Orders` espera que `GET /products/{id}` devuelva un
+  [JSON](https://www.json.org/) con el nombre. Si `Products` lo renombra,
+  `Orders` deja de mostrar el nombre del producto, y nada lo detecta hasta que
+  se ejecuta. No hay versiones en las rutas.
+* **El contrato [SOAP](https://www.w3.org/TR/soap/) de `Users`.** `Users` no es
+  [REST](https://roy.gbiv.com/pubs/dissertation/rest_arch_style.htm): expone
+  SOAP y publica su contrato como [WSDL](https://www.w3.org/TR/wsdl/) en
+  `/users/UserService.svc?wsdl`. `Orders` arma a mano el sobre de `GetUser` y
+  lee el [XML](https://www.w3.org/XML/) de la respuesta -ver el método
+  `GetUserAsync` de la clase `Dependencies`, en
+  [OrdersService/Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que
+  depende del namespace, del nombre de la operación y de los nombres de los
+  elementos. El WSDL documenta el contrato, pero `Orders` no lo usa para generar
+  el cliente: un cliente
+  [WCF](https://learn.microsoft.com/dotnet/framework/wcf/) generado tendría su
+  propio canal HTTP y dejaría afuera el pipeline de resiliencia. Un detalle de
+  SOAP 1.1 afecta a los patrones: todo SOAP Fault viaja como HTTP 500, que el
+  Retry y el Circuit Breaker tratan como falla transitoria. Por eso `GetUser`
+  responde sin resultado -y no con un Fault- cuando el `User` no existe.
 * **El orden de arranque.** En [docker-compose.yaml](docker-compose.yaml),
   `orders-service` no arranca hasta que `users-service` y `products-service`
   están sanos, aunque puede funcionar sin ellos. `users-service` y
@@ -524,13 +538,16 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   pueden atender sin él.
 * **Los claims del token.** `Orders` espera que el gateway le pase el `User` en
   el encabezado `X-User-Id`, y el gateway lo saca del claim `user_id`, que
-  [Keycloak](https://www.keycloak.org/) arma a partir de un atributo de cada usuario. Si cambia el nombre del
-  claim, del encabezado o del atributo, `Orders` deja de reconocer a los
-  clientes. El *sidecar*, además, espera los roles en `realm_access.roles`,
-  donde los pone Keycloak.
+  [Keycloak](https://www.keycloak.org/) arma a partir de un atributo de cada
+  usuario. Si cambia el nombre del claim, del encabezado o del atributo,
+  `Orders` deja de reconocer a los clientes. El *sidecar*, además, espera los
+  roles en `realm_access.roles`, donde los pone Keycloak.
 * **La ubicación de cada servicio.** Las URL de `Users` y `Products` se pasan a
-  `Orders` por variables de entorno, y [nginx](https://nginx.org/) encuentra cada servicio por su nombre
-  en el [DNS de Docker](https://docs.docker.com/engine/network/#dns-services). No hay un registro de servicios.
+  `Orders` por variables de entorno, y [nginx](https://nginx.org/) encuentra
+  cada servicio por su nombre en el [DNS de
+  Docker](https://docs.docker.com/engine/network/#dns-services). No hay un
+  registro de servicios.
+  <!--TODO: analizar si en esta sección no hay cambios debido a los nuevos patrones y tecnologías utilizadas en las nuevas demos-->
 
 **Para analizar:**
 
@@ -601,16 +618,28 @@ proveedor:
   llaman, y a cada base, solo el de su servicio. En Azure son los *Network
   Security Groups*; en AWS, los *security groups*; en [Kubernetes](https://kubernetes.io/), las
   `NetworkPolicies`.
-* **Servicios administrados con entrada interna.** En Azure, [Container Apps](https://azure.microsoft.com/products/container-apps/)
-  admite una entrada interna, que solo se alcanza desde la red virtual, y [App
-  Service](https://azure.microsoft.com/products/app-service/) admite restricciones de acceso y *private endpoints*. El gateway, por
-  ejemplo [Azure API Management](https://azure.microsoft.com/products/api-management/) o [Application Gateway](https://azure.microsoft.com/products/application-gateway/), se despliega en la misma
-  red virtual que los servicios. En AWS, los servicios corren en [ECS](https://aws.amazon.com/ecs/) o [Fargate](https://aws.amazon.com/fargate/)
-  en subredes privadas, detrás de un *[Application Load Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/)* interno, y el
-  gateway, [Amazon API Gateway](https://aws.amazon.com/api-gateway/), llega a ellos con un *VPC link*.
+* **Servicios administrados con entrada interna.** En Azure, [Container
+  Apps](https://azure.microsoft.com/products/container-apps/) admite una entrada
+  interna, que solo se alcanza desde la red virtual, y [App
+  Service](https://azure.microsoft.com/products/app-service/) admite
+  restricciones de acceso y *private endpoints*. El gateway, por ejemplo [Azure
+  API Management](https://azure.microsoft.com/products/api-management/) o
+  [Application
+  Gateway](https://azure.microsoft.com/products/application-gateway/), se
+  despliega en la misma red virtual que los servicios. En AWS, los servicios
+  corren en [ECS](https://aws.amazon.com/ecs/) o
+  [Fargate](https://aws.amazon.com/fargate/) en subredes privadas, detrás de un
+  *[Application Load
+  Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/)*
+  interno, y el gateway, [Amazon API
+  Gateway](https://aws.amazon.com/api-gateway/), llega a ellos con un *VPC
+  link*.
 * **En Kubernetes**, los servicios son de tipo `ClusterIP`: no tienen dirección
-  fuera del clúster. Solo se expone el *ingress controller*, que cumple el
-  papel del gateway.
+  fuera del clúster. Solo se expone el *Gateway* de [Gateway
+  API](https://gateway-api.sigs.k8s.io/), que reemplaza al antiguo *ingress
+  controller* y cumple el papel del gateway. Las demos de despliegue con
+  Kubernetes lo hacen así: [k8s/base/gateway.yaml](k8s/base/gateway.yaml) es el
+  único punto de entrada al clúster, y `Users` y su base son `ClusterIP`.
 
 En la demo, [docker-compose.yaml](docker-compose.yaml) publica en el host los
 puertos de los servicios y de las bases, para probarlos directamente y para las
@@ -753,16 +782,40 @@ Las cuatro dependen de que cada servicio se pueda desplegar solo: la versión
 demás cambien. Y las cuatro suponen que la versión nueva es compatible con la
 anterior, porque mientras conviven comparten la base y los clientes.
 
+Blue/Green, Rolling Upgrade y Canary Testing tienen dos implementaciones:
+
+* **Con [Docker Compose](https://docs.docker.com/compose/), a mano:** las demos
+  27 a 29. Cada paso es un cambio en el gateway o un contenedor que se levanta o
+  se detiene, y se ve qué hace cada uno.
+* **Con [Kubernetes](https://kubernetes.io/):** las demos 31 a 33, en un clúster
+  de [kind](https://kind.sigs.k8s.io/). Los pasos los hace [Argo
+  Rollouts](https://argoproj.github.io/rollouts/), o Kubernetes mismo en la
+  primera parte de la demo 32; y en las demos 32 y 33 avanzar o volver atrás lo
+  decide un análisis de las métricas de la versión nueva en
+  [Prometheus](https://prometheus.io/). La entrada de los clientes es un
+  *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con
+  [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/).
+
+La demo de Kubernetes es siempre la de Docker Compose más 4. En Azure, lo mismo
+se hace con [Azure Kubernetes
+Service](https://azure.microsoft.com/products/kubernetes-service/) y Argo
+Rollouts, o con las revisiones de [Azure Container
+Apps](https://azure.microsoft.com/products/container-apps/); en AWS, con
+[Amazon EKS](https://aws.amazon.com/eks/) y Argo Rollouts, o con [AWS
+CodeDeploy](https://aws.amazon.com/codedeploy/).
+
 | Estrategia | Qué se toca | Qué no se toca | Cómo se vuelve atrás |
 | ---------- | ----------- | -------------- | -------------------- |
 | Blue/Green | El destino de la entrada de despliegue | Las dos versiones, que siguen vivas | Se conmuta de nuevo, en segundos |
-| Rolling Upgrade | Las instancias del grupo, de a una | El destino, que es el grupo | Otro Rolling Upgrade, hacia la versión anterior |
-| Canary Testing | El porcentaje de la versión `v2` | Las dos versiones | El porcentaje vuelve a cero |
-| A/B Testing | Nada: el experimento viene en la versión `v2` | El gateway, que no sabe del experimento | Se despliega una versión sin el experimento |
+| Rolling Upgrade | Las instancias del grupo, de a una | El destino, que es el grupo | Otro Rolling Upgrade, hacia la versión anterior; con Argo Rollouts, solo, si el análisis falla |
+| Canary Testing | El porcentaje de la versión `v2` | Las dos versiones | El porcentaje vuelve a cero; con Argo Rollouts, solo, si el análisis falla |
+| A/B Testing | El reparto del *flag* en [Unleash](https://www.getunleash.io/) | El gateway, que no sabe del experimento, y el código de `Users` | Se cambia el reparto, sin desplegar |
 
 | Componente | Es dueño de | Lo llaman | Llama a |
 | ---------- | ----------- | --------- | ------- |
-| `users-service-v2` | Nada propio: comparte la base de `users-service` | gateway, por la entrada de despliegue | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
+| `users-service-v2` | Nada propio: comparte la base de `users-service` | gateway, por la entrada de despliegue | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated`, y Unleash, para leer el *flag* del experimento |
+| `unleash` | El *flag* `users-display-name` y sus estrategias, en `unleash-db` | `users-service-v2` cada 2 segundos, con [OpenFeature](https://openfeature.dev/); las demos, con su API de administración | Nada |
+| El clúster de kind | Otra copia de `Users` y de su base, con una imagen por versión, y su propio Prometheus | k6 y las demos 31 a 33, por el Gateway en el puerto 8092 | Nada fuera del clúster |
 
 **Para analizar:**
 
@@ -781,8 +834,16 @@ anterior, porque mientras conviven comparten la base y los clientes.
 * ¿Con qué métricas decidirían si el canario de `Users` avanza o vuelve atrás?
   <!-- → La tasa de errores y la latencia por versión, comparadas con las de la
   versión `v1` en el mismo período, y las de quien llama a Users, como Orders. Con
-  pocas solicitudes, el 10 % no alcanza para decidir: hay que esperar o subir el
-  porcentaje. -->
+  pocas solicitudes, el 10% no alcanza para decidir: hay que esperar o subir el
+  porcentaje. Las demos 32 y 33 usan solo la tasa de errores, en
+  k8s/base/analysis-error-rate.yaml; un AnalysisTemplate puede tener varias
+  métricas, y el despliegue avanza solo si todas pasan. -->
+* El análisis de la demo 33 espera 30 segundos antes de medir. ¿Qué pasa si la
+  versión nueva recibe tan pocas solicitudes que no hay datos?
+  <!-- → La consulta da 0/0: no cumple ni la condición de éxito ni la de falla,
+  el resultado no es concluyente, y Argo Rollouts detiene el despliegue para que
+  decida una persona. Con poco tráfico real, se puede generar tráfico sintético
+  o esperar más antes de medir. -->
 * El experimento de A/B Testing cuenta cuántas veces se mostró cada variante.
   ¿Qué falta para saber cuál es mejor?
   <!-- → Medir qué hizo cada User después, por ejemplo si creó una Order, y
@@ -813,8 +874,9 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Una sola instancia del puente | Se conserva el orden de los pedidos | Si se cae, los mensajes esperan hasta que vuelva | — |
 | `Purchases` y los BFF solo en la entrada HTTP | No hace falta agregarlos a las reglas de autorización | Cualquiera puede consultar las compras de un `Product` o las `Orders` de un `User`, sin identificarse | — |
 | La migración del monolito no sincroniza los datos | La demo se concentra en el enrutamiento | Durante la convivencia, los dos sistemas pueden responder distinto | [Strangler Fig](PATTERNS.md#strangler-fig) lo muestra y explica cómo resolverlo |
-| La versión `v2` de `Users` es la misma imagen con otra configuración | No hace falta construir otra imagen | No se ve un cambio de código real entre versiones, ni el tiempo de construir y publicar una imagen | — |
-| La estrategia de despliegue se cambia a mano en el gateway | Se ve cada paso | Nadie decide con las métricas: en producción, una herramienta avanza o vuelve atrás sola | — |
+| La versión `v2` de `Users` es la misma imagen con otra configuración | No hace falta construir otra imagen | No se ve un cambio de código real entre versiones, ni el tiempo de construir y publicar una imagen | Demos 31 a 33: una imagen por versión, `users-service:v1`, `v2` y `v3-bad` |
+| La estrategia de despliegue se cambia a mano en el gateway | Se ve cada paso | Nadie decide con las métricas: en producción, una herramienta avanza o vuelve atrás sola | Demos 32 y 33: [Argo Rollouts](https://argoproj.github.io/rollouts/) avanza o vuelve atrás según un análisis en Prometheus |
+| El clúster de las demos 31 a 33 es de un solo nodo, con su propia base de `Users` | Se levanta en una máquina, sin tocar Docker Compose | No se ve qué pasa cuando se cae un nodo, y los datos se pierden si se borra el pod de la base | — |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de [Docker](https://www.docker.com/), sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 

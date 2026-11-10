@@ -34,14 +34,14 @@ only_pattern ninguno
 
 warm_up
 
-step "Orders demora 5 segundos en cada consulta; se lanzan 40 consultas de detalle simultáneas"
+step "Orders demora 5\" en cada consulta; se lanzan 40 consultas de detalle simultáneas"
 consult
 
-note "Se esperan 10 segundos, para que en Grafana se distingan las dos tandas..."
+note "Se esperan 10\", para que en Grafana se distingan las dos tandas..."
 sleep 10
 
 step "Se deja prendido solo el Throttling: el Bulkhead no interviene"
 only_pattern throttling
 
-step "Orders demora 5 segundos en cada consulta; se lanzan otras 40 consultas de detalle simultáneas"
+step "Orders demora 5\" en cada consulta; se lanzan otras 40 consultas de detalle simultáneas"
 consult

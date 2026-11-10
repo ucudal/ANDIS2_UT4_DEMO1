@@ -25,7 +25,7 @@ docker compose stop products-db 2>&1 | sed 's/^/  /'
 sleep 5
 health
 
-step "Se esperan 15 segundos a que Docker marque el contenedor como unhealthy..."
+step "Se esperan 15\" a que Docker marque el contenedor como unhealthy..."
 sleep 15
 docker_status
 

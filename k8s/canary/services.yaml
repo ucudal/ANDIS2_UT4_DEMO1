@@ -1,0 +1,26 @@
+# Los dos Service del Canary. Argo Rollouts les agrega al selector la versión
+# que corresponde a cada uno: users-stable, la versión estable, y users-canary,
+# la versión nueva. Fuera de un despliegue, los dos apuntan a la estable.
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-stable
+  namespace: andis
+spec:
+  selector:
+    app: users
+  ports:
+    - port: 8000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-canary
+  namespace: andis
+spec:
+  selector:
+    app: users
+  ports:
+    - port: 8000
+      targetPort: http

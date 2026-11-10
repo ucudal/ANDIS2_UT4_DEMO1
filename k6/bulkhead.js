@@ -1,6 +1,6 @@
-// Bulkhead bajo carga: Products responde lento -1,5 s- y llegan 6 consultas
-// de detalle por segundo. El compartimento de Products admite 5 llamadas en
-// curso y 5 en espera; las demás se rechazan de inmediato.
+// Bulkhead bajo carga: Products responde lento -1,5 segundos- y llegan 6
+// consultas de detalle por segundo. El compartimento de Products admite 5
+// llamadas en curso y 5 en espera; las demás se rechazan de inmediato.
 //
 // Solo el Bulkhead queda prendido.
 //

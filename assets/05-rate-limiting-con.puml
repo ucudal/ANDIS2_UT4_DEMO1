@@ -8,7 +8,7 @@ participant "Orders\norders-service" as O
 
 L ->> GW : 5 POST /orders/, la ráfaga
 GW ->> O : los 5
-loop 10 veces, cada 1 segundo
+loop 10 veces, cada 1"
   L ->> GW : 1 POST /orders/
   GW ->> O : pasa
 end

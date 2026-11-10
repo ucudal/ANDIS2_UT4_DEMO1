@@ -1,0 +1,76 @@
+# Blue/Green con Argo Rollouts: la demo 31. Es la demo 27, pero lo que allí se
+# hacía a mano lo hace Argo Rollouts.
+#
+# Un Rollout es un Deployment con una estrategia de despliegue. Con blueGreen,
+# al cambiar la imagen:
+# 1. Argo levanta los pods de la versión nueva al lado de los de la actual, y
+#    apunta el Service users-preview a ellos. users-active sigue en la actual:
+#    los clientes no ven la versión nueva.
+# 2. Se detiene a esperar, por autoPromotionEnabled: false. Mientras tanto, la
+#    versión nueva se prueba por users-preview.
+# 3. Con kubectl argo rollouts promote, apunta users-active a la versión nueva:
+#    se conmuta de una vez.
+# 4. Mantiene los pods de la versión anterior durante scaleDownDelaySeconds.
+#    Si dentro de ese tiempo se vuelve atrás, la conmutación es inmediata.
+#
+# Argo conmuta cambiando el selector de los Service: agrega la etiqueta
+# rollouts-pod-template-hash de la versión que corresponde. Las HTTPRoute no
+# cambian.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: users
+  namespace: andis
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: users
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+        - name: users
+          image: users-service:v1
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: users-config
+          # Reemplazan al healthcheck de Docker Compose. Un pod recibe tráfico
+          # recién cuando /health dice que puede conectarse a su base.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          # Al detener un pod, el Gateway tarda un momento en dejar de mandarle
+          # solicitudes. El pod espera 5 segundos antes de detenerse, para que
+          # no se pierda ninguna durante el reemplazo.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+  strategy:
+    blueGreen:
+      activeService: users-active
+      previewService: users-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 60
+  # Volver a una de las 3 versiones anteriores no repite la espera: se conmuta
+  # enseguida, como en la demo 27.
+  rollbackWindow:
+    revisions: 3

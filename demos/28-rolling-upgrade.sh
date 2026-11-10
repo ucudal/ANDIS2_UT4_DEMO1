@@ -57,7 +57,7 @@ done
 rm -f "$RUNNING"
 wait
 
-step "Durante todo el reemplazo, una sonda pidió el User 1 cada 0,1 segundos"
+step "Durante todo el reemplazo, una sonda pidió el User 1 cada 0,1\""
 tally "$PROBES"
 note "Las dos versiones respondieron a la vez durante el reemplazo: tienen que ser"
 note "compatibles entre sí, y con la base que comparten. Si una instancia nueva no"

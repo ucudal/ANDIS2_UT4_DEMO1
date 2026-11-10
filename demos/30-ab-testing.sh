@@ -55,7 +55,7 @@ step "Se cambia el reparto en Unleash, sin desplegar: todos los Users a la varia
 experiment_split 100
 sleep 3
 for id in 1 2; do get_user "$id" -i | user_summary; done
-note "Users vuelve a leer el flag cada 2 segundos: no se reinició ni se desplegó nada."
+note "Users vuelve a leer el flag cada 2\": no se reinició ni se desplegó nada."
 
 step "Si Unleash se cae, Users sigue con la última configuración que leyó"
 docker compose stop unleash > /dev/null 2>&1

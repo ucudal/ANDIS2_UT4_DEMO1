@@ -1,7 +1,7 @@
 @startuml
 !include PlantUML.style
 rectangle "Consultan /health" as CON {
-  rectangle "Docker\nhealthcheck cada 5 s" as D
+  rectangle "Docker\nhealthcheck cada 5<U+0022>" as D
   rectangle "API Gateway\n/health/{servicio}" as GW
 }
 rectangle "Cada servicio chequea sus dependencias" as SV {

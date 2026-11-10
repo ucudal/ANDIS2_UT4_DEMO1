@@ -7,7 +7,7 @@ participant "Products\nproducts-service" as P
 
 O ->> P : GET /products/{productId}
 P -->> O : 503, falla transitoria
-note right O : espera unos 0,5 s\nRetryBaseDelay, con jitter
+note right O : espera unos 0,5"\nRetryBaseDelay, con jitter
 O ->> P : reintento 1 de 3\nMaxRetries
 P -->> O : 200, el Product
 note right O : la consulta trae el nombre del producto\ny el cliente no se entera de la falla

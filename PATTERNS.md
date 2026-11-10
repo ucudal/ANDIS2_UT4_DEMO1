@@ -92,8 +92,8 @@ materializadas.
 
 ## Demos de disponibilidad
 
-Escenario: [`Users`](src/UsersService) o [`Products`](src/ProductsService) fallan o
-responden lento de forma intermitente. [`Orders`](src/OrdersService) debe seguir
+Escenario: [`Users`](src/UsersService/) o [`Products`](src/ProductsService/) fallan o
+responden lento de forma intermitente. [`Orders`](src/OrdersService/) debe seguir
 funcionando y el resto del sistema no debe caerse.
 
 Qué se muestra:
@@ -123,12 +123,12 @@ sus propias rutas.
 | Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
 | Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). |
 | Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
-| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6/](k6). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en el [README](README.md#observabilidad-y-pruebas-de-carga). |
+| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en el [README](README.md#observabilidad-y-pruebas-de-carga). |
 
 Ejemplo de inyección de fallas:
 
 ```bash
-# Products falla en el 50 % de las solicitudes y demora 1 segundo en todas
+# Products falla en el 50% de las solicitudes y demora 1 segundo en todas
 curl -X PUT http://localhost/products/chaos -H "Content-Type: application/json" \
   -d '{"failureRate": 0.5, "delayMs": 1000}'
 
@@ -145,7 +145,7 @@ curl -X DELETE http://localhost/products/chaos
 
 ### Patrones de disponibilidad
 
-Cada patrón tiene un script en [demos/](demos) que provoca la situación y
+Cada patrón tiene un script en [demos](demos/) que provoca la situación y
 muestra el resultado. Los de Retry, Circuit Breaker, Bulkhead y Throttling
 dejan prendido solo su patrón, para que se vea el efecto de cada uno por
 separado. Cómo ejecutarlos está en el
@@ -161,7 +161,7 @@ Consumers- tienen además un escenario de [k6](https://k6.io/) para verlos en el
 reinicia- hace fallar una operación que habría funcionado un momento después.
 
 **Implementación:** los `HttpClient` de `Orders` hacia `Users` y `Products`
-reintentan hasta 3 veces con retroceso exponencial -0,5 s, 1 s, 2 s, con
+reintentan hasta 3 veces con retroceso exponencial -0,5 segundos, 1 segundo, 2 segundos, con
 *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408, 429, errores
 de red y *timeouts*; un 404 no se reintenta. Está en el método
 `AddResilience` de la clase `Resilience`, en
@@ -173,7 +173,7 @@ de red y *timeouts*; un 404 no se reintenta. Está en el método
 ![Secuencia de un reintento de Orders a Products](assets/01-retry.svg)
 
 Si fallan los 3 reintentos, la consulta dice `"no disponible [error HTTP 503]"`.
-Las esperas crecen: 0,5 s, 1 s y 2 s -`DelayBackoffType.Exponential`-.
+Las esperas crecen: 0,5 segundos, 1 segundo y 2 segundos -`DelayBackoffType.Exponential`-.
 
 **Código:** la estrategia de reintento del *pipeline* de cada dependencia, en
 el método `AddResilience` de la clase `Resilience`, en
@@ -195,7 +195,7 @@ pipeline.AddRetry(new HttpRetryStrategyOptions
 **Cómo verlo:** el detalle de las `Orders` de un `User` lo arma `Orders`, que le
 pide a `Users` el nombre del cliente y a `Products` el nombre del producto de
 cada `Order`. [demos/01-retry.sh](demos/01-retry.sh) hace que `Products` falle
-en el 30 % de las solicitudes y consulta el detalle 8 veces con el Retry
+en el 30% de las solicitudes y consulta el detalle 8 veces con el Retry
 apagado y 8 con el Retry prendido. Sin reintentos, cerca de la mitad de las
 respuestas trae algún producto "no disponible"; con reintentos, casi todas
 traen el nombre del producto, porque los reintentos ocultan las fallas. Las que
@@ -245,8 +245,8 @@ pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
     ShouldHandle = args => patterns.CircuitBreaker ? shouldBreak(args) : PredicateResult.False(),
     FailureRatio = CircuitFailureRatio,            // 0,5
     MinimumThroughput = CircuitMinimumThroughput,  // 5
-    SamplingDuration = CircuitSamplingDuration,    // 10 s
-    BreakDuration = CircuitBreakDuration,          // 15 s
+    SamplingDuration = CircuitSamplingDuration,    // 10 segundos
+    BreakDuration = CircuitBreakDuration,          // 15 segundos
     OnOpened = args => { /* registra [CIRCUIT BREAKER] ABIERTO */ },
     OnHalfOpened = args => { /* SEMIABIERTO */ },
     OnClosed = args => { /* CERRADO */ }
@@ -254,7 +254,7 @@ pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
 ```
 
 **Cómo verlo:** [demos/02-circuit-breaker.sh](demos/02-circuit-breaker.sh) hace
-que `Products` falle en el 100 % de las solicitudes y consulta el detalle 6
+que `Products` falle en el 100% de las solicitudes y consulta el detalle 6
 veces con todos los patrones apagados y 6 con solo el Circuit Breaker prendido.
 Sin el circuito, `Products` recibe 12 llamadas, aunque falle siempre; con el
 circuito, 5. Sin reintentos, cada falla cuenta una vez: las dos primeras consultas dicen `"no
@@ -724,7 +724,7 @@ curl -X DELETE http://localhost/products/cache
 ### Patrones de rendimiento
 
 Como en las demos de disponibilidad, cada patrón tiene un script en
-[demos/](demos), del `10` al `16`. Los *logs* de [Docker](https://www.docker.com/) muestran los eventos con
+[demos](demos/), del `10` al `16`. Los *logs* de [Docker](https://www.docker.com/) muestran los eventos con
 una etiqueta: `[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en
 `users-service`, `products-service` y `orders-projector`; y `[MATERIALIZED
 VIEW]` en `orders-projector`.
@@ -1083,7 +1083,7 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 
 ### Patrones de seguridad
 
-Cada patrón tiene un script en [demos/](demos), del `17` al `21`, y un paso a
+Cada patrón tiene un script en [demos](demos/), del `17` al `21`, y un paso a
 paso en [commands/04-security.azcli](commands/04-security.azcli) que compara la
 misma solicitud por la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la HTTPS, con él. Los
 *logs* de [Docker](https://www.docker.com/) muestran los eventos con una etiqueta: `[HTTPS]` en
@@ -1515,18 +1515,18 @@ se redespliega sin que el otro cliente lo note.
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService/](src/PurchasesService). El gateway lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
+| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService](src/PurchasesService/). El gateway lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
 | `consul` | El almacén de configuración, con la consola en <http://localhost:8500>. |
 | `legacy-broker` | [ActiveMQ](https://activemq.apache.org/), el broker del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
 | `legacy-erp` | Un ERP simulado, en [LegacyErp/Program.cs](src/LegacyErp/Program.cs). |
-| `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge/](src/MessagingBridge). |
+| `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge](src/MessagingBridge/). |
 | `monolith` | El sistema que se reemplaza, en [Monolith/Program.cs](src/Monolith/Program.cs). |
 | Fachada del gateway | `http://localhost:8090`, con la tabla de rutas en [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
-| `bff-web` y `bff-mobile` | Un backend para la web y otro para la app móvil, en [BffWeb/](src/BffWeb) y [BffMobile/](src/BffMobile). El gateway los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
+| `bff-web` y `bff-mobile` | Un backend para la web y otro para la app móvil, en [BffWeb](src/BffWeb/) y [BffMobile](src/BffMobile/). El gateway los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
 
 ### Patrones de facilidad de modificación
 
-Cada patrón tiene un script en [demos/](demos), del `22` al `26`, y un paso a
+Cada patrón tiene un script en [demos](demos/), del `22` al `26`, y un paso a
 paso en [commands/05-modifiability.azcli](commands/05-modifiability.azcli). Los
 *logs* de [Docker](https://www.docker.com/) muestran los eventos con una etiqueta: `[EXTERNAL CONFIG]` en
 los servicios, `[MESSAGING BRIDGE]` en `messaging-bridge` y en
@@ -1556,7 +1556,7 @@ compras: quién lo compró, cuántas unidades y si la compra está confirmada. L
 datos están en `Orders`, que habla de `user_id`, `product_id` y estados
 `Pending`, `Confirmed` y `Rejected`, y en `Users`, que habla [SOAP](https://www.w3.org/TR/soap/).
 
-**Implementación:** [PurchasesService/](src/PurchasesService) separa el modelo de
+**Implementación:** [PurchasesService](src/PurchasesService/) separa el modelo de
 `Purchases` de la capa que traduce.
 
 * **El modelo:** `Purchase`, en
@@ -1564,7 +1564,7 @@ datos están en `Orders`, que habla de `user_id`, `product_id` y estados
   comprador, unidades y si está confirmada. `Purchases` depende de la interfaz
   `IPurchaseSource`, no de `Orders` ni de `Users`.
 * **La capa:** la carpeta
-  [PurchasesService/AntiCorruption/](src/PurchasesService/AntiCorruption).
+  [PurchasesService/AntiCorruption](src/PurchasesService/AntiCorruption/).
   * La clase `OrdersTranslator` lee `GET /orders/`, filtra por `Product`, deja
     afuera las `Orders` rechazadas y traduce el estado.
   * La clase `UsersTranslator` arma el sobre SOAP y lee solo el nombre.
@@ -2190,9 +2190,9 @@ Cómo se calcula:
 
 | Cambio | Líneas | Contenedores reiniciados | Demora |
 | ------ | ------ | ------------------------ | ------ |
-| Cambiar un límite en el almacén | 0 | 0 | 1,0 a 2,2 s |
-| Cambiar un límite en una variable de entorno | 1 | 1 | 1,3 a 1,7 s |
-| Migrar una ruta del monolito | 1 | 0 | 1,4 s |
+| Cambiar un límite en el almacén | 0 | 0 | 1,0 a 2,2 segundos |
+| Cambiar un límite en una variable de entorno | 1 | 1 | 1,3 a 1,7 segundos |
+| Migrar una ruta del monolito | 1 | 0 | 1,4 segundos |
 
 Cómo se calcula:
 
@@ -2253,10 +2253,12 @@ levantados y sanos, aunque solo una reciba tráfico. Pasar de una a otra
 * Una fracción del tráfico derivada a la versión nueva, y la vuelta atrás cuando
   falla.
 * Un experimento con dos variantes, elegidas por segmento o al azar.
+* Con Kubernetes, las mismas estrategias sin pasos a mano, y la vuelta atrás
+  automática cuando las métricas de la versión nueva muestran errores.
 
 Resultado observable: la versión nueva entra y sale de producción sin errores, o
 con errores solo en porcentaje de solicitudes que Canary Testing manda a la
-versión nueva, el 10 % o el 50 % en la demo; y cada respuesta dice qué versión y
+versión nueva, el 10% o el 50% en la demo; y cada respuesta dice qué versión y
 qué variante la atendió.
 
 ### Qué agrega a las demos de facilidad de modificación
@@ -2268,21 +2270,32 @@ qué variante la atendió.
 | Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [UsersService/Release.cs](src/UsersService/Release.cs). |
 | El experimento | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
 | `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 30 los levanta sola. |
+| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 31 a 33. Lo crea [demos/k8s-up.sh](demos/k8s-up.sh) y lo borra [demos/k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
+| Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [UsersService/Dockerfile](src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
+| El *Gateway* del clúster | La entrada de los clientes en el puerto 8092: un *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [k8s/base/gateway.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
+| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 32 y 33 decide si sigue o vuelve atrás con el análisis de [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el plugin `kubectl argo rollouts`. |
 
-La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión `v1` con
-otra configuración y en otros contenedores, para simplificar la demo. En
-producción cada versión sería una imagen distinta: en
-[Kubernetes](https://kubernetes.io/), por ejemplo, un
+La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión
+`v1` con otra configuración y en otros contenedores, para simplificar las demos
+27 a 30. En las demos 31 a 33, como en producción, cada versión es una imagen
+distinta: un
 [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
-cuyos pods cambian de imagen.
+de Kubernetes, o un `Rollout` de Argo Rollouts, cuyos pods cambian de imagen.
 
 ### Patrones de facilidad de despliegue
 
-Cada estrategia tiene un script en [demos/](demos), del `27` al `30`, y un paso
+Cada estrategia tiene un script en [demos](demos/), del `27` al `30`, y un paso
 a paso en [commands/06-deployability.azcli](commands/06-deployability.azcli).
-Los *logs* de `api-gateway` muestran cada solicitud de la entrada de despliegue
-publicada en el puerto 8091 con la etiqueta `[DEPLOY]`, la instancia que la
-atendió y su versión.
+Blue/Green, Rolling Upgrade y Canary Testing tienen además una versión con
+[Kubernetes](https://kubernetes.io/), del `31` al `33`, análoga a la demo de
+[Docker Compose](https://docs.docker.com/compose/) pero automatizando el
+despliegue. Necesitan el clúster, que se crea una vez con `./demos/k8s-up.sh`, y
+además de Docker, [kind](https://kind.sigs.k8s.io/),
+[kubectl](https://kubernetes.io/docs/reference/kubectl/) y el [plugin de Argo
+Rollouts](https://argoproj.github.io/argo-rollouts/features/kubectl-plugin/)
+para kubectl. Los *logs* de `api-gateway` muestran cada solicitud de la entrada
+de despliegue publicada en el puerto 8091 con la etiqueta `[DEPLOY]`, la
+instancia que la atendió y su versión.
 
 Como las demos de facilidad de modificación, estas no se conectan a ninguna nube:
 corren con [Docker](https://www.docker.com/). Cada estrategia nombra los servicios equivalentes de Azure y de
@@ -2306,22 +2319,20 @@ versiones conviven, comparten clientes y datos.
 producción corta el servicio mientras se reemplaza y, si la versión nueva falla,
 volver atrás es otro despliegue, igual de lento y riesgoso.
 
-**Escenario:** la versión `v2` de `Users` se despliega al lado de la `v1`, se
-prueba directamente, y después se pasa todo el tráfico de una vez a la versión
-`v2` -a esto se le llama ≪conmutar≫- la versión; si algo sale mal, se vuelve a
-la `v1`.
+**Escenario:** la nueva versión `v2` de `Users` se despliega junto con la `v1`,
+se prueba la versión `v2` para determinar que quedó bien desplegada, y después
+se pasa todo el tráfico de una vez a esa versión `v2` -a esto se le llama
+≪conmutar≫ la versión-; si algo sale mal, se vuelve a la `v1`.
 
 **Implementación:**
 
-* **Dos entornos:** `users-service`, la versión `v1` -el azul-, y
-  `users-service-v2`, la versión `v2` -el verde-. Están siempre levantados y
-  activos los dos.
-* **El conmutador:** la entrada de despliegue publicada en el puerto 8091 manda
-  todo el tráfico al destino del [`map`](https://nginx.org/en/docs/http/ngx_http_map_module.html#map). Conmutar `v1` con `v2` es cambiar ese
-  destino y recargar nginx.
-* **La prueba previa:** antes de cambiar de versión, se le pide un `User` a la
-  versión `v2` directamente, desde adentro de la red de Docker, con la función
-  `get_user_inside`.
+* **Dos entornos:** la versión `v1` -el azul- y la `v2` -el verde-, levantadas
+  al mismo tiempo.
+* **El conmutador:** los clientes mandan sus solicitudes siempre a la misma
+  dirección, y detrás de ella un componente elige a cuál de los dos entornos
+  llegan. Conmutar es cambiar esa elección, sin que los clientes se enteren.
+* **La prueba previa:** antes de conmutar, la versión `v2` se prueba por otro
+  camino, sin que reciba tráfico de los clientes.
 * **La base:** las dos versiones comparten `users-db`. La versión `v2` no cambia
   el esquema: su campo nuevo no se guarda.
 
@@ -2349,6 +2360,8 @@ destino](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/loa
 de un [Application Load
 Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/).
 
+##### Cómo verlo con Docker
+
 **Cómo funciona:**
 
 ![La entrada de despliegue conmuta de la versión `v1` a la
@@ -2362,11 +2375,73 @@ map $host $users_target {
 }
 ```
 
-**Cómo verlo:** [demos/27-blue-green.sh](demos/27-blue-green.sh) muestra que la
-versión `v1` atiende la entrada de despliegue publicada en el puerto 8091 y prueba
-la `v2` por adentro, con su campo nuevo. Después cambia de versión mientras una
-sonda pide el `User` 1 cada 0,1 segundos: las respuestas pasan de la versión `v1` a
-la `v2`, todas con `200 OK`. Al final vuelve atrás de la misma forma.
+* **Los dos entornos:** `users-service`, la versión `v1`, y `users-service-v2`,
+  la versión `v2`. Están siempre levantados y activos los dos.
+* **El conmutador:** la dirección de los clientes es la entrada de despliegue,
+  publicada en el puerto 8091. El componente que elige el entorno es el nginx de
+  `api-gateway`, con un
+  [`map`](https://nginx.org/en/docs/http/ngx_http_map_module.html#map) que tiene
+  un solo destino. Conmutar `v1` con `v2` es cambiar ese destino y recargar
+  nginx.
+* **La prueba previa:** antes de cambiar de versión, se le pide un `User` a la
+  versión `v2` directamente, desde adentro de la red de Docker, con la función
+  `get_user_inside`.
+
+La demo [demos/27-blue-green.sh](demos/27-blue-green.sh) muestra que la versión
+`v1` atiende la entrada de despliegue publicada en el puerto 8091 y prueba la
+`v2` por adentro, con su campo nuevo. Después cambia de versión mientras una
+sonda pide el `User` 1 cada 0.1 segundos: las respuestas pasan de la versión
+`v1` a la `v2`, todas con `200 OK`. Al final vuelve atrás de la misma forma.
+
+##### Cómo verlo con Kubernetes
+
+Lo que la demo 27 hace a mano, con [Kubernetes](https://kubernetes.io/) lo hace
+[Argo Rollouts](https://argoproj.github.io/rollouts/), con un comando por paso.
+En Kubernetes, un `Rollout` es como un Deployment, pero con una estrategia de
+despliegue.
+
+* **Los dos entornos:** al cambiar la imagen, Argo levanta los pods de la
+  versión `v2` al lado de los de la `v1`, y se detiene a esperar, por
+  `autoPromotionEnabled: false`.
+* **El conmutador:** la dirección de los clientes es el *Gateway*, publicado en
+  el puerto 8092, y su ruta, en [Gateway API](https://gateway-api.sigs.k8s.io/),
+  manda siempre las solicitudes al Service `users-active`. El componente que
+  elige el entorno es ese Service: Argo cambia su selector para que apunte a los
+  pods de una versión o de la otra. Otro Service, `users-preview`, apunta a la
+  versión que todavía no recibe tráfico.
+* **La prueba previa:** la versión `v2` se prueba por `users-preview`, en
+  `http://preview.localhost:8092`, sin que reciba tráfico de los clientes.
+* **La conmutación y la vuelta atrás:** `kubectl argo rollouts promote` apunta
+  `users-active` a la versión `v2`. Los pods de la `v1` siguen vivos un minuto,
+  por `scaleDownDelaySeconds`, y dentro de ese minuto `kubectl argo rollouts
+  undo` vuelve a ellos enseguida, por `rollbackWindow`.
+
+| Qué | Dónde |
+| --- | ----- |
+| El `Rollout` y su estrategia | [k8s/blue-green/rollout.yaml](k8s/blue-green/rollout.yaml) |
+| `users-active` y `users-preview` | [k8s/blue-green/services.yaml](k8s/blue-green/services.yaml) |
+| Las rutas de los clientes y de la prueba previa | [k8s/blue-green/httproute.yaml](k8s/blue-green/httproute.yaml) |
+
+```yaml
+strategy:
+  blueGreen:
+    activeService: users-active
+    previewService: users-preview
+    autoPromotionEnabled: false
+    scaleDownDelaySeconds: 60
+```
+
+La demo [demos/31-argo-blue-green.sh](demos/31-argo-blue-green.sh) sigue los
+mismos pasos que la demo 27, y en cada uno muestra el estado del `Rollout` como
+lo muestra Argo: cada versión con sus pods y su papel, `stable`, `active` o
+`preview`. La conmutación y la vuelta atrás, con una sonda pidiendo el `User` 1
+cada 0,1 segundos, responden todas `200 OK`.
+
+En Azure, se hace igual en [Azure Kubernetes
+Service](https://azure.microsoft.com/products/kubernetes-service/) con Argo
+Rollouts; en AWS, en [Amazon EKS](https://aws.amazon.com/eks/).
+
+##### Evaluación
 
 **Qué facilita en el despliegue:**
 
@@ -2395,39 +2470,42 @@ la `v2`, todas con `200 OK`. Al final vuelve atrás de la misma forma.
 #### Rolling Upgrade
 
 **Problema:** con varias instancias de un servicio, tener un segundo entorno
-completo para Blue/Green duplica el costo. Reemplazarlas todas a la vez corta el
-servicio.
+completo para Blue/Green duplica el costo. Reemplazar todas esas instancias a la
+vez corta el servicio.
 
 **Escenario:** `Users` corre en tres instancias de la versión `v1`, que se
-reemplazan de a una por instancias de la `v2`, sin cortar el servicio -se asume que Users ya corre en tres instancias, por disponibilidad
-o por carga, y Rolling Upgrade no las agrega-.
+reemplazan de a una por instancias de la `v2`, sin cortar el servicio -se asume
+que Users ya corre en tres instancias, por disponibilidad o por carga, y Rolling
+Upgrade no las agrega-.
 
 **Implementación:**
 
-* **El grupo:** la entrada de despliegue publicada en el puerto 8091 manda el
-  tráfico a `users-pool`, un [alias de red](https://docs.docker.com/reference/compose-file/services/#aliases). El [DNS de Docker](https://docs.docker.com/engine/network/#dns-services) devuelve una IP por
-  cada instancia que lo tiene, y nginx actúa como balanceador de carga y reparte
-  las solicitudes entre ellas. Cada 5 segundos vuelve a resolver el nombre, por
-  el [resolver](https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver) de nginx.conf, y así se entera de las instancias que entran y
-  salen.
-* **La versión `v1`:** `users-service` publica el puerto 8002 y lo usan las demás
-  demos, así que no entra en el grupo. El script crea tres instancias a partir de
-  su definición, con [`docker compose run`](https://docs.docker.com/reference/cli/docker/compose/run/), y les agrega el alias `users-pool`.
-* **La versión `v2`:** son réplicas de `users-service-v2`, que ya tiene el alias.
-* **Cada paso**, en la función `pool_replace`: suma una réplica de la versión `v2`,
-  espera a que su [*healthcheck*](https://docs.docker.com/reference/compose-file/services/#healthcheck) diga que está sana y recién entonces detiene una
-  instancia de la `v1`.
-* **Las instancias que se van:** si nginx todavía tiene la IP de una instancia
-  detenida, la conexión falla en menos de un segundo y reintenta en otra, con
-  [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream). Como la solicitud no llegó a enviarse, se reintenta
-  aunque sea un POST: con [SOAP](https://www.w3.org/TR/soap/), hasta `GetUser`, que es una lectura, es un POST,
-  y nginx no reintenta un POST que ya envió.
+* **El grupo[^1]:** los clientes mandan sus solicitudes siempre a la misma
+  dirección, y detrás de ella un balanceador de carga las reparte entre varias
+  instancias de `Users`: ese conjunto es el grupo. Una instancia está en el
+  grupo por tener una marca, así que puede ser de cualquier versión. Desplegar
+  es cambiar quién está en el grupo: entran instancias de la `v2` y salen de la
+  `v1`. A diferencia de Blue/Green, hay un solo grupo, y durante el reemplazo
+  tiene las dos versiones.
+* **Cada paso:** se suma una instancia de la versión `v2`, se espera a que esté
+  sana y recién entonces se detiene una de la `v1`.
+* **Las instancias que se van:** las solicitudes que el balanceador todavía les
+  manda no se pierden: se reintentan en otra instancia, o dejan de llegarles
+  antes de que se detengan.
 
-Es la estrategia por defecto de un Deployment de [Kubernetes](https://kubernetes.io/), de Azure Container
-Apps y de los [servicios de
+[^1]: El concepto de ≪grupo≫ viene de cómo llaman a esto las nubes: *backend
+    pool* en Azure Load Balancer y *target group* en un Application Load
+    Balancer de AWS.
+
+Es la estrategia por defecto de un Deployment de
+[Kubernetes](https://kubernetes.io/), de Azure Container Apps y de los
+[servicios de
 ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html).
 En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
-`maxUnavailable`.
+`maxUnavailable`: la demo 32 lo muestra, más abajo.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Cómo verlo con Docker
 
 **Cómo funciona:**
 
@@ -2442,11 +2520,111 @@ docker compose up -d --no-deps --scale users-service-v2="$1" --wait users-servic
 docker stop "users-v1-$1"
 ```
 
-**Cómo verlo:** [demos/28-rolling-upgrade.sh](demos/28-rolling-upgrade.sh) arma
-el grupo con tres instancias de la versión `v1` y las reemplaza en tres pasos.
-Después de cada paso muestra qué instancias tiene el grupo y cuántas respuestas
-dio cada versión. Durante todo el reemplazo, una sonda pide el `User` 1 cada 0,1
+* **El grupo:** la dirección de los clientes es la entrada de despliegue,
+  publicada en el puerto 8091, que manda el tráfico a `users-pool`. La marca del
+  grupo es ese nombre, un [alias de
+  red](https://docs.docker.com/reference/compose-file/services/#aliases): el
+  [DNS de Docker](https://docs.docker.com/engine/network/#dns-services) devuelve
+  la IP de cada contenedor que tiene el alias `users-pool`, y nginx actúa como
+  balanceador de carga y reparte las solicitudes entre ellos. Cada 5 segundos
+  vuelve a resolver el nombre, por el
+  [resolver](https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver)
+  de nginx.conf, y así se entera de las instancias que entran y salen.
+* **La versión `v1`:** `users-service` publica el puerto 8002 y lo usan las
+  demás demos, así que no entra en el grupo. El script crea tres instancias a
+  partir de su definición, con [`docker compose
+  run`](https://docs.docker.com/reference/cli/docker/compose/run/), y les agrega
+  el alias `users-pool`.
+* **La versión `v2`:** son réplicas de `users-service-v2`, que ya tiene el alias
+  `users-pool` en su definición: cada réplica nueva entra sola en el grupo.
+* **Cada paso**, en la función `pool_replace`: suma una réplica de la versión
+  `v2`, espera a que su
+  [*healthcheck*](https://docs.docker.com/reference/compose-file/services/#healthcheck)
+  diga que está sana y recién entonces detiene una instancia de la `v1`.
+* **Las instancias que se van:** si nginx todavía tiene la IP de una instancia
+  detenida, la conexión falla en menos de un segundo y reintenta en otra, con
+  [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream).
+  Como la solicitud no llegó a enviarse, se reintenta aunque sea un POST: con
+  [SOAP](https://www.w3.org/TR/soap/), hasta `GetUser`, que es una lectura, es
+  un POST, y nginx no reintenta un POST que ya envió.
+
+La demo [demos/28-rolling-upgrade.sh](demos/28-rolling-upgrade.sh) arma el grupo
+con tres instancias de la versión `v1` y las reemplaza en tres pasos. Después de
+cada paso muestra qué instancias tiene el grupo y cuántas respuestas dio cada
+versión. Durante todo el reemplazo, una sonda pide el `User` 1 cada 0.1
 segundos: todas las respuestas son `200 OK`, de las dos versiones.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Cómo verlo con Kubernetes
+
+En dos partes, para comparar lo que trae Kubernetes con lo que agrega [Argo
+Rollouts](https://argoproj.github.io/rollouts/).
+
+* **El grupo:** la dirección de los clientes es el *Gateway*, publicado en el
+  puerto 8092, que manda las solicitudes al Service `users`. La marca del grupo
+  es la etiqueta `app: users`: el Service reparte entre todos los pods que la
+  tienen, de cualquier versión, y el Deployment y el `Rollout` se la ponen a
+  todos sus pods.
+* **Con un Deployment:** Kubernetes reemplaza los pods de a uno, como la función
+  `pool_replace` de la demo 28: con `maxSurge: 1` levanta un pod de más, y con
+  `maxUnavailable: 0` no detiene uno viejo hasta que el nuevo esté listo, según
+  su `readinessProbe`. Pero solo sabe si un pod está listo: la versión `v3-bad`
+  responde `/health` y falla en el 30% de las solicitudes, y Kubernetes la
+  despliega igual en los tres pods. Las fallas siguen hasta que alguien hace
+  `kubectl rollout undo`.
+* **Con Argo Rollouts:** el mismo reemplazo, pero después de cada paso Argo mide
+  los errores de los pods nuevos en [Prometheus](https://prometheus.io/), con un
+  `AnalysisTemplate`. Con la versión `v3-bad`, el análisis falla con el primer
+  pod nuevo, y Argo vuelve solo a la versión `v2`.
+* **El análisis:** la fracción de solicitudes `POST` de los pods nuevos que
+  respondieron `5xx`, medida 3 veces, cada 10 segundos. Con una sola medida de
+  5% o más, falla. Prometheus distingue los pods de cada versión por la etiqueta
+  `rollouts_pod_template_hash` que Argo les pone.
+* **Los pods que se van:** cada pod espera 5 segundos antes de detenerse, con un
+  `preStop`, para que el *Gateway* deje de mandarle solicitudes antes. Es lo que
+  en la demo 28 resuelve `proxy_next_upstream`.
+
+| Qué | Dónde |
+| --- | ----- |
+| El Deployment | [k8s/rolling-upgrade/deployment.yaml](k8s/rolling-upgrade/deployment.yaml) |
+| El `Rollout`, con los pasos y el análisis | [k8s/rolling-upgrade/rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
+| El Service y la ruta, para los dos | [k8s/rolling-upgrade/service.yaml](k8s/rolling-upgrade/service.yaml) |
+| El análisis, que comparten las demos 32 y 33 | [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
+| Prometheus del clúster | [k8s/base/prometheus.yaml](k8s/base/prometheus.yaml) |
+
+Los pasos del `Rollout`: sin un router que reparta el tráfico, `setWeight` es la
+fracción de los pods con la versión nueva: de 3 pods, 33 es 1 y 66 son 2.
+
+```yaml
+steps:
+  - setWeight: 33
+  - analysis:
+      templates:
+        - templateName: error-rate
+      args:
+        - name: pod-hash
+          valueFrom:
+            podTemplateHashValue: Latest
+  - setWeight: 66
+  - analysis: ...
+```
+
+La demo [demos/32-k8s-rolling-upgrade.sh](demos/32-k8s-rolling-upgrade.sh)
+muestra primero el Deployment: la versión `v2` reemplaza a la `v1` sin errores,
+y la `v3-bad` llega a los tres pods y falla hasta el `undo`. Después cambia el
+Deployment por el `Rollout` y despliega la `v3-bad`: llega a un solo pod, el
+análisis mide alrededor del 30% de errores, y Argo vuelve a la `v2` en menos de
+un minuto, sin que nadie intervenga.
+
+En Azure, Argo Rollouts funciona igual en [Azure Kubernetes
+Service](https://azure.microsoft.com/products/kubernetes-service/); en AWS, en
+[Amazon EKS](https://aws.amazon.com/eks/). CodeDeploy, en ECS, también vuelve
+atrás solo cuando una alarma de [Amazon
+CloudWatch](https://aws.amazon.com/cloudwatch/) se dispara durante el
+despliegue.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Evaluación
 
 **Qué facilita en el despliegue:**
 
@@ -2456,6 +2634,7 @@ segundos: todas las respuestas son `200 OK`, de las dos versiones.
 | Detenerse si una instancia nueva no arranca sana | Sí | El paso se detiene antes de sacar una instancia vieja |
 | Desplegar dos versiones que no pueden convivir | No | Durante el reemplazo responden las dos: un cliente puede recibir una respuesta de cada una |
 | Volver atrás rápido | No | Es otro Rolling Upgrade, hacia la versión anterior |
+| Detener una versión que arranca sana pero falla con las solicitudes | Solo con un análisis | Con el Deployment de Kubernetes, no; con Argo Rollouts, el análisis la detecta en el primer pod y vuelve atrás solo |
 
 **Ventajas y desventajas:**
 
@@ -2478,27 +2657,21 @@ segundos: todas las respuestas son `200 OK`, de las dos versiones.
 las pruebas. Con Blue/Green o con Rolling Upgrade, la falla llega a todos los
 clientes antes de detectarla.
 
-**Escenario:** la versión `v2` de `Users` recibe primero el 10 % de las
-solicitudes, después el 50 % y después todas. Después, la versión `v2` empieza a
-fallar, simulado con fallas inyectadas: con el 10 %, se detecta y se vuelve
+**Escenario:** la versión `v2` de `Users` recibe primero el 10% de las
+solicitudes, después el 50% y después todas. Después, la versión `v2` empieza a
+fallar, simulado con fallas inyectadas: con el 10%, se detecta y se vuelve
 atrás.
 
 **Implementación:**
 
-* **El reparto:** la entrada de despliegue publicada en el puerto 8091 usa
-  [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html),
-  que elige el destino según un hash de `$request_id`, distinto en cada
-  solicitud. Cambiar el porcentaje es cambiar una línea y recargar nginx, con la
-  función `deploy_canary`.
-* **La métrica por versión:** con `X-Version`, cada respuesta dice qué versión
-  la atendió. La demo y [k6](https://k6.io/) cuentan las respuestas y los
-  errores de cada una.
-* **La falla:** el `/users/chaos` de la versión `v2`, por adentro de la red de
-  Docker: esa versión responde `503 Service Unavailable` a todo.
-
-El reparto es por solicitud: el mismo cliente puede recibir una versión y después
-la otra. Para que cada cliente vea siempre la misma, el hash puede usar una cookie
-o el `User`.
+* **El reparto:** los clientes mandan sus solicitudes siempre a la misma
+  dirección, y detrás de ella un componente manda a la versión `v2` un
+  porcentaje de ellas. Cambiar el porcentaje no es desplegar, y los clientes no
+  se enteran.
+* **La métrica por versión:** para decidir si se avanza o se vuelve atrás, se
+  miden las respuestas y los errores de cada versión por separado.
+* **La falla:** una versión `v2` que falla con tráfico real, para ver que se
+  detecta cuando todavía le llegan pocas solicitudes.
 
 En Azure, Azure Container Apps [reparte el
 tráfico](https://learn.microsoft.com/en-us/azure/container-apps/traffic-splitting)
@@ -2506,10 +2679,13 @@ entre revisiones por porcentaje. En AWS, CodeDeploy hace despliegues *canary* en
 ECS y en [AWS Lambda](https://aws.amazon.com/lambda/), y un Application Load
 Balancer reparte por pesos entre grupos de destino.
 
+<!-- markdownlint-disable-next-line MD024 -->
+##### Cómo verlo con Docker
+
 **Cómo funciona:**
 
-![La entrada de despliegue manda el 10 % a la versión `v2`, y las métricas deciden
-si sigue](assets/29-canary.svg)
+![La entrada de despliegue manda el 10% a la versión `v2`, y las métricas
+deciden si sigue](assets/29-canary.svg)
 
 **Código:** el reparto, en el archivo de estrategia:
 
@@ -2520,11 +2696,89 @@ split_clients "${request_id}" $users_target {
 }
 ```
 
-**Cómo verlo:** [demos/29-canary.sh](demos/29-canary.sh) manda a la versión `v2` el
-10 %, el 50 % y el 100 % de las solicitudes, y con cada porcentaje cuenta
-cuántas respuestas dio cada versión. Después vuelve al 10 % con una versión `v2`
-que falla: fallan solo sus respuestas, cerca del 10 %. Al final vuelve todo a la
+* **El reparto:** la dirección de los clientes es la entrada de despliegue,
+  publicada en el puerto 8091. El componente que reparte es el nginx de
+  `api-gateway`, con
+  [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html),
+  que elige el destino según un hash de `$request_id`, distinto en cada
+  solicitud. Cambiar el porcentaje es cambiar una línea y recargar nginx, con la
+  función `deploy_canary`.
+* **La métrica por versión:** con `X-Version`, cada respuesta dice qué versión
+  la atendió. La demo y [k6](https://k6.io/) cuentan las respuestas y los
+  errores de cada una.
+* **La falla:** el `/users/chaos` de la versión `v2`, por adentro de la red de
+  Docker: esa versión responde `503 Service Unavailable` a todo.
+
+El reparto es por solicitud: el mismo cliente puede recibir una versión y
+después la otra. Para que cada cliente vea siempre la misma, el hash puede usar
+una cookie o el `User`.
+
+La demo [demos/29-canary.sh](demos/29-canary.sh) manda a la versión `v2` el 10%,
+el 50% y el 100% de las solicitudes, y con cada porcentaje cuenta cuántas
+respuestas dio cada versión. Después vuelve al 10% con una versión `v2` que
+falla: fallan solo sus respuestas, cerca del 10%. Al final vuelve todo a la
 versión `v1`.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Cómo verlo con Kubernetes
+
+Lo que la demo 29 hace a mano -cambiar el porcentaje, mirar los errores,
+decidir- lo hace [Argo Rollouts](https://argoproj.github.io/rollouts/), con un
+análisis después de cada paso.
+
+* **El reparto:** la dirección de los clientes es el *Gateway*, publicado en el
+  puerto 8092. El componente que reparte es el mismo *Gateway*, implementado con
+  [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/): su ruta
+  tiene dos destinos, `users-stable` y `users-canary`, cada uno con un peso, y
+  reparte las solicitudes según esos pesos. Es el `split_clients` de la demo 29,
+  en [Gateway API](https://gateway-api.sigs.k8s.io/). Argo cambia los pesos con
+  su [plugin de Gateway
+  API](https://rollouts-plugin-trafficrouter-gatewayapi.readthedocs.io/en/latest/).
+* **Los pasos:** 10% a la versión nueva, análisis, 50%, análisis, y 100%. Cada
+  análisis es el mismo de la demo 32: los errores de los pods nuevos en
+  [Prometheus](https://prometheus.io/).
+* **La falla:** la versión `v3-bad`, que falla desde que arranca. A diferencia
+  de la demo 29, no se le inyectan fallas después: es una versión con un error.
+* **Sin datos no hay decisión:** el análisis espera 30 segundos antes de medir.
+  Si la versión nueva no recibió solicitudes, la consulta da 0/0, que no es ni
+  éxito ni falla, y Argo detiene el despliegue para que decida una persona.
+
+| Qué | Dónde |
+| --- | ----- |
+| El `Rollout`, con los pasos y el análisis | [k8s/canary/rollout.yaml](k8s/canary/rollout.yaml) |
+| `users-stable` y `users-canary` | [k8s/canary/services.yaml](k8s/canary/services.yaml) |
+| La ruta con los pesos | [k8s/canary/httproute.yaml](k8s/canary/httproute.yaml) |
+| El permiso del plugin para cambiar la ruta | [k8s/base/argo-rollouts-gateway-api.yaml](k8s/base/argo-rollouts-gateway-api.yaml) |
+
+```yaml
+strategy:
+  canary:
+    stableService: users-stable
+    canaryService: users-canary
+    trafficRouting:
+      plugins:
+        argoproj-labs/gatewayAPI:
+          httpRoute: users
+          namespace: andis
+    steps:
+      - setWeight: 10
+      - analysis: ...
+      - setWeight: 50
+      - analysis: ...
+```
+
+La demo [demos/33-argo-canary.sh](demos/33-argo-canary.sh) despliega la versión
+`v2`, que avanza sola del 10% al 100% en un minuto y medio, sin errores.
+Después despliega la `v3-bad`: con el 10%, el análisis mide alrededor del 30%
+de errores, y Argo vuelve todo a la `v2` en medio minuto. En cada cambio muestra
+los pesos de la ruta, y al final, lo que midió el análisis.
+
+En Azure, Argo Rollouts funciona igual en [Azure Kubernetes
+Service](https://azure.microsoft.com/products/kubernetes-service/); en AWS, en
+[Amazon EKS](https://aws.amazon.com/eks/).
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Evaluación
 
 **Qué facilita en el despliegue:**
 
@@ -2534,6 +2788,7 @@ versión `v1`.
 | Aumentar la exposición de a poco | Sí | Una línea por paso |
 | Detectar una falla que no se ve en las métricas que se miran | No | El canario avanza igual: hay que elegir bien qué métricas deciden |
 | Que un cliente vea siempre la misma versión | No | Con `$request_id`, cada solicitud se reparte por separado |
+| Avanzar o volver atrás sin que nadie mire | Solo con un análisis | En la demo 29 decide una persona; en la 33, Argo Rollouts, con las métricas de la versión nueva |
 
 **Ventajas y desventajas:**
 
@@ -2570,18 +2825,19 @@ de la [CNCF](https://www.cncf.io/).
 * **Por segmento:** la primera estrategia del flag tiene una restricción: si la
   solicitud trae `X-Segment: beta`, la variante es la B.
 * **Por porcentaje:** si no, la segunda estrategia reparte los `Users` entre A y
-  B, la mitad en cada una. Unleash calcula un hash del id del `User`: el
-  reparto es aleatorio entre los `Users`, pero el mismo `User` cae siempre en la
-  misma variante, y todas las réplicas eligen la misma.
-* **El cambio del reparto:** se hace en Unleash, con la consola o con su API, sin
-  desplegar. `Users` vuelve a leer el flag cada 2 segundos.
+  B, la mitad en cada una. Unleash calcula un hash del id del `User`: el reparto
+  es aleatorio entre los `Users`, pero el mismo `User` cae siempre en la misma
+  variante, y todas las réplicas eligen la misma.
+* **El cambio del reparto:** se hace en Unleash, con la consola o con su API,
+  sin desplegar. `Users` vuelve a leer el flag cada 2 segundos.
 * **Si Unleash no responde:** `Users` sigue con la última configuración que
   leyó. Si nunca la leyó, OpenFeature devuelve la variante A, el valor por
   omisión. Unleash no está en el camino de cada solicitud: la variante se
   calcula en `Users`.
 * **La respuesta:** el campo `DisplayName` con la variante, y el encabezado
   `X-Variant`.
-* **La medida:** la métrica `users_experiment_total`, por variante y por segmento.
+* **La medida:** la métrica `users_experiment_total`, por variante y por
+  segmento.
 
 A diferencia de Canary Testing, el reparto no está en el gateway, sino en un
 servicio de *feature flags* que consulta la versión que trae el experimento.
@@ -2702,10 +2958,11 @@ mostró cada variante, según las métricas de `Users`.
 
 ### Las estrategias en Grafana
 
-[demos/load-deployment.sh](demos/load-deployment.sh) lanza un escenario de [k6](https://k6.io/) y
-despliega la versión `v2` mientras corre. Cada paso queda marcado con una línea
-vertical en el dashboard, con la etiqueta `despliegue`. Los scripts del `27` al
-`30` también marcan sus pasos si [Grafana](https://grafana.com/oss/grafana/) está levantado.
+La demo [demos/load-deployment.sh](demos/load-deployment.sh) lanza un escenario
+de [k6](https://k6.io/) y despliega la versión `v2` mientras corre. Cada paso
+queda marcado con una línea vertical en el dashboard, con la etiqueta
+`despliegue`. Los scripts del `27` al `30` también marcan sus pasos si
+[Grafana](https://grafana.com/oss/grafana/) está levantado.
 
 ```bash
 docker compose --profile observability up -d --wait
@@ -2713,15 +2970,43 @@ docker compose --profile observability up -d --wait
 ```
 
 Los paneles están en la fila "Facilidad de despliegue". Como en las demos
-anteriores, son resultados de una corrida en una sola máquina, con 20 solicitudes
-por segundo: ilustran el efecto y no son una prueba de rendimiento.
+anteriores, son resultados de una corrida en una sola máquina, con 20
+solicitudes por segundo: ilustran el efecto y no son una prueba de rendimiento.
 
 | Estrategia | Qué se hace | Qué mirar | Resultado |
 | ---------- | ----------- | --------- | --------- |
 | Blue/Green | Se conmuta a la versión `v2` y, 20 segundos después, se vuelve a la `v1` | "Solicitudes por versión" y "Respuestas con error, por versión" | El tráfico pasa de una versión a la otra de una vez, en cada conmutación. Las 1201 solicitudes respondieron `200 OK` |
 | Rolling Upgrade | Se reemplazan tres instancias de la versión `v1` en tres pasos | Lo mismo | La versión `v2` sube en escalones, un tercio por paso, y cada paso tarda unos 4 segundos. Las 2398 solicitudes respondieron `200 OK` |
-| Canary Testing | 10 % y 50 % a la versión `v2`, que después falla, y vuelta atrás | Lo mismo | La versión `v2` sigue al porcentaje. Durante la falla, 164 solicitudes de 1801 respondieron `503 Service Unavailable`, todas de la versión `v2`; la versión `v1` no tuvo errores |
+| Canary Testing | 10% y 50% a la versión `v2`, que después falla, y vuelta atrás | Lo mismo | La versión `v2` sigue al porcentaje. Durante la falla, 164 solicitudes de 1801 respondieron `503 Service Unavailable`, todas de la versión `v2`; la versión `v1` no tuvo errores |
 | A/B Testing | Los dos `Users` consultan a la versión `v2`, y la mitad de las consultas de bob traen `X-Segment: beta` | "Respuestas por variante" | alice recibió la B las 601 veces; bob, la A 300 veces y la B las 300 en que trajo el segmento |
 
 Las métricas por versión las informa k6 con el encabezado `X-Version`, para no
 tener que instrumentar [nginx](https://nginx.org/). Las del experimento son de `Users`.
+
+Las demos 31 a 33 tienen sus propios escenarios, con el clúster de
+[Kubernetes](https://kubernetes.io/) creado. No necesitan el resto de Docker
+Compose, solo el perfil `observability`:
+
+```bash
+./demos/load-deployment.sh k8s-bluegreen   # también: k8s-rolling, k8s-canary
+```
+
+k6 corre en Docker Compose y llega al *Gateway* del clúster por la red de
+Docker: el script suma el nodo de [kind](https://kind.sigs.k8s.io/) a esa red.
+Sus métricas van al mismo Prometheus, así que se ven en los mismos paneles. El
+panel "Errores de cada versión, según Users" lee el Prometheus del clúster:
+muestra lo que mide el análisis de [Argo
+Rollouts](https://argoproj.github.io/rollouts/), con una línea roja en el 5%.
+
+| Estrategia | Qué se hace | Qué mirar | Resultado |
+| ---------- | ----------- | --------- | --------- |
+| Blue/Green, demo 31 | La versión `v2` en *preview*, `promote` y, 20 segundos después, `undo` | "Solicitudes por versión" y "Respuestas con error, por versión" | El tráfico pasa de una versión a la otra de una vez. Las 1201 solicitudes respondieron `200 OK` |
+| Rolling Upgrade, demo 32 | Con el Deployment: la versión `v2`, después la `v3-bad`, y `undo` a mano | Lo mismo | Cada reemplazo tarda unos 7 segundos. La versión `v3` respondió `503 Service Unavailable` 195 veces, hasta el `undo` |
+| Canary Testing, demo 33 | La versión `v2` hasta el 100%, y después la `v3-bad` | Lo mismo, y "Errores de cada versión, según Users" | La versión `v2` sigue a los pesos del 10% y el 50%, sin errores. La `v3` supera la línea del 5%, y Argo vuelve atrás: 17 respuestas `503` de 3999, todas de la `v3` |
+
+Además de los `503` de la versión `v3`, hubo unas pocas solicitudes sin
+respuesta: 6 de 2400 en Rolling Upgrade y 1 de 3999 en Canary. Coinciden con
+los cambios de pods: NGINX Gateway Fabric recarga nginx cada vez que cambian
+los pods detrás de un Service, y una recarga puede cortar alguna conexión que
+k6 tenía abierta para reutilizar. En la demo 28, el gateway de Docker Compose
+no se recarga: encuentra las instancias nuevas por DNS.

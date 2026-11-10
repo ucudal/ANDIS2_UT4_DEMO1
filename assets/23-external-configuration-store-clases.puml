@@ -23,7 +23,7 @@ interface IConfiguration
 
 ExternalConfigurationExtensions --> ConsulConfigurationSource : registra
 ConsulConfigurationSource --> ConsulConfigurationProvider
-ConsulConfigurationPoller --> ConsulConfigurationProvider : cada 2 segundos
+ConsulConfigurationPoller --> ConsulConfigurationProvider : cada 2"
 IConfiguration --> ConsulConfigurationProvider : la última fuente
 OrdersController --> IConfiguration : lee en cada uso
 @enduml

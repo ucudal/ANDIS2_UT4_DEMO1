@@ -78,7 +78,7 @@ note "Así se mueve una dependencia a otra dirección sin tocar las imágenes."
 step "Si el almacén no responde, los servicios siguen con los últimos valores"
 annotate "Consul pausado"
 docker compose pause consul > /dev/null 2>&1
-note "Consul pausado; se esperan 5 segundos..."
+note "Consul pausado; se esperan 5\"..."
 sleep 5
 order 10
 docker compose unpause consul > /dev/null 2>&1

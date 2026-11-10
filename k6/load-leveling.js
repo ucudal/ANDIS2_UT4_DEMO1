@@ -1,8 +1,8 @@
 // Queue-Based Load Leveling: un pico de RATE POST /orders/ por segundo durante
 // DURATION, directamente en orders-service: el gateway admite 1 POST por
 // segundo por cliente y rechazaría el pico antes de llegar a la cola. Los
-// workers procesan unas 1,5 Orders por segundo -3 réplicas, 2 s cada una-, muy
-// por debajo del pico.
+// workers procesan unas 1,5 Orders por segundo -3 réplicas, 2 segundos cada
+// una-, muy por debajo del pico.
 //
 // Qué mirar en Grafana:
 // - "Latencia p95 vista por k6, por endpoint": "create order" se mantiene por

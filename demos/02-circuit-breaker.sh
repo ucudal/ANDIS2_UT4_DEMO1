@@ -19,7 +19,7 @@ consult() {
 
 title "Circuit Breaker"
 
-step "Products falla en el 100 % de las solicitudes"
+step "Products falla en el 100% de las solicitudes"
 chaos products 1 0
 
 step "Se apagan todos los patrones, también el Circuit Breaker"
@@ -38,6 +38,6 @@ step "Products se recupera, pero el circuito sigue abierto: Orders no lo llama y
 reset_chaos
 details
 
-step "Se esperan 16 segundos a que el circuito pase a semiabierto..."
+step "Se esperan 16\" a que el circuito pase a semiabierto..."
 sleep 16
 details

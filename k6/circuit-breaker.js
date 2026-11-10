@@ -1,16 +1,17 @@
 // Circuit Breaker bajo carga: tráfico constante de consultas de detalle; a los
-// 15 s Products empieza a fallar siempre y a los 50 s se recupera.
+// 15 segundos Products empieza a fallar siempre y a los 50 segundos se
+// recupera.
 //
 // Solo el Circuit Breaker queda prendido: sin Retry, cada llamada fallida
 // cuenta una vez para el circuito.
 //
 // Qué mirar en Grafana: "products · HTTP 503" por unos segundos y después
 // "products · BrokenCircuit", cuando el circuito se abre y las llamadas a
-// Products fallan de inmediato. Como la falla dura más que los 15 s de circuito
-// abierto, el circuito pasa a semiabierto y se vuelve a abrir. Las respuestas
-// siguen siendo 200, degradadas. Tras la recuperación, el circuito pasa a
-// semiabierto y se cierra. "Estado del circuito de cada dependencia" muestra
-// products en rojo de corrido mientras el circuito está abierto.
+// Products fallan de inmediato. Como la falla dura más que los 15 segundos de
+// circuito abierto, el circuito pasa a semiabierto y se vuelve a abrir. Las
+// respuestas siguen siendo 200, degradadas. Tras la recuperación, el circuito
+// pasa a semiabierto y se cierra. "Estado del circuito de cada dependencia"
+// muestra products en rojo de corrido mientras el circuito está abierto.
 import { chaos, resetChaos, onlyPattern, resetPatterns, details, checkStatus } from './lib.js';
 
 export const options = {

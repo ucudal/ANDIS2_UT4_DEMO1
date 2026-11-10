@@ -27,14 +27,14 @@ for pct in 10 50 100; do
     docker compose exec -T api-gateway grep '%' /etc/nginx/deployment-routes.conf | sed 's/^ */  /'
     versions 50
 done
-note "Con 100 %, la versión v2 recibe todo: el lanzamiento terminó."
+note "Con 100%, la versión v2 recibe todo: el lanzamiento terminó."
 
-step "Otra versión v2, con un error: el canario vuelve al 10 %"
+step "Otra versión v2, con un error: el canario vuelve al 10%"
 deploy_canary 10
 v2_chaos 1 0
 annotate "Canary: la versión v2 falla" despliegue
 versions 50
-note "Solo fallan las solicitudes que fueron a la versión v2: cerca del 10 %."
+note "Solo fallan las solicitudes que fueron a la versión v2: cerca del 10%."
 
 step "Las métricas del canario deciden: se vuelve a la versión v1"
 annotate "Canary: vuelta atrás" despliegue

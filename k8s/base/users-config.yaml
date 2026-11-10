@@ -1,0 +1,12 @@
+# La configuración de Users en el clúster. No lleva la versión: cada versión es
+# una imagen distinta, users-service:v1, v2 o v3-bad, con su RELEASE__VERSION.
+#
+# No hay RabbitMQ ni Unleash en el clúster. Users atiende igual sin RabbitMQ, solo
+# que no avisa los cambios, y sin Unleash todos los Users ven la variante A.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: users-config
+  namespace: andis
+data:
+  CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"

@@ -24,7 +24,7 @@ burst() {
 title "Competing Consumers: escalar los consumidores"
 
 step "Con 3 réplicas de orders-worker se procesan $ORDERS Orders"
-echo "  Procesadas en $(burst) s"
+echo "  Procesadas en $(burst)\""
 
 step "Se escala a 6 réplicas"
 docker compose up -d --scale orders-worker=6 --wait orders-worker > /dev/null 2>&1
@@ -33,7 +33,7 @@ until [ "$(queue_consumers orders.process)" = 6 ]; do sleep 1; done
 echo "  Consumidores de orders.process: $(queue_consumers orders.process)"
 
 step "Con 6 réplicas se procesan otras $ORDERS Orders"
-echo "  Procesadas en $(burst) s"
+echo "  Procesadas en $(burst)\""
 note "Cerca de la mitad: el trabajo se reparte entre el doble de consumidores, sin cambiar el código."
 
 step "Se vuelve a 3 réplicas"

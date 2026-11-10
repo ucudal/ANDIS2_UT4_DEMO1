@@ -11,7 +11,7 @@ rectangle "users_experiment_total\npor variante" as M
 U1 --> V2
 U2 --> V2
 U3 --> V2
-V2 ..> UL : OpenFeature,\ncada 2 segundos
+V2 ..> UL : OpenFeature,\ncada 2"
 V2 --> A : User 2,\npor porcentaje
 V2 --> B : User 1, por porcentaje,\no segmento beta
 V2 ..> M

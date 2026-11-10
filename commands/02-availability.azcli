@@ -185,7 +185,7 @@ curl -s -X DELETE http://localhost/products/chaos
 curl -s -X DELETE http://localhost/users/chaos
 
 # El siguiente script hace lo mismo, solo con Products: lo hace fallar en el
-# 30 % de las solicitudes y repite la consulta 8 veces, una por segundo, con
+# 30% de las solicitudes y repite la consulta 8 veces, una por segundo, con
 # todos los patrones apagados; después prende solo el Retry y la repite otras 8
 # veces. Tarda unos 20 segundos.
 
@@ -202,7 +202,7 @@ curl -s -X DELETE http://localhost/users/chaos
 #   Las que demoran más son las que necesitaron reintentos: 0.5, 1 o 2
 #   segundos, con jitter.
 # El Circuit Breaker queda apagado tanto con Retry prendido como con Retry
-# apagado: con 30 % de fallas podría abrirse en una mala racha, y la consulta
+# apagado: con 30% de fallas podría abrirse en una mala racha, y la consulta
 # diría "no disponible [circuito abierto]", lo que mezclaría los dos patrones.
 
 # Logs de Docker: una línea [RETRY] por reintento, con el número de reintento,
@@ -218,7 +218,7 @@ docker compose logs orders-service | grep '\[RETRY\]'
 #   cantidad de reintentos de cada intervalo de 5 segundos, solo en la segunda
 #   mitad.
 # - "Fracción de solicitudes que fallan a propósito": products-service sube a
-#   30 % mientras dura la demo.
+#   30% mientras dura la demo.
 
 # --------------------------
 # --- 02 Circuit Breaker ---
@@ -233,7 +233,7 @@ docker compose logs orders-service | grep '\[RETRY\]'
 # Después de 15 segundos pasa a semiabierto: deja pasar una llamada de prueba y,
 # si funciona, se cierra.
 #
-# El siguiente script hace que Products falle en el 100 % de las solicitudes y
+# El siguiente script hace que Products falle en el 100% de las solicitudes y
 # consulta el detalle 6 veces con todos los patrones apagados; después prende
 # solo el Circuit Breaker y lo consulta otras 6 veces. Después de cada tanda
 # dice cuántas llamadas le llegaron a Products, según las métricas de Products.
@@ -310,7 +310,7 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 # - "Solicitudes por segundo, por código HTTP": el cliente sigue recibiendo 200
 #   todo el tiempo.
 # - "Usuarios virtuales y respuestas degradadas": el % degradado sube durante la
-#   falla hasta cerca de 70 % y baja de a poco después: es la fracción acumulada
+#   falla hasta cerca de 70% y baja de a poco después: es la fracción acumulada
 #   desde el inicio del escenario, así que no vuelve a 0.
 
 # -------------------
@@ -392,11 +392,11 @@ docker compose logs orders-service | grep '\[BULKHEAD\]'
 #   segundos en la primera tanda y en unos 4.5 en la segunda, porque incluye el
 #   tiempo que la llamada espera en la fila. Users en milisegundos en las dos.
 
-# Bajo carga: 6 consultas por segundo durante 45 s, con Products lento.
+# Bajo carga: 6 consultas por segundo durante 45 segundos, con Products lento.
 
 docker compose run --rm k6 run /scripts/bulkhead.js
 
-# Resultado en consola: todos los checks pasan; cerca del 70 % de las respuestas
+# Resultado en consola: todos los checks pasan; cerca del 70% de las respuestas
 # llegan degradadas.
 #
 # Resultado en Grafana:
@@ -476,7 +476,8 @@ docker compose logs orders-service | grep '\[THROTTLING\]'
 #   en la segunda. "rechazadas" aparece solo en la segunda, con 20. "aceptadas"
 #   suma 40 en la primera, más las rondas para abrir conexiones, y 20 en la
 #   segunda.
-# - "Demora agregada a propósito": orders-service en 5 s durante cada tanda.
+# - "Demora agregada a propósito": orders-service en 5 segundos durante cada
+#   tanda.
 
 # Bajo carga: Orders demora 1 segundo y los usuarios virtuales suben de 0 a 40,
 # se mantienen y bajan, en 60 segundos. Los clientes respetan Retry-After.
@@ -491,7 +492,7 @@ docker compose run --rm k6 run /scripts/throttling.js
 #   usuarios virtuales; aparecen "rechazadas", la cantidad de cada intervalo de
 #   5 segundos, mientras la carga supera el límite.
 # - "Solicitudes por segundo, por código HTTP": aparecen los 503 en rojo.
-# - "Demora agregada a propósito": orders-service en 1 s.
+# - "Demora agregada a propósito": orders-service en 1 segundo.
 
 # ------------------------
 # --- 05 Rate Limiting ---
@@ -743,8 +744,8 @@ docker compose up -d orders-worker
 
 # Resultado en Grafana:
 # - "Cola orders.process": "esperando" salta a unas 50 y baja de forma pareja
-#   en unos 40 s; "en proceso" queda en 3, una por réplica; "consumidores" baja
-#   a 2 si se detiene una réplica.
+#   en unos 40 segundos; "en proceso" queda en 3, una por réplica;
+#   "consumidores" baja a 2 si se detiene una réplica.
 # - "Orders procesadas por segundo, por réplica": tres franjas de igual
 #   altura, unas 0,5 por segundo cada una; si se detiene una réplica, su franja
 #   desaparece y la cola tarda más en vaciarse.

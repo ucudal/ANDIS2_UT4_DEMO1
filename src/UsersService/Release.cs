@@ -5,9 +5,10 @@ namespace Ucu.Andis.Users;
 // 1. Las demos de facilidad de despliegue, de la 27 a la 30, publican la
 // versión 2 en users-service-v2 y la comparan con la 1, en users-service.
 //
-// Es la misma imagen con otra configuración: así no hay que construir otra
-// imagen para tener una versión nueva. En producción, cada versión sería una
-// imagen distinta, con su propio número.
+// Con Docker Compose es la misma imagen con otra configuración: así no hay que
+// construir otra imagen para tener una versión nueva. Las demos de Kubernetes,
+// de la 31 a la 33, construyen una imagen por versión, como en producción, con
+// el argumento RELEASE_VERSION del Dockerfile.
 public class Release
 {
     public const string VersionHeader = "X-Version";

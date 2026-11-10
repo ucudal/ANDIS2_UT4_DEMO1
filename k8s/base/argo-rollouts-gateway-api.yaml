@@ -1,0 +1,32 @@
+# Permiso para que Argo Rollouts, con el plugin de Gateway API, cambie los pesos
+# de las HTTPRoute del namespace andis durante un Canary -ver la demo 33-. Solo
+# en este namespace, y solo lo que el plugin necesita.
+#
+# El plugin se registra en demos/k8s-up.sh, porque su dirección depende de la
+# arquitectura del nodo.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-rollouts-gateway-api
+  namespace: andis
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-rollouts-gateway-api
+  namespace: andis
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-rollouts-gateway-api
+subjects:
+  - kind: ServiceAccount
+    name: argo-rollouts
+    namespace: argo-rollouts

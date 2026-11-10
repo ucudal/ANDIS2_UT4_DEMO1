@@ -23,7 +23,8 @@ public static class Resilience
     public const int DefaultBulkheadPermitLimit = 5;
     public const int DefaultBulkheadQueueLimit = 5;
 
-    // Retry: reintentos con retroceso exponencial: 0,5 s, 1 s, 2 s, con jitter.
+    // Retry: reintentos con retroceso exponencial: 0,5 segundos, 1 segundo, 2
+    // segundos, con jitter.
     public const int MaxRetries = 3;
     public static readonly TimeSpan RetryBaseDelay = TimeSpan.FromMilliseconds(500);
 

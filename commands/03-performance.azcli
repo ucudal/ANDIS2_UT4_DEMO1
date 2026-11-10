@@ -228,8 +228,8 @@ curl -s -X DELETE http://localhost/products/cache | jq
 
 docker compose logs products-service --since 2m | grep '\[CACHE-ASIDE\]'
 
-# Bajo carga: 50 lecturas por segundo, 30 s con la caché apagada y 30 s
-# prendida.
+# Bajo carga: 50 lecturas por segundo, 30 segundos con la caché apagada y 30
+# segundos prendida.
 
 docker compose run --rm k6 run /scripts/cache-aside.js
 
@@ -339,7 +339,7 @@ done
 # Resultado en consola: las 30 responden 202 en pocos milisegundos; la cola baja
 # de a 3 mensajes cada 2 segundos, uno por réplica, hasta vaciarse.
 
-# Bajo carga: 10 POST por segundo durante 10 s.
+# Bajo carga: 10 POST por segundo durante 10 segundos.
 
 docker compose run --rm k6 run /scripts/load-leveling.js
 

@@ -1,0 +1,26 @@
+# Los dos Service del Blue/Green. Argo Rollouts les agrega al selector la
+# versión que corresponde a cada uno: users-active, la que ven los clientes, y
+# users-preview, la que se está probando.
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-active
+  namespace: andis
+spec:
+  selector:
+    app: users
+  ports:
+    - port: 8000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-preview
+  namespace: andis
+spec:
+  selector:
+    app: users
+  ports:
+    - port: 8000
+      targetPort: http

@@ -1,0 +1,62 @@
+# Rolling Upgrade con un Deployment de Kubernetes: la primera parte de la demo 32.
+# Es la demo 28, pero lo que allí se hacía a mano -levantar una instancia nueva,
+# esperar a que esté sana, detener una vieja- lo hace Kubernetes.
+#
+# Al cambiar la imagen, Kubernetes reemplaza los pods de a uno:
+# - maxSurge: 1, levanta un pod nuevo de más.
+# - maxUnavailable: 0, no detiene uno viejo hasta que el nuevo esté listo, según
+#   su readinessProbe.
+#
+# Kubernetes solo sabe si un pod está listo. Si la versión nueva responde
+# /health pero falla en las solicitudes, la despliega igual en todos los pods.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users
+  namespace: andis
+spec:
+  replicas: 3
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: users
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+        - name: users
+          image: users-service:v1
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: users-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          # Al detener un pod, el Gateway tarda un momento en dejar de mandarle
+          # solicitudes. El pod espera 5 segundos antes de detenerse, para que
+          # no se pierda ninguna durante el reemplazo.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi

@@ -1,0 +1,122 @@
+# Prometheus del clúster: lee las métricas de cada pod de Users, para que Argo
+# Rollouts decida con ellas si una versión nueva sigue o vuelve atrás -ver
+# analysis-error-rate.yaml-. Es el mismo Prometheus que en Docker Compose, pero
+# en lugar de una lista fija de servicios, le pregunta a Kubernetes qué pods hay:
+# los pods aparecen y desaparecen durante un despliegue.
+#
+# A cada serie le agrega las etiquetas del pod. Entre ellas, la versión de la
+# plantilla del pod: rollouts_pod_template_hash con Argo Rollouts, y
+# pod_template_hash con un Deployment. Así se separan las métricas de cada
+# versión.
+#
+# Consola: http://localhost:30090, publicado por kind -ver k8s/kind.yaml-.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: andis
+---
+# Permiso para listar los pods del namespace andis, y nada más.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus
+  namespace: andis
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus
+  namespace: andis
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: andis
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus
+  namespace: andis
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+    scrape_configs:
+      - job_name: users
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [andis]
+        relabel_configs:
+          # Solo los pods de Users, en el puerto 8000.
+          - source_labels: [__meta_kubernetes_pod_label_app, __meta_kubernetes_pod_container_port_number]
+            regex: users;8000
+            action: keep
+          # Las etiquetas del pod, como etiquetas de cada serie.
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          # La versión, del tag de la imagen: v1, v2 o v3-bad. La usa el panel
+          # de Grafana "Errores de cada versión, según Users".
+          - source_labels: [__meta_kubernetes_pod_container_image]
+            regex: .*:(.+)
+            target_label: version
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: andis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.15.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=2h
+          ports:
+            - containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: andis
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      nodePort: 30090

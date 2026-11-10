@@ -9,7 +9,7 @@ title "Retry"
 step "Sin fallas: curl $GATEWAY/orders/user/1/details"
 details
 
-step "Products falla en el 30 % de las solicitudes -responde 503-"
+step "Products falla en el 30% de las solicitudes -responde 503-"
 chaos products 0.3 0
 
 step "Se apagan todos los patrones, también el Retry"

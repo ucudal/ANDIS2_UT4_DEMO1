@@ -10,3 +10,14 @@ datasources:
     jsonData:
       # Igual al scrape_interval: Grafana lo usa para calcular $__rate_interval.
       timeInterval: 5s
+
+  # El Prometheus del clúster de las demos de Kubernetes, de la 31 a la 33,
+  # publicado por kind en el puerto 30090 de la máquina -ver k8s/kind.yaml-. Sin
+  # el clúster, el panel que lo usa queda vacío.
+  - name: Prometheus del clúster
+    uid: prometheus-k8s
+    type: prometheus
+    access: proxy
+    url: http://host.docker.internal:30090
+    jsonData:
+      timeInterval: 5s

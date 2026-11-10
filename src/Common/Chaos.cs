@@ -2,6 +2,7 @@ using System.Diagnostics.Metrics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -14,6 +15,12 @@ namespace Ucu.Andis.Common;
 //   PUT    {prefijo}/chaos  {"failureRate": 0.5, "delayMs": 1000}
 //   GET    {prefijo}/chaos
 //   DELETE {prefijo}/chaos  -vuelve a la normalidad-
+//
+// Los valores iniciales salen de la configuración, Chaos:FailureRate y
+// Chaos:DelayMs -por variable de entorno, CHAOS__FAILURERATE y CHAOS__DELAYMS-.
+// Sin valor, son 0: el servicio arranca sin fallas. Las demos de Kubernetes, de
+// la 31 a la 33, construyen con ellos una versión de Users que falla desde que
+// arranca, para ver cómo se detecta y se vuelve atrás.
 public class ChaosSettings
 {
     // Fracción de solicitudes que responden 503, entre 0 y 1.
@@ -32,9 +39,18 @@ public static class ChaosExtensions
 
     public static IApplicationBuilder UseChaos(this IApplicationBuilder app, string prefix)
     {
-        var settings = new ChaosSettings();
+        var configuration = app.ApplicationServices.GetRequiredService<IConfiguration>();
+        var settings = new ChaosSettings
+        {
+            FailureRate = Math.Clamp(configuration.GetValue("Chaos:FailureRate", 0.0), 0, 1),
+            DelayMs = Math.Max(configuration.GetValue("Chaos:DelayMs", 0), 0),
+        };
         var chaosPath = $"{prefix}/chaos";
         var logger = app.ApplicationServices.GetRequiredService<ILoggerFactory>().CreateLogger("Chaos");
+
+        if (settings.FailureRate > 0 || settings.DelayMs > 0)
+            logger.LogWarning("Chaos desde el arranque: failureRate={FailureRate}, delayMs={DelayMs}",
+                settings.FailureRate, settings.DelayMs);
 
         // La falla inyectada también se publica como métrica, para ver en
         // Grafana en qué momento empezó y cuándo terminó.

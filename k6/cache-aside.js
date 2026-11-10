@@ -1,8 +1,9 @@
 // Cache-Aside: 50 lecturas de Products por segundo, repartidas entre los 3
 // Products de los datos iniciales. Cada lectura de MongoDB demora 100 ms más,
-// para simular una base más lenta. Durante los primeros 30 s la caché está
-// apagada y toda lectura va a MongoDB; después de una pausa de 5 s se prende,
-// y durante otros 30 s casi todas las lecturas salen de Redis.
+// para simular una base más lenta. Durante los primeros 30 segundos la caché
+// está apagada y toda lectura va a MongoDB; después de una pausa de 5 segundos
+// se prende, y durante otros 30 segundos casi todas las lecturas salen de
+// Redis.
 //
 // Qué mirar en Grafana:
 // - "Latencia p95 por servicio": products-service baja de más de 100 ms a unos

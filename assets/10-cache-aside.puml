@@ -12,7 +12,7 @@ alt miss: no está
   R -->> P : nada
   P ->> M : lee el Product
   M -->> P : el Product
-  P ->> R : lo guarda por 60 segundos\nTtl
+  P ->> R : lo guarda por 60"\nTtl
 else hit: está
   R -->> P : el Product
 end

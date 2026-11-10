@@ -1,0 +1,17 @@
+# El clúster de las demos de despliegue con Kubernetes, de la 31 a la 33: un
+# solo nodo, que es un contenedor de Docker. Lo crea demos/k8s-up.sh.
+#
+# kind publica en la máquina dos puertos del nodo:
+# - 8092: el Gateway, la entrada de los clientes. Es el equivalente a la entrada
+#   de despliegue de Docker Compose, en el puerto 8091.
+# - 30090: Prometheus del clúster, que lee las métricas de cada versión.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: andis
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30092
+        hostPort: 8092
+      - containerPort: 30090
+        hostPort: 30090

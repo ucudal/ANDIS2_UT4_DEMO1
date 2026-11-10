@@ -1,8 +1,9 @@
 // Rate Limiting: un cliente crea Orders a través del gateway, que acepta como
 // máximo 1 POST /orders/ por segundo por IP, con una ráfaga de 5. Durante los
-// primeros 30 s el cliente no regula su ritmo y envía 5 por segundo; después
-// de una pausa de 5 s, durante otros 30 s respeta el límite y envía 1 por
-// segundo. Mientras tanto se consulta la lista de Orders, que no tiene límite.
+// primeros 30 segundos el cliente no regula su ritmo y envía 5 por segundo;
+// después de una pausa de 5 segundos, durante otros 30 segundos respeta el
+// límite y envía 1 por segundo. Mientras tanto se consulta la lista de Orders,
+// que no tiene límite.
 //
 // Qué mirar en Grafana: en la primera fase, de los POST pasa uno por segundo y
 // el resto recibe 429; en la segunda no hay 429. Las Orders creadas por segundo

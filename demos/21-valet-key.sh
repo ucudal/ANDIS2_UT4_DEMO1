@@ -21,7 +21,7 @@ carol=$(token carol)
 # bytes enviados y cuánto tardó.
 upload() {
     curl -s --cacert "$GATEWAY_CERT" -o /dev/null -X PUT --data-binary @"$IMAGE" \
-        -w '  HTTP %{http_code}, %{size_upload} bytes enviados en %{time_total} s\n' "$@"
+        -w '  HTTP %{http_code}, %{size_upload} bytes enviados en %{time_total}"\n' "$@"
 }
 
 # storage <argumentos de curl>: una solicitud a Azurite; muestra el código HTTP
@@ -68,12 +68,12 @@ storage -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary 'x' "${url/$PRODUCT/
 echo "  La misma URL sin la firma:"
 storage "${url%%\?*}"
 
-step "Una clave que vence a los 5 segundos"
+step "Una clave que vence a los 5\""
 short=$(curl -s --cacert "$GATEWAY_CERT" -X POST -H "Authorization: Bearer $carol" \
     "$HTTPS_GATEWAY/products/$PRODUCT/image/upload-url?seconds=5" | jq -r .uploadUrl)
 echo "  Enseguida, funciona:"
 upload -H 'x-ms-blob-type: BlockBlob' -H 'Content-Type: image/jpeg' "$short"
-note "Se esperan 7 segundos..."
+note "Se esperan 7\"..."
 sleep 7
 echo "  Vencida, ya no:"
 storage -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary 'x' "$short"

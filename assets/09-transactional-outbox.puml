@@ -10,7 +10,7 @@ queue "RabbitMQ\nandis.events" as MQ
 C ->> O : POST /orders/
 O ->> DB : una sola transacción\norders, order_events y outbox_messages
 O -->> C : 202 Accepted
-loop cada 1 segundo
+loop cada 1"
   R ->> DB : hasta 50 mensajes pendientes\nFOR UPDATE SKIP LOCKED
   alt RabbitMQ responde
     R ->> MQ : publica order.created\nPublishEventAsync

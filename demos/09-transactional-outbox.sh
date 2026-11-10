@@ -30,7 +30,7 @@ curl -s "$GATEWAY/health/orders" | jq -c '{status, rabbitmq: .checks.rabbitmq.st
 
 step "Mensajes pendientes en el outbox"
 pending
-note "Se esperan 15 segundos con RabbitMQ detenido, para que se vea en Grafana..."
+note "Se esperan 15\" con RabbitMQ detenido, para que se vea en Grafana..."
 sleep 15
 
 step "Se vuelve a levantar RabbitMQ"

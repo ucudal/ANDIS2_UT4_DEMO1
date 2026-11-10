@@ -1,0 +1,78 @@
+# Rolling Upgrade con Argo Rollouts: la segunda parte de la demo 32. El mismo
+# reemplazo de a un pod que el Deployment, pero después de cada paso Argo mira
+# las métricas de los pods nuevos -ver k8s/base/analysis-error-rate.yaml-. Si
+# fallan, aborta y vuelve a la versión anterior, sin que nadie intervenga.
+#
+# Es una estrategia canary sin trafficRouting: sin un router que reparta el
+# tráfico, setWeight es la fracción de los pods con la versión nueva, y el
+# Service reparte entre todos. De 3 pods:
+# - setWeight: 33, 1 pod nuevo.
+# - setWeight: 66, 2 pods nuevos.
+# - al terminar los pasos, los 3.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: users
+  namespace: andis
+spec:
+  replicas: 3
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: users
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+        - name: users
+          image: users-service:v2
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: users-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          # Al detener un pod, el Gateway tarda un momento en dejar de mandarle
+          # solicitudes. El pod espera 5 segundos antes de detenerse, para que
+          # no se pierda ninguna durante el reemplazo.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      steps:
+        - setWeight: 33
+        - analysis:
+            templates:
+              - templateName: error-rate
+            args:
+              - name: pod-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 66
+        - analysis:
+            templates:
+              - templateName: error-rate
+            args:
+              - name: pod-hash
+                valueFrom:
+                  podTemplateHashValue: Latest

@@ -6,7 +6,7 @@ participant "Orders" as O
 participant "Cliente" as K
 O -> C : GET /v1/kv/andis/?recurse
 C --> O : valores
-note right of O : Al arrancar, y después\ncada 2 segundos
+note right of O : Al arrancar, y después\ncada 2"
 K -> O : POST /orders/, cantidad 10
 O --> K : 202 Accepted
 U -> C : PUT andis/Orders/MaxQuantity = 3

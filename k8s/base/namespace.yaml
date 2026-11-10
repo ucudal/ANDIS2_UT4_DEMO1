@@ -1,0 +1,5 @@
+# Todo lo de las demos va en el namespace andis.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: andis

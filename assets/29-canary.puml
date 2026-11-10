@@ -6,9 +6,9 @@ rectangle "users-service\nversión 1" as V1
 rectangle "users-service-v2\nversión 2" as V2
 rectangle "Métricas\npor versión" as M
 C --> G
-G --> V1 : 90 %
-G --> V2 : 10 %
+G --> V1 : 90%
+G --> V2 : 10%
 V1 ..> M : X-Version
 V2 ..> M : X-Version
-M ..> G : ¿sube el porcentaje\no se vuelve a 0 %?
+M ..> G : ¿sube el porcentaje\no se vuelve a 0%?
 @enduml

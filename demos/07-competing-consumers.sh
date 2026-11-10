@@ -34,11 +34,11 @@ who_processed() {
     done
 }
 
-step "Se crean 9 Orders; cada worker demora 2 segundos en procesar una"
+step "Se crean 9 Orders; cada worker demora 2\" en procesar una"
 ids=$(create_orders 9)
 started=$(date +%s)
 wait_until_processed "$ids"
-echo "  Las 9 Orders se procesaron en $(( $(date +%s) - started )) s."
+echo "  Las 9 Orders se procesaron en $(( $(date +%s) - started ))\"."
 who_processed "$ids"
 
 step "Se crean 9 Orders más y se detiene una réplica mientras procesa"

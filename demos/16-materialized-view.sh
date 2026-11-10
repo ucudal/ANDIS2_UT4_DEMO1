@@ -44,7 +44,7 @@ wait_processed "$id"
 echo "  Order $id: $(curl -s "$ORDERS_DIRECT/orders/$id" | jq -r .status)"
 echo "  En la vista: $(curl -s "$GATEWAY/orders/user/2/details/view" | jq --argjson id "$id" 'map(select(.order_id == $id)) | length') filas"
 echo "  Eventos esperando en orders.details-view: $(queue_length orders.details-view)"
-note "Se esperan 15 segundos con el proyector detenido, para que se vea en Grafana..."
+note "Se esperan 15\" con el proyector detenido, para que se vea en Grafana..."
 sleep 15
 
 step "Se vuelve a levantar el proyector: procesa los eventos pendientes y la vista se pone al día"

@@ -1,6 +1,6 @@
-// Throttling: Orders demora 1 s en cada consulta de detalle y la cantidad de
-// usuarios virtuales sube de 0 a 40. Orders atiende como máximo 20 consultas
-// de detalle a la vez; las demás reciben 503 con Retry-After.
+// Throttling: Orders demora 1 segundo en cada consulta de detalle y la cantidad
+// de usuarios virtuales sube de 0 a 40. Orders atiende como máximo 20
+// consultas de detalle a la vez; las demás reciben 503 con Retry-After.
 //
 // Solo el Throttling queda prendido: sin Bulkhead, las consultas aceptadas
 // traen todos los nombres.
