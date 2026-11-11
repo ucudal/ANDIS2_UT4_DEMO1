@@ -29,7 +29,7 @@ step "Suscripciones al exchange andis.events: cada cola y las claves que recibe"
 curl -s -u guest:guest 'http://localhost:15672/api/exchanges/%2F/andis.events/bindings/source' \
     | jq '[.[] | {cola: .destination, clave: .routing_key}]' | table
 
-step "Se crea una Order: el evento order.created llega al worker y al proyector"
+step "Se crea una Order: el evento order.created llega al worker y a los proyectores"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 id=$(create_order 2 "$PRODUCT")
 echo "  Order $id creada"
@@ -44,4 +44,4 @@ step "Users cambia el nombre de un User y publica user.updated"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 update_user 2 "roberto" "bob@example.com"
 subscribers_log "$since"
-note "El worker no está suscripto a estos eventos: solo los recibe el proyector."
+note "El worker no está suscripto a estos eventos: solo los reciben los proyectores."

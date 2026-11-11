@@ -9,7 +9,7 @@ rectangle "Consultas" {
   rectangle "Detalle desde la vista\nOrdersQueriesController" as Q1
 }
 database "Modelo de escritura\norders, order_events,\noutbox_messages" as T1
-rectangle "Proyector\nOrderDetailsProjector" as PR
+rectangle "Proyectores\nOrderDetailsProjector" as PR
 database "Modelo de lectura\norder_details" as T2
 
 C1 --> T1

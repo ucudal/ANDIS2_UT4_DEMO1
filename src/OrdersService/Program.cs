@@ -115,7 +115,7 @@ if (builder.Configuration.GetValue<bool>("Projector:Enabled"))
 //
 // Con el outbox, la API ya no necesita a RabbitMQ para aceptar órdenes: si no
 // está, el servicio queda Degraded -responde 200- en lugar de Unhealthy. El
-// worker y el proyector sí lo necesitan, porque consumen de RabbitMQ.
+// los workers y los proyectores sí lo necesitan, porque consumen de RabbitMQ.
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<OrdersDbContext>("orders-db")
     .AddCheck<RabbitMqHealthCheck>("rabbitmq",

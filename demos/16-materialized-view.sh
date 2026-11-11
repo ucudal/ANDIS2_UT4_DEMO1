@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Materialized View: order_details guarda el detalle de cada Order con el nombre
-# del cliente y del producto ya copiados. El proyector la mantiene al día a
+# del cliente y del producto ya copiados. Los proyectores la mantienen al día a
 # partir de los eventos, y la consulta la lee sin llamar a Users ni a Products.
-# Tres réplicas del proyector aplican los eventos en cualquier orden.
+# Tres proyectores aplican los eventos en cualquier orden.
 source "$(dirname "$0")/common.sh"
 
 PRODUCT=60f7c2b5e1d3c2a1b8e4d123
 
-# Al terminar, el proyector queda levantado y el Product y el User recuperan su
+# Al terminar, los proyectores quedan levantados y el Product y el User recuperan su
 # nombre.
 cleanup() {
     docker compose start orders-projector > /dev/null 2>&1
@@ -40,7 +40,7 @@ echo "  details/view: los nombres ya están en la vista"
 view
 reset_chaos
 
-step "Se detienen las réplicas del proyector, Users demora 1,5\" y se crea una Order para el User 2"
+step "Se detienen los proyectores, Users demora 1,5\" y se crea una Order para el User 2"
 docker compose stop orders-projector 2>&1 | sed 's/^/  /'
 chaos users 0 1500
 id=$(create_order 2 "$PRODUCT")
@@ -48,7 +48,7 @@ wait_processed "$id"
 echo "  Order $id: $(curl -s "$ORDERS_DIRECT/orders/$id" | jq -r .status)"
 echo "  En la vista: $(curl -s "$GATEWAY/orders/user/2/details/view" | jq --argjson id "$id" 'map(select(.order_id == $id)) | length') filas"
 echo "  Eventos esperando en orders.details-view: $(queue_length orders.details-view)"
-note "Se esperan 15\" con el proyector detenido, para que se vea en Grafana..."
+note "Se esperan 15\" con los proyectores detenidos, para que se vea en Grafana..."
 sleep 15
 
 step "Se levantan las 3 réplicas: order.created y order.confirmed llegan a la vez a réplicas distintas"

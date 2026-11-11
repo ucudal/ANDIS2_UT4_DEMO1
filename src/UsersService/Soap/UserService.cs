@@ -63,7 +63,7 @@ public class UserService : IUserService
         user.Name = name;
         user.Email = email;
         await _db.SaveChangesAsync();
-        // Fecha del cambio: el proyector la usa para no pisar un nombre más nuevo
+        // Fecha del cambio: los proyectores la usan para no pisar un nombre más nuevo
         // con uno más viejo -ver Events.cs-.
         var changedAt = DateTime.UtcNow;
 

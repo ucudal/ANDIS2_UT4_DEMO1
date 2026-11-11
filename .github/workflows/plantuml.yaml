@@ -7,7 +7,7 @@ permissions:
   contents: write
 env:
   # Debe coincidir con la versión local
-  PLANTUML_VERSION: 1.2026.6
+  PLANTUML_VERSION: 1.2026.9
 jobs:
   render:
     runs-on: ubuntu-latest

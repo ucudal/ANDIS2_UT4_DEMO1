@@ -139,8 +139,8 @@ services:
 
   # Materialized View: la misma imagen que orders-service, con el proyector
   # habilitado. Mantiene la tabla order_details a partir de los eventos. Tres
-  # réplicas, como el worker: el proyector aplica los eventos de una Order en
-  # cualquier orden y tolera copias repetidas -ver OrderDetailsProjector.cs-.
+  # réplicas, como el worker: los proyectores aplican los eventos de una Order en
+  # cualquier orden y toleran copias repetidas -ver OrderDetailsProjector.cs-.
   orders-projector:
     build:
       context: ./src

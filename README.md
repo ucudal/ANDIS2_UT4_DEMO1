@@ -23,7 +23,7 @@ El panorama de la demo y la explicación de cada patrón está en
 La aplicación tiene tres servicios de dominio, cada uno con su propia base de
 datos, detrás de un API Gateway. Las `Orders` se procesan en segundo plano por
 varias réplicas de un *worker* que consumen una cola de [RabbitMQ](https://www.rabbitmq.com/). Los servicios
-publican eventos en RabbitMQ, y un proyector los usa para mantener una vista
+publican eventos en RabbitMQ, y los proyectores los usan para mantener una vista
 materializada del detalle de las `Orders`. `Products` usa [Redis](https://redis.io/) como caché.
 
 El gateway tiene dos entradas: [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin los patrones de seguridad, y HTTPS,

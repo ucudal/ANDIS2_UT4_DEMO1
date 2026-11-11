@@ -73,7 +73,7 @@ public class ProductsController : ControllerBase
             .Set(p => p.Name, product.Name)
             .Set(p => p.Price, product.Price);
         var result = await _productsCollection.UpdateOneAsync(p => p.Id == productId, update);
-        // Fecha del cambio: el proyector la usa para no pisar un nombre más nuevo
+        // Fecha del cambio: los proyectores la usan para no pisar un nombre más nuevo
         // con uno más viejo -ver Events.cs-.
         var changedAt = DateTime.UtcNow;
         if (result.MatchedCount == 0)

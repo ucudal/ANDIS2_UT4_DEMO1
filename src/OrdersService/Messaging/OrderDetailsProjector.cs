@@ -17,8 +17,8 @@ namespace Ucu.Andis.OrdersService.Messaging;
 // el worker. Cada mensaje va a una réplica distinta y se procesa en paralelo:
 // los eventos de una misma Order pueden aplicarse en cualquier orden, y dos
 // copias del mismo evento -el outbox y el puente entregan al menos una vez-
-// pueden procesarse a la vez. El proyector no guarda nada en memoria, pero eso
-// no alcanzaba: con una sola réplica, su resultado dependía del orden de los
+// pueden procesarse a la vez. Los proyectores no guardan nada en memoria, pero
+// eso no alcanzaba: con uno solo, su resultado dependía del orden de los
 // mensajes. Sin lo que sigue, con varias réplicas pasaría esto, sin errores
 // visibles:
 //

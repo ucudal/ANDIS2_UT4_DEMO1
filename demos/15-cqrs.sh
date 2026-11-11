@@ -40,6 +40,6 @@ before=$(count details/view 2)
 create_order 2 60f7c2b5e1d3c2a1b8e4d123 > /dev/null
 echo "  details:      $(count details 2) Orders del User 2"
 echo "  details/view: $(count details/view 2) Orders del User 2"
-note "La vista todavía no la tiene: el evento tiene que pasar por el outbox y por el proyector."
+note "La vista todavía no la tiene: el evento tiene que pasar por el outbox y por los proyectores."
 until [ "$(count details/view 2)" -gt "$before" ]; do sleep 0.5; done
 echo "  Un momento después, details/view: $(count details/view 2) Orders del User 2"

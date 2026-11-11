@@ -398,12 +398,12 @@ directa, y cómo se resolvió:
 | Identidad | Una sesión guardada en la memoria de una instancia obligaría a mandar todas las solicitudes de un usuario a esa instancia | El token de Keycloak viaja en cada solicitud, y ninguna instancia guarda la sesión | [Federated Identity](#federated-identity) |
 | *Relay* del *outbox* | Con dos instancias que leyeran los mensajes pendientes, las dos publicarían los mismos | `SELECT ... FOR UPDATE SKIP LOCKED`: cada mensaje lo toma una sola instancia | [Transactional Outbox](#transactional-outbox) |
 | *Worker* | Preguntaba si la `Order` seguía `Pending` y después la cambiaba: dos copias del mismo mensaje en dos réplicas a la vez la confirmaban dos veces | Un `UPDATE` condicional cambia el estado solo si la `Order` sigue `Pending` | [Competing Consumers para disponibilidad](#competing-consumers-para-disponibilidad) |
-| Proyector | Tenía una sola réplica: no guardaba nada en memoria, pero su resultado dependía de procesar los eventos en orden | *Upserts*, un estado que solo avanza, un índice único y la fecha de cada nombre | [Materialized View](#materialized-view) |
+| Proyectores | Había uno solo: no guardaba nada en memoria, pero su resultado dependía de procesar los eventos en orden | *Upserts*, un estado que solo avanza, un índice único y la fecha de cada nombre | [Materialized View](#materialized-view) |
 | Claves de `Idempotency-Key` | En un diccionario en memoria, un reintento que llegara a otra réplica crearía una segunda `Order`, y un reinicio borraría las claves | La tabla `idempotency_keys`, en la misma transacción que la `Order` | [Asynchronous Request-Reply](#asynchronous-request-reply) |
 
-***Stateless* no alcanza.** El proyector no guardaba nada en memoria y aun así
-no se podía escalar, porque su resultado dependía del orden de los mensajes. Ser
-*stateless* permite tener varias réplicas, pero además cada réplica tiene que
+***Stateless* no alcanza.** Los proyectores no guardan nada en memoria, y aun
+así no se podían escalar mientras su resultado dependía del orden de los
+mensajes. Ser *stateless* permite tener varias réplicas, pero además cada réplica tiene que
 tolerar mensajes que llegan en cualquier orden, repetidos y a la vez -ver
 [Idempotencia](#idempotencia)-.
 
@@ -761,7 +761,7 @@ llegar a la vez a dos réplicas. Si el *worker* preguntara si la `Order` sigue
    `Products`.
 3. Las dos la confirman: quedan dos `OrderConfirmed` en el historial de [Event
    Sourcing](#event-sourcing) y dos `order.confirmed` en el *outbox*, que
-   llegan dos veces al proyector y al ERP.
+   llegan dos veces a los proyectores y al ERP.
 
 Por eso el primer paso de la transacción es un `UPDATE` que cambia el estado
 solo si la `Order` sigue `Pending`. Es una sola sentencia atómica: MySQL bloquea
@@ -863,8 +863,8 @@ idempotentes, aunque las dos copias lleguen a la vez a réplicas distintas. El
 *worker* cambia el estado con un `UPDATE` que solo afecta a las `Orders` que
 siguen `Pending`, y descarta la copia si otra réplica ya la procesó -ver
 [Competing Consumers para
-disponibilidad](#competing-consumers-para-disponibilidad)-. El proyector de la
-vista materializada escribe cada fila con un *upsert* -ver [Materialized
+disponibilidad](#competing-consumers-para-disponibilidad)-. Los proyectores de
+la vista materializada escriben cada fila con un *upsert* -ver [Materialized
 View](#materialized-view)-. Ver [Idempotencia](#idempotencia).
 
 `Users` y `Products` publican sus eventos directamente, sin *outbox*: si
@@ -1078,8 +1078,8 @@ interesan:
 | `orders.process` | `orders-worker` | `order.created` |
 | `orders.details-view` | `orders-projector` | `order.*`, `user.updated`, `product.updated` |
 
-Un mismo `order.created` llega a las dos colas. `Orders` no sabe que existe el
-proyector: agregarlo no cambió el código que publica. La conexión y la
+Un mismo `order.created` llega a las dos colas. `Orders` no sabe que existen los
+proyectores: agregarlos no cambió el código que publica. La conexión y la
 publicación están en la clase `RabbitMq`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs):
 el método `PublishEventAsync` publica un evento, y el método
 `DeclareSubscriberQueueAsync` declara la cola de un suscriptor con sus claves.
@@ -1108,9 +1108,9 @@ Los contratos de los eventos y la conexión a RabbitMQ están en `Common`, el
 
 **Cómo verlo:**
 [demos/13-publisher-subscriber.sh](demos/13-publisher-subscriber.sh) muestra los
-enlaces del exchange, crea una `Order` y muestra los *logs* del *worker* y del
-proyector, que la reciben los dos. Después cambia el nombre de un `Product` y de
-un `User`: esos eventos solo los recibe el proyector.
+enlaces del exchange, crea una `Order` y muestra los *logs* del *worker* y de los
+proyectores, que la reciben los dos. Después cambia el nombre de un `Product` y
+de un `User`: esos eventos solo los reciben los proyectores.
 
 #### Asynchronous Request-Reply
 
@@ -1257,11 +1257,11 @@ que corre en `orders-projector` y consume la cola `orders.details-view`:
   de ese `User` o `Product`.
 
 Corre con tres réplicas, como el *worker*. Cada mensaje de la cola va a una
-réplica distinta y se procesa en paralelo, así que el proyector no puede
+réplica distinta y se procesa en paralelo, así que los proyectores no pueden
 suponer que los eventos de una `Order` llegan en orden, ni que una copia
-repetida de un mensaje llega después de la original. El proyector no guarda
-nada en memoria, y aun así, mientras su resultado dependía del orden de los
-mensajes, solo podía tener una réplica: ser *stateless* no alcanza para escalar
+repetida de un mensaje llega después de la original. Los proyectores no
+guardan nada en memoria, y aun así, mientras su resultado dependía del orden de
+los mensajes, solo podía haber uno: ser *stateless* no alcanza para escalar
 -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. Con
 varias réplicas, sin las soluciones que siguen pasaría esto, sin errores
 visibles:
@@ -1332,15 +1332,15 @@ pero no rendimiento.
 
 **Código:**
 
-![Clases del proyector de la vista](assets/16-materialized-view-clases.svg)
+![Clases de los proyectores de la vista](assets/16-materialized-view-clases.svg)
 
-El proyector es el único que escribe la vista, y el único que llama a `Users` y
+Los proyectores son los únicos que escriben la vista, y los únicos que llaman a `Users` y
 a `Products`.
 
 **Cómo verlo:** [demos/16-materialized-view.sh](demos/16-materialized-view.sh)
 cambia el nombre de un `Product` y la vista lo refleja. Con `Products` fallando
 siempre, la consulta síncrona responde "no disponible" y la vista sigue
-respondiendo con los nombres. Después detiene las réplicas del proyector, hace
+respondiendo con los nombres. Después detiene los proyectores, hace
 que `Users` demore 1,5 segundos y crea una `Order`: la `Order` se confirma, pero
 la vista no la tiene y sus eventos esperan en la cola. Al levantar las tres
 réplicas, `order.created` y `order.confirmed` llegan a la vez a réplicas
@@ -1352,8 +1352,8 @@ el más nuevo: la vista se queda con el nombre más nuevo.
 > [!TIP]
 >
 > Consulta [ExecuteUpdate and ExecuteDelete - EF Core](https://learn.microsoft.com/en-us/ef/core/saving/execute-insert-update-delete)
-> para tener más información sobre `ExecuteUpdateAsync`, con el que el
-> proyector cambia un nombre en todas las filas de la vista con una sola
+> para tener más información sobre `ExecuteUpdateAsync`, con el que los
+> proyectores cambian un nombre en todas las filas de la vista con una sola
 > sentencia.
 
 ## Demos de seguridad
@@ -2162,8 +2162,8 @@ Tres detalles del ciclo:
 * **Entrega al menos una vez:** el puente confirma en un broker recién después de
   que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente se cae
   en el medio, el mensaje se repite: el ERP emite la misma factura, porque su número
-  sale del pedido, y `Orders` no la registra dos veces. El proyector inserta la
-  factura sin preguntar antes si ya está, y un índice único de `order_events`
+  sale del pedido, y `Orders` no la registra dos veces. Los proyectores insertan
+  la factura sin preguntar antes si ya está, y un índice único de `order_events`
   por `Order` y tipo de evento rechaza la copia, aunque las dos lleguen a la vez
   a dos réplicas distintas. Ver [Idempotencia](#idempotencia).
 

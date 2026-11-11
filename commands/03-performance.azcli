@@ -452,8 +452,8 @@ docker compose up -d --scale orders-worker=3
 # -------------------------------
 # Orders, Users y Products publican eventos en el exchange andis.events. Cada
 # suscriptor tiene su propia cola y la enlaza con las claves que le interesan:
-# orders.process, del worker, recibe order.created; orders.details-view, del
-# proyector, recibe order.*, user.updated y product.updated. Los enlaces se ven
+# orders.process, del worker, recibe order.created; orders.details-view, de
+# los proyectores, recibe order.*, user.updated y product.updated. Los enlaces se ven
 # en la consola de RabbitMQ, http://localhost:15672, en Exchanges >
 # andis.events. La diferencia entre el exchange y las colas está explicada en
 # PATTERNS.md, en la sección de Publisher/Subscriber.
@@ -580,8 +580,8 @@ curl -s -X POST http://localhost/users/UserService.svc \
 
 ./demos/13-publisher-subscriber.sh
 
-# Resultado en consola: order.created llega al worker y al proyector;
-# product.updated y user.updated, solo al proyector, que actualiza los nombres
+# Resultado en consola: order.created llega al worker y a los proyectores;
+# product.updated y user.updated, solo a los proyectores, que actualizan los nombres
 # en la vista. Logs de Docker:
 
 docker compose logs orders-projector --since 2m | grep '\[PUB/SUB\]'
@@ -730,14 +730,14 @@ curl -s -X DELETE http://localhost/products/chaos | jq
 
 # El costo de la vista es la consistencia eventual: 'order_details' la mantiene
 # orders-projector a partir de los eventos, y una Order recién creada tarda en
-# llegar. Para tener tiempo de verlo, detener el proyector.
+# llegar. Para tener tiempo de verlo, detener los proyectores.
 
 docker compose stop orders-projector
 
 # Contar las Orders del User 2 por los dos lados, crear una Order y volver a
 # contar: la síncrona ya la tiene, porque lee la tabla 'orders'; la vista no,
 # porque el evento order.created espera en la cola orders.details-view a que
-# vuelva el proyector.
+# vuelvan los proyectores.
 
 curl -s http://localhost/orders/user/2/details | jq length
 curl -s http://localhost/orders/user/2/details/view | jq length
@@ -749,9 +749,9 @@ curl -s -X POST http://localhost/orders/ \
 curl -s http://localhost/orders/user/2/details | jq length
 curl -s http://localhost/orders/user/2/details/view | jq length
 
-# Levantar el proyector, esperar unos segundos y volver a contar: la vista se
-# puso al día y las dos consultas devuelven la misma cantidad. Sin detener el
-# proyector la demora es de uno o dos segundos.
+# Levantar los proyectores, esperar unos segundos y volver a contar: la vista se
+# puso al día y las dos consultas devuelven la misma cantidad. Sin detener los
+# proyectores la demora es de uno o dos segundos.
 
 docker compose start orders-projector
 
@@ -794,20 +794,20 @@ docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
 # product.updated, los nombres.
 #
 # Ver las filas del User 1 en 'order_details': cada una tiene el nombre del
-# cliente y el del producto, y updated_at, la última vez que el proyector la
-# cambió.
+# cliente y el del producto, y updated_at, la última vez que los proyectores la
+# cambiaron.
 
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM order_details WHERE user_id = 1"
 
 # Cambiar el nombre del Product 60f7c2b5e1d3c2a1b8e4d123 de "Camisa" a
-# "Camisa de lino". Products publica product.updated, y el proyector actualiza
+# "Camisa de lino". Products publica product.updated, y los proyectores actualizan
 # el nombre en todas las filas de 'order_details' que tienen ese Product.
 
 curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
   -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
 
-# En el último log del proyector: en cuántas filas actualizó el nombre.
+# En el último log de los proyectores: en cuántas filas se actualizó el nombre.
 
 docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\]' | tail -1
 
@@ -818,7 +818,7 @@ docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr
   -e "SELECT * FROM order_details WHERE user_id = 1"
 
 # Cambiar el nombre del User 1 de "alice" a "alicia" -Users es SOAP-. Users
-# publica user.updated, y el proyector actualiza el nombre del cliente en todas
+# publica user.updated, y los proyectores actualizan el nombre del cliente en todas
 # sus filas.
 
 curl -s -X POST http://localhost/users/UserService.svc \
@@ -841,16 +841,17 @@ docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\
 
 curl -s http://localhost/orders/user/1/details/view | table
 
-# Crear una Order para el User 2 y guardar su id en una variable. El proyector
-# recibe order.created, le pide a Users y a Products los nombres una sola vez
-# y agrega la fila; después recibe order.confirmed y actualiza solo el estado.
+# Crear una Order para el User 2 y guardar su id en una variable. Los proyectores
+# reciben order.created y order.confirmed, cada uno en una réplica: una le pide a
+# Users y a Products los nombres una sola vez y agrega la fila, y la otra
+# actualiza solo el estado.
 
 id=$(curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
   -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
 echo "$id"
 
-# Esperar unos 3 segundos y ver los dos últimos logs del proyector: la fila
+# Esperar unos 3 segundos y ver los dos últimos logs de los proyectores: la fila
 # agregada con los nombres, y el cambio de estado.
 
 docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\]' | tail -2
@@ -858,8 +859,8 @@ docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM order_details WHERE order_id = $id"
 
-# Devolverle al Product el nombre "Camisa" y al User 1 el nombre "alice". El
-# proyector vuelve a actualizar la vista.
+# Devolverle al Product el nombre "Camisa" y al User 1 el nombre "alice". Los
+# proyectores vuelven a actualizar la vista.
 
 curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
   -H "Content-Type: application/json" -d '{"name": "Camisa", "price": 1200.50}' | jq
@@ -877,19 +878,19 @@ curl -s -X POST http://localhost/users/UserService.svc \
         </soap:Body>
       </soap:Envelope>' | xmllint --format -
 
-# Qué pasa con la vista cuando Users o Products fallan, y cuando el proyector
-# está detenido, se vio en la demo 15, CQRS. El siguiente script lo repite.
+# Qué pasa con la vista cuando Users o Products fallan, y cuando los proyectores
+# están detenidos, se vio en la demo 15, CQRS. El siguiente script lo repite.
 #
 # El siguiente script cambia el nombre del Product 60f7c2b5e1d3c2a1b8e4d123 de
-# "Camisa" a "Camisa de lino", hace fallar a Products y detiene el proyector
+# "Camisa" a "Camisa de lino", hace fallar a Products y detiene los proyectores
 # mientras se crea una Order. Al terminar, le devuelve el nombre "Camisa".
 
 ./demos/16-materialized-view.sh
 
 # Resultado en consola: la vista refleja el nombre nuevo. Con Products fallando,
 # la consulta síncrona responde "no disponible" y la vista, con los nombres. Con
-# el proyector detenido, la Order se confirma pero no aparece en la vista, y sus
-# eventos esperan en la cola; al levantarlo, la vista se pone al día. Logs de
+# los proyectores detenidos, la Order se confirma pero no aparece en la vista, y sus
+# eventos esperan en la cola; al levantarlos, la vista se pone al día. Logs de
 # Docker:
 
 docker compose logs orders-projector --since 2m | grep '\[MATERIALIZED VIEW\]'
@@ -900,10 +901,10 @@ docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr
   -e "SELECT * FROM order_details ORDER BY order_id DESC LIMIT 10"
 
 # Resulado en Grafana:
-# - "Cola orders.details-view": durante los 15 segundos en que el proyector está
-#   detenido, "consumidores" baja a 0 y "esperando" sube a 2, los eventos
-#   order.created y order.confirmed de la Order nueva; al levantarlo, vuelven a
-#   1 y a 0.
+# - "Cola orders.details-view": durante los 15 segundos en que los proyectores están
+#   detenidos, "consumidores" baja a 0 y "esperando" sube a 2, los eventos
+#   order.created y order.confirmed de la Order nueva; al levantarlos, vuelven a
+#   3 y a 0.
 # - "Patrones de resiliencia prendidos en Orders": los cuatro bajan a 0 mientras
 #   Products falla, y vuelven a 1 al terminar la demo.
 # - "Salud de los servicios": orders-projector en gris, no responde, durante los

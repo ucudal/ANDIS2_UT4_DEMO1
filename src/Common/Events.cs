@@ -34,7 +34,7 @@ public record OrderRejected(int OrderId, string Reason);
 public record OrderInvoiced(int OrderId, string InvoiceNumber, string IssuedOn);
 
 // Materialized View: OccurredAt es el momento del cambio, según el reloj del
-// servicio que lo publica. Con varias réplicas del proyector, dos cambios del
+// servicio que lo publica. Con varios proyectores, dos cambios del
 // mismo nombre pueden aplicarse en otro orden; la fecha permite descartar el
 // más viejo -ver OrderDetailsProjector.cs-. Es opcional, como los campos nuevos
 // de OrderConfirmed: un mensaje anterior sigue siendo válido.

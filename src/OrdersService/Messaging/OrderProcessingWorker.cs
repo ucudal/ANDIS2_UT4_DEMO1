@@ -15,8 +15,8 @@ namespace Ucu.Andis.OrdersService.Messaging;
 // confirmar -ack- un mensaje, RabbitMQ se lo entrega a otra.
 //
 // Publisher/Subscriber: la cola orders.process es la suscripción del worker al
-// evento order.created del exchange andis.events. El proyector de la vista
-// materializada tiene su propia cola y recibe el mismo evento.
+// evento order.created del exchange andis.events. Los proyectores de la
+// vista materializada tienen su propia cola y reciben el mismo evento.
 public class OrderProcessingWorker : BackgroundService
 {
     public const string MeterName = "Ucu.Andis.OrdersWorker";
@@ -144,7 +144,7 @@ public class OrderProcessingWorker : BackgroundService
     //    Users y Products, y las dos guardan el cambio.
     //
     // Quedarían dos OrderConfirmed en el historial y dos order.confirmed en el
-    // outbox, que llegarían dos veces al proyector y al ERP.
+    // outbox, que llegarían dos veces a los proyectores y al ERP.
     //
     // Por eso la lectura inicial solo evita trabajo inútil con un duplicado que
     // llega después; lo que decide es el primer paso de la transacción: un

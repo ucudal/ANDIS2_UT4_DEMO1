@@ -22,7 +22,7 @@ public class OrderDetails
     public string? CustomerName { get; set; }
 
     // Momento en que cambió el nombre del cliente, según quien lo informó. Con
-    // varias réplicas del proyector, un nombre más viejo no pisa a uno más
+    // varios proyectores, un nombre más viejo no pisa a uno más
     // nuevo -ver OrderDetailsProjector.cs-.
     [Column("customer_name_at")]
     public DateTime? CustomerNameAt { get; set; }

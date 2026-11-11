@@ -622,7 +622,7 @@ docker compose logs products-service --since 2m
 #
 # Ver las tres réplicas de orders-worker y la cola orders.process: en la
 # columna consumers, la cola tiene 3, una por réplica, y en messages no tiene
-# mensajes esperando. La cola orders.details-view es la del proyector de la
+# mensajes esperando. La cola orders.details-view es la de los proyectores de la
 # vista -ver CQRS- y no participa en esta demo.
 
 docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' orders-worker

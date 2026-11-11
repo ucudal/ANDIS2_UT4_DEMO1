@@ -80,8 +80,8 @@ link; si no está, explicarlo.-->
   <!-- → Son un servicio con tres procesos. El criterio es la propiedad de los
   datos y el despliegue independiente: comparten la base y la imagen, y un
   cambio en el modelo de Orders obliga a desplegar los tres juntos. Que escalen
-  distinto -una réplica de orders-service, tres del worker y tres del
-  proyector- no los vuelve servicios distintos. Serían tres si cada uno tuviera sus propios datos y se pudiera
+  distinto -una réplica de orders-service, tres workers y tres
+  proyectores- no los vuelve servicios distintos. Serían tres si cada uno tuviera sus propios datos y se pudiera
   cambiar y desplegar por separado. -->
 
 ## Comunicación entre servicios
@@ -349,7 +349,7 @@ recién cambiado, tarda en actualizarse.
   probable que alguna falle. Se podría pedir cada Product distinto una sola vez,
   o todos juntos con un endpoint que acepte varios ids. La vista lo resuelve con
   una sola consulta a MySQL, y a cambio se paga consistencia eventual, datos
-  duplicados, un proyector que mantener y la necesidad de repararla si se pierde
+  duplicados, proyectores que mantener y la necesidad de repararla si se pierde
   un evento. -->
 * La aplicación tiene las dos consultas de detalle. Si tuvieran que dejar una
   sola, ¿cuál dejarían? ¿Depende de quién la usa?
@@ -484,7 +484,8 @@ distintos servicios no coincidan.
   <!-- → No se puede volver a publicar el evento, porque Products no tiene
   outbox. Haría falta reconstruir `order_details` a partir de la fuente:
   recorrer `order_events` y pedir a Users y a Products los nombres actuales,
-  como hace el proyector, en una tabla nueva que después reemplace a la vista; o
+  como hacen los proyectores, en una tabla nueva que después reemplace a la
+  vista; o
   una tarea periódica que compare los nombres de la vista con los de Users y
   Products y corrija las diferencias. Para que no vuelva a pasar, Users y
   Products tendrían que publicar con outbox. -->
@@ -499,7 +500,7 @@ distintos servicios no coincidan.
   las `Orders` que lo referencian? ¿Quién se entera del borrado y cómo?
   <!-- → Lo más común es no borrarlo, sino marcarlo como discontinuado: las
   Orders siguen apuntando a un Product que existe. Si se borra, Products publica
-  product.deleted; el proyector mantiene el nombre copiado en la vista, y el
+  product.deleted; los proyectores mantienen el nombre copiado en la vista, y el
   worker podría rechazar las Orders pendientes de ese Product. Impedir el
   borrado mientras haya Orders obligaría a Products a preguntarle a Orders, y
   eso los acopla. -->
@@ -520,11 +521,11 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   de los eventos, en la clase `Events` y sus registros, en
   [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a
   recompilar y redesplegar los tres servicios.
-* **Los contratos de los eventos.** El proyector espera que `product.updated`
+* **Los contratos de los eventos.** Los proyectores esperan que `product.updated`
   traiga el identificador y el nombre del `Product`. Publisher/Subscriber
   desacopla en el tiempo y en el conocimiento: `Products` no sabe quién recibe
   sus eventos, ni necesita que esté funcionando. Pero no desacopla del contrato:
-  si `Products` cambia la forma del evento, el proyector deja de entenderlo, y
+  si `Products` cambia la forma del evento, los proyectores dejan de entenderlo, y
   `Products` no se entera.
 * **Los contratos HTTP.**. `Orders` espera que `GET /products/{id}` devuelva un
   [JSON](https://www.json.org/) con el nombre. Si `Products` lo renombra,
@@ -880,7 +881,7 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
 | `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | — |
-| Los cambios de nombre se ordenan por la hora de cada contenedor | Varias réplicas del proyector, sin numerar los cambios en `Users` ni en `Products` | Si los relojes no están sincronizados, un nombre viejo puede pisar uno nuevo, o uno nuevo puede descartarse | [Materialized View](PATTERNS.md#materialized-view) |
+| Los cambios de nombre se ordenan por la hora de cada contenedor | Varios proyectores, sin numerar los cambios en `Users` ni en `Products` | Si los relojes no están sincronizados, un nombre viejo puede pisar uno nuevo, o uno nuevo puede descartarse | [Materialized View](PATTERNS.md#materialized-view) |
 | Un mensaje que falla siempre vuelve a la cola | Ningún mensaje se descarta por una falla pasajera | Un *poison message* se reintenta para siempre y ocupa a una réplica cada 5 segundos | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
 | Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
