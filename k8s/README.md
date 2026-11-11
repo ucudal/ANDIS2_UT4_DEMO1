@@ -5,13 +5,15 @@ Testing en un clúster de [Kubernetes](https://kubernetes.io/). Son las demos 27
 a 29 de Docker Compose, pero los pasos los hace [Argo
 Rollouts](https://argoproj.github.io/rollouts/) o Kubernetes, y en la 32 y la 33
 avanzar o volver atrás lo decide un análisis de las métricas de la versión
-nueva. Qué muestra cada demo está en
-[PATTERNS.md](../PATTERNS.md#patrones-de-facilidad-de-despliegue), y el paso a
-paso, en [06-deployability.azcli](../commands/06-deployability.azcli).
+nueva. Qué muestra cada demo está en [Patrones de facilidad de
+despliegue](../PATTERNS.md#patrones-de-facilidad-de-despliegue), en PATTERNS.md,
+y el paso a paso, en
+[06-deployability.azcli](../commands/06-deployability.azcli).
 
 ## Cómo se usa
 
-Se necesitan [Docker](https://www.docker.com/), [kind](https://kind.sigs.k8s.io/),
+Se necesitan [Docker](https://www.docker.com/),
+[kind](https://kind.sigs.k8s.io/),
 [kubectl](https://kubernetes.io/docs/reference/kubectl/) y el [plugin de Argo
 Rollouts](https://argoproj.github.io/argo-rollouts/features/kubectl-plugin/)
 para kubectl. En macOS:

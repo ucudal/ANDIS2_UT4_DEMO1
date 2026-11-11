@@ -80,9 +80,9 @@ link; si no está, explicarlo.-->
   <!-- → Son un servicio con tres procesos. El criterio es la propiedad de los
   datos y el despliegue independiente: comparten la base y la imagen, y un
   cambio en el modelo de Orders obliga a desplegar los tres juntos. Que escalen
-  distinto -una réplica de orders-service, tres workers y tres
-  proyectores- no los vuelve servicios distintos. Serían tres si cada uno tuviera sus propios datos y se pudiera
-  cambiar y desplegar por separado. -->
+  distinto -una réplica de orders-service, tres workers y tres proyectores- no
+  los vuelve servicios distintos. Serían tres si cada uno tuviera sus propios
+  datos y se pudiera cambiar y desplegar por separado. -->
 
 ## Comunicación entre servicios
 
@@ -239,8 +239,8 @@ que la respuesta lo redirige a la `Order` con su resultado. Si no recibe el
 `202` y reintenta, puede mandar el encabezado `Idempotency-Key` con la misma
 clave en cada intento: `Orders` guarda la clave junto con la `Order` y, si la
 vuelve a recibir, responde con la `Order` que ya creó en lugar de crear otra.
-Ver Asynchronous Request-Reply en
-[PATTERNS.md](PATTERNS.md#asynchronous-request-reply).
+Ver [Asynchronous
+Request-Reply](PATTERNS.md#asynchronous-request-reply) en PATTERNS.md.
 
 ### Consulta de detalle desde la vista: eventos
 
@@ -449,8 +449,8 @@ distintos servicios no coincidan.
   eventual: el sistema llega a un estado correcto, pero no de inmediato.
 * **Guardar y publicar es atómico en `Orders`, pero no en `Users` ni en
   `Products`.** `Orders` guarda el evento en el *outbox* en la misma transacción
-  que el cambio, y el *relay* lo publica después: ver Transactional Outbox en
-  [PATTERNS.md](PATTERNS.md#transactional-outbox). `Users` y `Products` guardan
+  que el cambio, y el *relay* lo publica después: ver [Transactional
+  Outbox](PATTERNS.md#transactional-outbox) en PATTERNS.md. `Users` y `Products` guardan
   el cambio y después publican: si [RabbitMQ](https://www.rabbitmq.com/) no
   está, el evento se pierde.<!--TODO: considerar agregar el patrón Saga o
   Transactional Saga-->
@@ -472,8 +472,8 @@ distintos servicios no coincidan.
   no queda registro de cuánto valía cuando se creó la `Order`.
 * **Los eventos son la fuente de verdad de `Orders`.** Cada cambio de una `Order`
   se guarda como un evento, y la tabla de `Orders` se puede reconstruir a partir
-  de ellos: ver Event Sourcing en
-  [PATTERNS.md](PATTERNS.md#event-sourcing).<!--TODO: ¿porqué sólo este patrón
+  de ellos: ver [Event
+  Sourcing](PATTERNS.md#event-sourcing) en PATTERNS.md.<!--TODO: ¿porqué sólo este patrón
   está mencionado?-->
 
 **Para analizar:**
@@ -739,8 +739,8 @@ solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
 ## Facilidad de modificación
 
 Cinco cambios que la aplicación absorbe sin tocar su lógica de dominio. Cómo se
-implementó cada uno está en
-[PATTERNS.md](PATTERNS.md#demos-de-facilidad-de-modificación).
+implementó cada uno está en [Demos de facilidad de
+modificación](PATTERNS.md#demos-de-facilidad-de-modificación), en PATTERNS.md.
 
 Cuánto cuesta cada uno, y cómo se midió, está en
 [Tamaño del cambio](PATTERNS.md#tamaño-del-cambio).
@@ -792,8 +792,9 @@ afuera de cada uno está en
 ## Facilidad de despliegue
 
 Cuatro formas de poner en producción la versión `v2` de `Users`, que conviven
-con la versión `v1`. Cómo se implementó cada una está en
-[PATTERNS.md](PATTERNS.md#demos-de-facilidad-de-despliegue).
+con la versión `v1`. Cómo se implementó cada una está en [Demos de
+facilidad de despliegue](PATTERNS.md#demos-de-facilidad-de-despliegue), en
+PATTERNS.md.
 
 Las cuatro dependen de que cada servicio se pueda desplegar solo: la versión
 `v2` de `Users` entra y sale de producción sin que `Orders`, `Products` ni los

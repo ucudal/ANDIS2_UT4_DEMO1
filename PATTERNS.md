@@ -1,4 +1,4 @@
-# Demos de la UT4: patrones de arquitectura sobre una misma aplicación
+# Demos de atrones de arquitectura sobre una misma aplicación con microservicios
 
 * [Aplicación base](#aplicación-base)
 * [Cobertura](#cobertura)
@@ -92,9 +92,9 @@ materializadas.
 
 ## Demos de disponibilidad
 
-Escenario: [`Users`](src/UsersService/) o [`Products`](src/ProductsService/) fallan o
-responden lento de forma intermitente. [`Orders`](src/OrdersService/) debe seguir
-funcionando y el resto del sistema no debe caerse.
+Escenario: [`Users`](src/UsersService/) o [`Products`](src/ProductsService/)
+fallan o responden lento de forma intermitente. [`Orders`](src/OrdersService/)
+debe seguir funcionando y el resto del sistema no debe caerse.
 
 Qué se muestra:
 
@@ -107,7 +107,8 @@ Qué se muestra:
 * Monitoreo activo de la salud de cada servicio.
 * Procesamiento de `Orders` en segundo plano, repartido entre varias réplicas.
 * Historial inmutable de eventos de cada `Order`.
-* Mensajes que no se pierden aunque [RabbitMQ](https://www.rabbitmq.com/) no esté disponible.
+* Mensajes que no se pierden aunque [RabbitMQ](https://www.rabbitmq.com/) no
+  esté disponible.
 
 Resultado observable: si `Products` se cae, el circuito se abre, `Orders` deja
 de esperar *timeouts* y el detalle devuelve las `Orders` con "no disponible
@@ -123,7 +124,7 @@ sus propias rutas.
 | Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
 | Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. |
 | Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
-| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en el [README](README.md#observabilidad-y-pruebas-de-carga). |
+| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
 
 Ejemplo de inyección de fallas:
 
@@ -138,7 +139,8 @@ curl -X DELETE http://localhost/products/chaos
 
 > [!TIP]
 >
-> Consulta [Write custom ASP.NET Core middleware](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/middleware/write?view=aspnetcore-10.0)
+> Consulta [Write custom ASP.NET Core
+> middleware](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/middleware/write?view=aspnetcore-10.0)
 > para tener más información sobre cómo está implementada la inyección de
 > fallas: el método `UseChaos` agrega un *middleware* que atiende `/chaos` y
 > hace fallar o demorar las demás solicitudes.
@@ -146,14 +148,15 @@ curl -X DELETE http://localhost/products/chaos
 ### Patrones de disponibilidad
 
 Cada patrón tiene un script en [demos](demos/) que provoca la situación y
-muestra el resultado. Los de Retry, Circuit Breaker, Bulkhead y Throttling
-dejan prendido solo su patrón, para que se vea el efecto de cada uno por
-separado. Cómo ejecutarlos está en el
-[README](README.md#cómo-probar-los-patrones). Los eventos de cada patrón también
-aparecen en los *logs* de [Docker](https://www.docker.com/) de `orders-service`, con una etiqueta: `[RETRY]`,
-`[CIRCUIT BREAKER]`, `[BULKHEAD]`, `[THROTTLING]` y `[OUTBOX]`. Los patrones que dependen de
-la carga -Circuit Breaker, Bulkhead, Throttling, Rate Limiting y Competing
-Consumers- tienen además un escenario de [k6](https://k6.io/) para verlos en el dashboard.
+muestra el resultado. Los de Retry, Circuit Breaker, Bulkhead y Throttling dejan
+prendido solo su patrón, para que se vea el efecto de cada uno por separado.
+Cómo ejecutarlos está en [Cómo probar los
+patrones](README.md#cómo-probar-los-patrones), en el README. Los eventos de cada
+patrón también aparecen en los *logs* de [Docker](https://www.docker.com/) de
+`orders-service`, con una etiqueta: `[RETRY]`, `[CIRCUIT BREAKER]`,
+`[BULKHEAD]`, `[THROTTLING]` y `[OUTBOX]`. Los patrones que dependen de la carga
+-Circuit Breaker, Bulkhead, Throttling, Rate Limiting y Competing Consumers-
+tienen además un escenario de [k6](https://k6.io/) para verlos en el dashboard.
 
 #### Retry
 
@@ -161,9 +164,9 @@ Consumers- tienen además un escenario de [k6](https://k6.io/) para verlos en el
 reinicia- hace fallar una operación que habría funcionado un momento después.
 
 **Implementación:** los `HttpClient` de `Orders` hacia `Users` y `Products`
-reintentan hasta 3 veces con retroceso exponencial -0,5 segundos, 1 segundo, 2 segundos, con
-*jitter*-. Solo se reintentan los errores transitorios: 5xx, 408, 429, errores
-de red y *timeouts*; un 404 no se reintenta. Está en el método
+reintentan hasta 3 veces con retroceso exponencial -0,5 segundos, 1 segundo, 2
+segundos, con *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408,
+429, errores de red y *timeouts*; un 404 no se reintenta. Está en el método
 `AddResilience` de la clase `Resilience`, en
 [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), con
 `Microsoft.Extensions.Http.Resilience`.
@@ -173,12 +176,13 @@ de red y *timeouts*; un 404 no se reintenta. Está en el método
 ![Secuencia de un reintento de Orders a Products](assets/01-retry.svg)
 
 Si fallan los 3 reintentos, la consulta dice `"no disponible [error HTTP 503]"`.
-Las esperas crecen: 0,5 segundos, 1 segundo y 2 segundos -`DelayBackoffType.Exponential`-.
+Las esperas crecen: 0,5 segundos, 1 segundo y 2 segundos
+-`DelayBackoffType.Exponential`-.
 
-**Código:** la estrategia de reintento del *pipeline* de cada dependencia, en
-el método `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). `ShouldHandle` decide qué se
-reintenta; el `patterns.Retry` permite apagarlo en las demos:
+**Código:** la estrategia de reintento del *pipeline* de cada dependencia, en el
+método `AddResilience` de la clase `Resilience`, en
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). `ShouldHandle`
+decide qué se reintenta; el `patterns.Retry` permite apagarlo en las demos:
 
 ```csharp
 pipeline.AddRetry(new HttpRetryStrategyOptions
@@ -194,22 +198,22 @@ pipeline.AddRetry(new HttpRetryStrategyOptions
 
 **Cómo verlo:** el detalle de las `Orders` de un `User` lo arma `Orders`, que le
 pide a `Users` el nombre del cliente y a `Products` el nombre del producto de
-cada `Order`. [demos/01-retry.sh](demos/01-retry.sh) hace que `Products` falle
-en el 30% de las solicitudes y consulta el detalle 8 veces con el Retry
-apagado y 8 con el Retry prendido. Sin reintentos, cerca de la mitad de las
-respuestas trae algún producto "no disponible"; con reintentos, casi todas
-traen el nombre del producto, porque los reintentos ocultan las fallas. Las que
-tardan más son las que necesitaron reintentos. Los *logs* de
-Docker de `orders-service` muestran cada `[RETRY]` con su demora y su causa; el comando
-para verlos está en
+cada `Order`. La demo [01 de Retry](demos/01-retry.sh) hace que `Products` falle
+en el 30% de las solicitudes y consulta el detalle 8 veces con el Retry apagado
+y 8 con el Retry prendido. Sin reintentos, cerca de la mitad de las respuestas
+trae algún producto "no disponible"; con reintentos, casi todas traen el nombre
+del producto, porque los reintentos ocultan las fallas. Las que tardan más son
+las que necesitaron reintentos. Los *logs* de Docker de `orders-service`
+muestran cada `[RETRY]` con su demora y su causa; el comando para verlos está en
 [commands/02-availability.azcli](commands/02-availability.azcli).
 
 > [!TIP]
 >
 > Consulta [Build resilient HTTP apps: Key development
-> patterns](https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience) para tener más
-> información sobre cómo `AddResilienceHandler` arma el *pipeline* de cada
-> `HttpClient`, y [HTTP requests with IHttpClientFactory](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-10.0)
+> patterns](https://learn.microsoft.com/en-us/dotnet/core/resilience/http-resilience)
+> para tener más información sobre cómo `AddResilienceHandler` arma el
+> *pipeline* de cada `HttpClient`, y [HTTP requests with
+> IHttpClientFactory](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-10.0)
 > sobre los `HttpClient` con nombre, uno por dependencia.
 
 ##### Idempotencia
@@ -217,8 +221,8 @@ para verlos está en
 Una operación es **idempotente** si ejecutarla varias veces tiene el mismo
 efecto que ejecutarla una vez. El Retry solo es seguro si lo que reintenta es
 idempotente: una llamada que falla por *timeout* pudo haberse ejecutado igual, y
-el reintento la ejecuta otra vez. El catálogo de Azure lo advierte en el
-[patrón Retry](https://learn.microsoft.com/azure/architecture/patterns/retry).
+el reintento la ejecuta otra vez. El catálogo de Azure lo advierte en el [patrón
+Retry](https://learn.microsoft.com/azure/architecture/patterns/retry).
 
 En esta aplicación, una misma operación puede ejecutarse más de una vez por
 cuatro razones:
@@ -275,9 +279,9 @@ Dos matices:
   otro orden dejan otro resultado. Por eso la vista materializada guarda la
   fecha de cada nombre.
 
-**Costos.** Recordar qué ya se hizo es estado adicional: claves, índices y
-filas que viven en la base, no en la réplica. Ese estado crece, y en producción
-se borra después de un plazo; un reintento que llega después se trata como una
+**Costos.** Recordar qué ya se hizo es estado adicional: claves, índices y filas
+que viven en la base, no en la réplica. Ese estado crece, y en producción se
+borra después de un plazo; un reintento que llega después se trata como una
 operación nueva.
 
 > [!TIP]
@@ -304,15 +308,16 @@ disponible [circuito abierto]"` en lugar del nombre: lo arma el método
 
 **Cómo funciona:**
 
-![Estados del circuito: cerrado, abierto y semiabierto](assets/02-circuit-breaker.svg)
+![Estados del circuito: cerrado, abierto y
+semiabierto](assets/02-circuit-breaker.svg)
 
 Los eventos `OnOpened`, `OnHalfOpened` y `OnClosed` son los del panel "Eventos
 de resiliencia", y el estado es el del panel "Estado del circuito de cada
 dependencia".
 
 **Código:** la estrategia del *pipeline* de cada dependencia, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). Va dentro del Retry, así que cada
-reintento cuenta como una llamada más para el circuito:
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). Va dentro del
+Retry, así que cada reintento cuenta como una llamada más para el circuito:
 
 ```csharp
 pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
@@ -328,23 +333,25 @@ pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
 });
 ```
 
-**Cómo verlo:** [demos/02-circuit-breaker.sh](demos/02-circuit-breaker.sh) hace
-que `Products` falle en el 100% de las solicitudes y consulta el detalle 6
-veces con todos los patrones apagados y 6 con solo el Circuit Breaker prendido.
-Sin el circuito, `Products` recibe 12 llamadas, aunque falle siempre; con el
-circuito, 5. Sin reintentos, cada falla cuenta una vez: las dos primeras consultas dicen `"no
-disponible [error HTTP 503]"`, en la tercera el circuito se abre, y desde ahí
-responden con `"no disponible [circuito abierto]"` sin llamar a `Products`. Cuando
-`Products` se recupera, el circuito sigue abierto hasta que pasan los 15
+**Cómo verlo:** la demo [02 de Circuit Breaker](demos/02-circuit-breaker.sh) hace
+que `Products` falle en el 100% de las solicitudes y consulta el detalle 6 veces
+con todos los patrones apagados y 6 con solo el Circuit Breaker prendido. Sin el
+circuito, `Products` recibe 12 llamadas, aunque falle siempre; con el circuito,
+5. Sin reintentos, cada falla cuenta una vez: las dos primeras consultas dicen
+`"no disponible [error HTTP 503]"`, en la tercera el circuito se abre, y desde
+ahí responden con `"no disponible [circuito abierto]"` sin llamar a `Products`.
+Cuando `Products` se recupera, el circuito sigue abierto hasta que pasan los 15
 segundos. Los *logs* de Docker muestran las transiciones ABIERTO → SEMIABIERTO →
 CERRADO. Con el Retry prendido, la primera consulta tardaría unos 3 segundos,
 porque reintentaría cada llamada antes de que se abriera el circuito.
 
 > [!TIP]
 >
-> Consulta [Introduction to resilient app development](https://learn.microsoft.com/en-us/dotnet/core/resilience/)
-> para tener más información sobre las estrategias de [Polly](https://www.pollydocs.org/) que usa el
-> *pipeline*, entre ellas el Circuit Breaker y su `CircuitBreakerManualControl`.
+> Consulta [Introduction to resilient app
+> development](https://learn.microsoft.com/en-us/dotnet/core/resilience/) para
+> tener más información sobre las estrategias de
+> [Polly](https://www.pollydocs.org/) que usa el *pipeline*, entre ellas el
+> Circuit Breaker y su `CircuitBreakerManualControl`.
 
 ##### Stateless y estado por réplica
 
@@ -356,10 +363,10 @@ vive el estado de cada componente, porque de eso depende que se pueda tener más
 de una réplica.
 
 **Qué es *stateless*.** Un servicio es *stateless* si no depende de datos
-guardados en su memoria o en su disco local entre una solicitud, o un mensaje,
-y el siguiente: el estado vive afuera, en una base, una caché compartida o un
-almacén de configuración. No significa que no haya estado, sino que el estado
-no vive en la instancia.
+guardados en su memoria o en su disco local entre una solicitud, o un mensaje, y
+el siguiente: el estado vive afuera, en una base, una caché compartida o un
+almacén de configuración. No significa que no haya estado, sino que el estado no
+vive en la instancia.
 
 **Por qué importa:**
 
@@ -403,13 +410,13 @@ directa, y cómo se resolvió:
 
 ***Stateless* no alcanza.** Los proyectores no guardan nada en memoria, y aun
 así no se podían escalar mientras su resultado dependía del orden de los
-mensajes. Ser *stateless* permite tener varias réplicas, pero además cada réplica tiene que
-tolerar mensajes que llegan en cualquier orden, repetidos y a la vez -ver
-[Idempotencia](#idempotencia)-.
+mensajes. Ser *stateless* permite tener varias réplicas, pero además cada
+réplica tiene que tolerar mensajes que llegan en cualquier orden, repetidos y a
+la vez -ver [Idempotencia](#idempotencia)-.
 
-**Estado por réplica que queda a propósito.** Algunos componentes guardan
-estado en memoria porque compartirlo costaría una llamada remota en cada
-solicitud. Al escalar, cada réplica decide por su cuenta:
+**Estado por réplica que queda a propósito.** Algunos componentes guardan estado
+en memoria porque compartirlo costaría una llamada remota en cada solicitud. Al
+escalar, cada réplica decide por su cuenta:
 
 * **Circuit Breaker y Bulkhead**, en
   [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs): cada réplica
@@ -443,7 +450,8 @@ propósito evita esas llamadas, a cambio de límites aproximados.
 > Consulta [REL05-BP06 Make systems stateless where
 > possible](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_mitigate_interaction_failure_stateless.html)
 > de AWS Well-Architected y [Architecture strategies for designing a reliable
-> scaling strategy](https://learn.microsoft.com/azure/well-architected/reliability/scaling)
+> scaling
+> strategy](https://learn.microsoft.com/azure/well-architected/reliability/scaling)
 > de Azure Well-Architected para tener más información sobre el diseño
 > *stateless* y la afinidad de sesión, e [Implement stateless
 > design](https://patterns.greensoftware.foundation/architecture/system-topology/implement-stateless-design)
@@ -462,12 +470,13 @@ demás funciones.
 exceden el límite se rechazan de inmediato. Como cada dependencia tiene su
 propio compartimento, la lentitud de `Products` no afecta las llamadas a
 `Users`. Cada compartimento se dimensiona según su dependencia, al llamar a
-`AddResilience` en [OrdersService/Program.cs](src/OrdersService/Program.cs): `Products` tiene 5
-llamadas en curso y 5 en espera; `Users`, que responde rápido pero se llama en
-cada consulta, tiene 20 en curso y 5 en espera. Los compartimentos son de cada
-proceso: `orders-service`, cada *worker* y cada proyector tienen los suyos, así
-que `Products` puede recibir 5 llamadas a la vez de cada uno -ver [Stateless y
-estado por réplica](#stateless-y-estado-por-réplica)-.
+`AddResilience` en [OrdersService/Program.cs](src/OrdersService/Program.cs):
+`Products` tiene 5 llamadas en curso y 5 en espera; `Users`, que responde rápido
+pero se llama en cada consulta, tiene 20 en curso y 5 en espera. Los
+compartimentos son de cada proceso: `orders-service`, cada *worker* y cada
+proyector tienen los suyos, así que `Products` puede recibir 5 llamadas a la vez
+de cada uno -ver [Stateless y estado por
+réplica](#stateless-y-estado-por-réplica)-.
 
 **Cómo funciona:**
 
@@ -479,8 +488,9 @@ lento se llena su compartimento, pero el de `Users` sigue libre.
 
 **Código:** un `ConcurrencyLimiter` por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), y el tamaño de cada compartimento,
-en las llamadas a `AddResilience` de [OrdersService/Program.cs](src/OrdersService/Program.cs):
+[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), y el tamaño de
+cada compartimento, en las llamadas a `AddResilience` de
+[OrdersService/Program.cs](src/OrdersService/Program.cs):
 
 ```csharp
 // Resilience.cs
@@ -502,7 +512,7 @@ builder.Services.AddHttpClient("UsersService", ...).AddResilience("users", bulkh
 builder.Services.AddHttpClient("ProductsService", ...).AddResilience("products");
 ```
 
-**Cómo verlo:** [demos/03-bulkhead.sh](demos/03-bulkhead.sh) hace que `Products`
+**Cómo verlo:** la demo [03 de Bulkhead](demos/03-bulkhead.sh) hace que `Products`
 demore 1,5 segundos y lanza 15 consultas simultáneas, primero con el Bulkhead
 apagado y después prendido. Sin el Bulkhead, las 15 traen los nombres, pero
 `Products` llega a atender 15 llamadas a la vez. Con el Bulkhead, nunca más de
@@ -512,9 +522,10 @@ lleno]"`. El nombre del `User` aparece en todas las respuestas.
 
 > [!TIP]
 >
-> Consulta [ConcurrencyLimiter Class](https://learn.microsoft.com/en-us/dotnet/api/system.threading.ratelimiting.concurrencylimiter)
-> para tener más información sobre el limitador que funciona como
-> compartimento, con sus lugares en curso y en espera.
+> Consulta [ConcurrencyLimiter
+> Class](https://learn.microsoft.com/en-us/dotnet/api/system.threading.ratelimiting.concurrencylimiter)
+> para tener más información sobre el limitador que funciona como compartimento,
+> con sus lugares en curso y en espera.
 
 #### Throttling
 
@@ -523,8 +534,8 @@ sus clientes.
 
 **Implementación:** `Orders` atiende como máximo 20 consultas de detalle a la
 vez. Las que exceden el límite reciben `503 Service Unavailable` con
-`Retry-After: 2`, en lugar de encolarse. La política `throttling` se define
-con `AddRateLimiter` en [OrdersService/Program.cs](src/OrdersService/Program.cs), y
+`Retry-After: 2`, en lugar de encolarse. La política `throttling` se define con
+`AddRateLimiter` en [OrdersService/Program.cs](src/OrdersService/Program.cs), y
 se aplica con el atributo `[EnableRateLimiting("throttling")]` en el método
 `GetOrdersForUser` de la clase `OrdersController`, en
 [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
@@ -534,8 +545,10 @@ máximo 1 `Order` por segundo, con una ráfaga de hasta 5. Lo que excede el lím
 recibe `429 Too Many Requests` sin llegar a `orders-service`; las consultas no
 tienen límite. Está en
 [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
--[`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone) y [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req)-. Es el límite que respeta el cliente de la
-demo de Rate Limiting.
+-[`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone)
+y
+[`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req)-.
+Es el límite que respeta el cliente de la demo de Rate Limiting.
 
 Los dos límites están en la memoria de cada instancia: con N réplicas de
 `orders-service`, el servicio atiende hasta 20 × N consultas de detalle a la
@@ -582,20 +595,21 @@ builder.Services.AddRateLimiter(options =>
 public async Task<ActionResult<List<object>>> GetOrdersForUser(int userId)
 ```
 
-**Cómo verlo:** [demos/04-throttling.sh](demos/04-throttling.sh) hace que
+**Cómo verlo:** la demo [04 de Throttling](demos/04-throttling.sh) hace que
 `Orders` demore 5 segundos en cada consulta y lanza 40 simultáneas, primero con
 el Throttling apagado y después prendido. Sin el Throttling, las 40 responden
 200 y `Orders` llega a atender 40 a la vez. Con el Throttling, 20 responden 200
-con todos los nombres y 20 se rechazan al instante con 503. La demo apaga
-el Bulkhead; con el Bulkhead prendido, algunas respuestas 200 traerían un
-producto "no disponible", porque las 20 consultas atendidas llaman a `Products`
-a la vez y llenan su compartimento: en un sistema real, el Throttling y el
-Bulkhead actúan juntos. El Throttling por cliente del gateway se ve en la demo
-de Rate Limiting.
+con todos los nombres y 20 se rechazan al instante con 503. La demo apaga el
+Bulkhead; con el Bulkhead prendido, algunas respuestas 200 traerían un producto
+"no disponible", porque las 20 consultas atendidas llaman a `Products` a la vez
+y llenan su compartimento: en un sistema real, el Throttling y el Bulkhead
+actúan juntos. El Throttling por cliente del gateway se ve en la demo de Rate
+Limiting.
 
 > [!TIP]
 >
-> Consulta [Rate limiting middleware in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit?view=aspnetcore-10.0)
+> Consulta [Rate limiting middleware in ASP.NET
+> Core](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit?view=aspnetcore-10.0)
 > para tener más información sobre cómo está implementada la política
 > `throttling` con `AddRateLimiter` y `[EnableRateLimiting]`.
 
@@ -613,22 +627,24 @@ servicio aplica Throttling para protegerse, y el cliente aplica Rate Limiting
 para no chocar contra ese Throttling. En esta aplicación, el servicio es el
 gateway, con su Throttling por cliente -1 `POST /orders/` por segundo por IP,
 con una ráfaga de 5; ver [Throttling](#throttling)-, y el cliente es un proceso
-por lotes que crea `Orders`: [demos/05-rate-limiting.sh](demos/05-rate-limiting.sh)
-y [k6/rate-limiting.js](k6/rate-limiting.js).
+por lotes que crea `Orders`:
+la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y
+[k6/rate-limiting.js](k6/rate-limiting.js).
 
 > [!NOTE]
 >
-> **Rate limiting en [nginx](https://nginx.org/) y en Azure.** nginx llama *rate limiting* a
-> `limit_req`, y muchos API gateways y proveedores de APIs usan el término en el
-> mismo sentido: un límite que el **servicio** aplica a cada cliente. En el
-> catálogo de patrones de Azure Architecture Center, que sigue este repositorio,
-> eso es [Throttling](https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling),
-> en este caso por cliente; y
-> [Rate Limiting](https://learn.microsoft.com/en-us/azure/architecture/patterns/rate-limiting-pattern)
+> **Rate limiting en [nginx](https://nginx.org/) y en Azure.** nginx llama *rate
+> limiting* a `limit_req`, y muchos API gateways y proveedores de APIs usan el
+> término en el mismo sentido: un límite que el **servicio** aplica a cada
+> cliente. En el catálogo de patrones de Azure Architecture Center, que sigue
+> este repositorio, eso es
+> [Throttling](https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling),
+> en este caso por cliente; y [Rate
+> Limiting](https://learn.microsoft.com/en-us/azure/architecture/patterns/rate-limiting-pattern)
 > es un patrón del **cliente**, que regula su ritmo para no superar el
-> Throttling del servicio al que llama. Por eso el gateway usa la
-> configuración de *rate limiting* de nginx para implementar Throttling, y el
-> patrón Rate Limiting está en el cliente de la demo.
+> Throttling del servicio al que llama. Por eso el gateway usa la configuración
+> de *rate limiting* de nginx para implementar Throttling, y el patrón Rate
+> Limiting está en el cliente de la demo.
 
 **Cómo funciona:**
 
@@ -643,12 +659,12 @@ Con Rate Limiting, el cliente respeta el ritmo que acepta el gateway:
 El límite del gateway es el mismo en las dos formas: 1 `POST /orders/` por
 segundo por IP, con una ráfaga de 5. Lo que cambia es cómo envía el cliente.
 
-**Cómo verlo:** [demos/05-rate-limiting.sh](demos/05-rate-limiting.sh) crea 15
+**Cómo verlo:** la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) crea 15
 `Orders` de dos formas. Sin Rate Limiting, las envía todas de golpe y reintenta
-las rechazadas cada 1 segundo: hacen falta unas 55 solicitudes y unas 40
-reciben 429. Con Rate Limiting, respeta el límite del gateway: 15 solicitudes y
-ningún 429. Las dos formas demoran unos 10 segundos, porque el límite del
-gateway fija el ritmo máximo.
+las rechazadas cada 1 segundo: hacen falta unas 55 solicitudes y unas 40 reciben
+429. Con Rate Limiting, respeta el límite del gateway: 15 solicitudes y ningún
+429. Las dos formas demoran unos 10 segundos, porque el límite del gateway fija
+el ritmo máximo.
 
 #### Health Endpoint Monitoring
 
@@ -656,21 +672,23 @@ gateway fija el ritmo máximo.
 detecta cuando un usuario se queja.
 
 **Implementación:** cada servicio expone `/health`, que verifica sus propias
-dependencias y devuelve un [JSON](https://www.json.org/) con el resultado de cada chequeo -200 si está
-sano, 503 en caso contrario-:
+dependencias y devuelve un [JSON](https://www.json.org/) con el resultado de
+cada chequeo -200 si está sano, 503 en caso contrario-:
 
 * `users-service`: conexión a [PostgreSQL](https://www.postgresql.org/).
 * `products-service`: *ping* a [MongoDB](https://www.mongodb.com/).
-* `orders-service`: conexión a [MySQL](https://www.mysql.com/) y a [RabbitMQ](https://www.rabbitmq.com/). Si RabbitMQ no está, queda
-  `Degraded` y responde 200, porque gracias al [Transactional
-  Outbox](#transactional-outbox) sigue aceptando `Orders`. `orders-worker` y
-  `orders-projector` quedan `Unhealthy`, porque sin RabbitMQ no reciben nada.
+* `orders-service`: conexión a [MySQL](https://www.mysql.com/) y a
+  [RabbitMQ](https://www.rabbitmq.com/). Si RabbitMQ no está, queda `Degraded` y
+  responde 200, porque gracias al [Transactional Outbox](#transactional-outbox)
+  sigue aceptando `Orders`. `orders-worker` y `orders-projector` quedan
+  `Unhealthy`, porque sin RabbitMQ no reciben nada.
 
 `Orders` **no** chequea a `Users` ni a `Products`: si se cae una dependency,
 `Orders` sigue funcionando degradado y no debe figurar como caído. El gateway
 publica los tres en `/health/users`, `/health/products` y `/health/orders`.
-Docker los consulta cada 5 segundos -[`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck) en
-[docker-compose.yaml](docker-compose.yaml)- y los usa para no levantar un
+Docker los consulta cada 5 segundos
+-[`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck)
+en [docker-compose.yaml](docker-compose.yaml)- y los usa para no levantar un
 servicio hasta que sus dependencias estén sanas -[`depends_on: condition:
 service_healthy`](https://docs.docker.com/reference/compose-file/services/#depends_on)-.
 
@@ -679,8 +697,9 @@ service_healthy`](https://docs.docker.com/reference/compose-file/services/#depen
 ![Quién consulta /health y qué chequea cada servicio](assets/06-health.svg)
 
 `Orders` no chequea a `Users` ni a `Products`: si se caen, sigue funcionando
-degradado. [Grafana](https://grafana.com/oss/grafana/) no consulta `/health`: cada servicio publica el resultado de
-sus chequeos como la métrica `service_health`.
+degradado. [Grafana](https://grafana.com/oss/grafana/) no consulta `/health`:
+cada servicio publica el resultado de sus chequeos como la métrica
+`service_health`.
 
 **Código:**
 
@@ -689,8 +708,9 @@ sus chequeos como la métrica `service_health`.
 Cada chequeo es una implementación de `IHealthCheck`, registrada con
 `AddHealthChecks` en el `Program.cs` de cada servicio:
 
-* La clase `RabbitMqHealthCheck`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs),
-  y la clase `MongoHealthCheck`, en
+* La clase `RabbitMqHealthCheck`, en
+  [Common/RabbitMq.cs](src/Common/RabbitMq.cs), y la clase `MongoHealthCheck`,
+  en
   [ProductsService/MongoHealthCheck.cs](src/ProductsService/MongoHealthCheck.cs),
   implementan el método `CheckHealthAsync`.
 * El método `WriteJson` de la clase `HealthResponse`, en
@@ -699,13 +719,14 @@ Cada chequeo es una implementación de `IHealthCheck`, registrada con
 * El método `PublishAsync` de la clase `HealthMetricsPublisher`, en
   [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
 
-**Cómo verlo:** [demos/06-health.sh](demos/06-health.sh) detiene la base de
-datos de `Products`. `/health/products` pasa a 503 con `"MongoDB no responde"`,
-`Orders` sigue sano, y a los pocos segundos Docker marca `products-service` como
-`unhealthy`. Al levantar la base, todo vuelve a la normalidad. Para verlo en
-vivo, corre [demos/monitor-health.sh](demos/monitor-health.sh) en otra terminal.
-En Grafana, el panel "Salud de los servicios" muestra `products-service` en rojo
-mientras la base está detenida.
+**Cómo verlo:** la demo [06 de Health Endpoint Monitoring](demos/06-health.sh)
+detiene la base de datos de `Products`. `/health/products` pasa a 503 con
+`"MongoDB no responde"`, `Orders` sigue sano, y a los pocos segundos Docker
+marca `products-service` como `unhealthy`. Al levantar la base, todo vuelve a la
+normalidad. Para verlo en vivo, corre [el monitor de
+estado](demos/monitor-health.sh) en otra terminal. En Grafana, el panel "Salud
+de los servicios" muestra `products-service` en rojo mientras la base está
+detenida.
 
 > [!TIP]
 >
@@ -721,70 +742,115 @@ punto único de falla.
 **Implementación:** `POST /orders/` publica el evento `order.created` en el
 exchange `andis.events` de RabbitMQ, a través del [Transactional
 Outbox](#transactional-outbox). La cola `orders.process` está suscripta a ese
-evento -ver [Publisher/Subscriber](#publishersubscriber)-. Tres réplicas de `orders-worker` consumen la misma
-cola; RabbitMQ entrega cada mensaje a una sola réplica. Cada réplica toma un
-mensaje a la vez -`prefetch = 1`- y lo confirma -*ack*- recién cuando termina;
-si se cae antes, RabbitMQ entrega el mensaje a otra. Si `Users` o `Products` no
-están disponibles, el *worker* devuelve el mensaje a la cola y lo reintenta 5
-segundos después. Está en la clase `OrderProcessingWorker`, en
+evento -ver [Publisher/Subscriber](#publishersubscriber)-. Tres réplicas de
+`orders-worker` consumen la misma cola; RabbitMQ entrega cada mensaje a una sola
+réplica. Cada réplica toma un mensaje a la vez -`prefetch = 1`- y lo confirma
+-*ack*- recién cuando termina; si se cae antes, RabbitMQ entrega el mensaje a
+otra réplica. Si `Users` o `Products` no están disponibles, el *worker* devuelve
+el mensaje a la cola y lo reintenta 5 segundos después. Está en la clase
+`OrderProcessingWorker`, en
 [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs):
 el método `ExecuteAsync` se suscribe a la cola y confirma o devuelve cada
 mensaje, y el método `ProcessAsync` procesa la `Order`.
 
 **Cómo funciona:**
 
-![Tres réplicas del worker consumen la misma cola](assets/07-competing-consumers.svg)
+![Tres réplicas del worker consumen la misma
+cola](assets/07-competing-consumers.svg)
 
 Cada mensaje lo recibe una sola réplica. Si una réplica se cae antes de
 confirmarlo, RabbitMQ se lo entrega a otra. Funciona porque el *worker* es
-*stateless*: la `Order` está en MySQL y el mensaje en la cola, así que
-cualquier réplica puede terminar lo que otra empezó -ver [Stateless y estado
-por réplica](#stateless-y-estado-por-réplica)-. El recorrido completo de una
-`Order`, desde el `POST` hasta su confirmación, está en
-[ARCHITECTURE.md](ARCHITECTURE.md#creación-de-una-order-asíncrona).
+*stateless*: la `Order` está en MySQL y el mensaje en la cola, así que cualquier
+réplica puede terminar lo que otra empezó -ver [Stateless y estado por
+réplica](#stateless-y-estado-por-réplica)-. El recorrido completo de una
+`Order`, desde el `POST` hasta su confirmación, está en [Creación de una Order:
+asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.md.
 
 **Código:**
 
 ![Clases del worker](assets/07-competing-consumers-clases.svg)
 
-`ProcessAsync` devuelve `false` cuando `Users` o `Products` no responden: el
-mensaje vuelve a la cola.
+El método `ProcessAsync` de la clase `OrderProcessingWorker`, en
+[OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
+devuelve `false` cuando `Users` o `Products` no responden: el mensaje vuelve a
+la cola.
 
-Que las réplicas se repartan la cola no evita que dos procesen la misma
-`Order`. El *outbox* entrega cada mensaje al menos una vez -ver [Transactional
+Que las réplicas se repartan la cola no evita que dos procesen la misma `Order`.
+El *outbox* entrega cada mensaje al menos una vez -ver [Transactional
 Outbox](#transactional-outbox)-, y las dos copias de un `order.created` pueden
-llegar a la vez a dos réplicas. Si el *worker* preguntara si la `Order` sigue
-`Pending` y después la cambiara, en dos pasos, pasaría esto:
+llegar a la vez a dos réplicas. Si el *worker* preguntara primero si la `Order`
+sigue `Pending` y la cambiara después, el código sería así:
 
-1. Las dos réplicas leen la `Order` como `Pending`.
-2. Las dos esperan los 2 segundos de la demora y las respuestas de `Users` y de
-   `Products`.
-3. Las dos la confirman: quedan dos `OrderConfirmed` en el historial de [Event
-   Sourcing](#event-sourcing) y dos `order.confirmed` en el *outbox*, que
-   llegan dos veces a los proyectores y al ERP.
+```csharp
+var order = await db.Orders.FindAsync([orderId], cancellationToken);  // pregunta
+if (order.Status != OrderStatus.Pending)
+    return true;
+// ... 2 segundos de demora, y las llamadas a Users y a Products ...
+order.Status = OrderStatus.Confirmed;                                  // cambia
+db.OrderEvents.Add(orderEvent);
+await db.SaveChangesAsync(cancellationToken);
+```
 
-Por eso el primer paso de la transacción es un `UPDATE` que cambia el estado
-solo si la `Order` sigue `Pending`. Es una sola sentencia atómica: MySQL bloquea
-la fila, la segunda réplica espera a que la primera confirme, ve que la `Order`
-ya no está `Pending` y no cambia nada. Recién si el `UPDATE` cambió la fila se
-agregan el evento y el mensaje; si no, la réplica descarta la `Order` y lo
-registra con `[COMPETING CONSUMERS]`. El índice único de `order_events` por
-`Order` y tipo de evento queda como segunda barrera. Ver
-[Idempotencia](#idempotencia).
+Entre la pregunta y el cambio pasan más de 2 segundos. Con las dos copias en dos
+réplicas a la vez:
 
-**Cómo verlo:**
-[demos/07-competing-consumers.sh](demos/07-competing-consumers.sh) crea 9
-`Orders`. Cada *worker* tarda 2 segundos por `Order`, y las 9 se procesan en
-unos 6 segundos, 3 por réplica. Después crea 9 más y detiene una réplica
-mientras procesa: la `Order` que tenía la termina otra réplica. Para ver la cola
-y sus consumidores, abre la consola de RabbitMQ. Dos copias del mismo mensaje
-procesadas a la vez por dos réplicas se ven en
-[demos/09-transactional-outbox.sh](demos/09-transactional-outbox.sh) -ver
-[Transactional Outbox](#transactional-outbox)-.
+1. Las dos ejecutan `FindAsync` y leen la `Order` como `Pending`.
+2. Las dos esperan la demora y las respuestas de `Users` y de `Products`.
+3. Las dos ejecutan `SaveChangesAsync`. Quedan dos `OrderConfirmed` en el
+   historial de [Event Sourcing](#event-sourcing) y dos `order.confirmed` en el
+   *outbox*, que llegan dos veces a los proyectores y al ERP.
+
+Por eso el método `ProcessAsync` junta la pregunta y el cambio en una sola
+sentencia. En el código, el `Where` es la pregunta y el `SetProperty` es el
+cambio:
+
+```csharp
+var changed = await db.Orders
+    .Where(o => o.Id == orderId && o.Status == OrderStatus.Pending)          // pregunta
+    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, newStatus), ct);   // cambia
+if (changed == 0)
+{
+    // Otra réplica ya la procesó: no se agrega ni el evento ni el mensaje.
+    await transaction.RollbackAsync(ct);
+    return true;
+}
+db.OrderEvents.Add(orderEvent);
+db.OutboxMessages.Add(outboxMessage);
+```
+
+El método `ExecuteUpdateAsync` no carga la `Order` en memoria. EF Core lo
+traduce a una sola sentencia SQL, `UPDATE orders SET status = 'Confirmed' WHERE
+id = 42 AND status = 'Pending'`, y devuelve cuántas filas cambió. Con las dos
+copias a la vez:
+
+1. La primera réplica ejecuta el `UPDATE`. La `Order` está `Pending`, así que la
+   cambia y `changed` vale 1. MySQL bloquea la fila hasta que termina la
+   transacción.
+2. La segunda réplica ejecuta el mismo `UPDATE` y espera a que se libere la
+   fila. Cuando la primera confirma, la `Order` ya está `Confirmed`, el `WHERE`
+   no encuentra la fila y `changed` vale 0.
+3. La segunda deshace su transacción, registra `[COMPETING CONSUMERS] …
+   descarta la orden` y no agrega ni el evento ni el mensaje.
+
+La lectura del principio de `ProcessAsync` sigue estando, sin seguimiento de
+cambios -`AsNoTracking`-. No decide nada: solo evita llamar a `Users` y a
+`Products` cuando una copia llega después de que la `Order` ya se procesó. El
+índice único de `order_events` por `Order` y tipo de evento queda como segunda
+barrera. Ver [Idempotencia](#idempotencia).
+
+**Cómo verlo:** la demo [07 de Competing
+Consumers](demos/07-competing-consumers.sh) crea 9 `Orders`. Cada *worker* tarda
+2 segundos por `Order`, y las 9 se procesan en unos 6 segundos, 3 por réplica.
+Después crea 9 más y detiene una réplica mientras procesa: la `Order` que tenía
+la termina otra réplica. Para ver la cola y sus consumidores, abre la consola de
+RabbitMQ. Dos copias del mismo mensaje procesadas a la vez por dos réplicas se
+ven en la demo [09 de Transactional Outbox](demos/09-transactional-outbox.sh)
+-ver [Transactional Outbox](#transactional-outbox)-.
 
 > [!TIP]
 >
-> Consulta [Background tasks with hosted services in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/host/hosted-services?view=aspnetcore-10.0)
+> Consulta [Background tasks with hosted services in ASP.NET
+> Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/host/hosted-services?view=aspnetcore-10.0)
 > para tener más información sobre `BackgroundService`, la clase base de
 > `OrderProcessingWorker`, `OutboxRelay` y `OrderDetailsProjector`.
 
@@ -796,8 +862,8 @@ se llegó a él, y una corrupción de ese estado no tiene vuelta atrás.
 **Implementación:** cada cambio de una `Order` se guarda como un evento
 inmutable en la tabla `order_events`: `OrderCreated`, `OrderConfirmed` u
 `OrderRejected`. La tabla `orders` es una **proyección**: el estado actual,
-calculado a partir de los eventos. Cada evento es un `OrderEvent`, creado con
-el método `Create` de esa clase, en
+calculado a partir de los eventos. Cada evento es un `OrderEvent`, creado con el
+método `Create` de esa clase, en
 [OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs); el
 método `Replay` de la clase `OrderProjection`, en
 [OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs),
@@ -819,24 +885,17 @@ Los eventos no se modifican ni se borran: un cambio nuevo es un evento nuevo.
 
 ![Clases de los eventos y la proyección](assets/08-event-sourcing-clases.svg)
 
-**Cómo verlo:** [demos/08-event-sourcing.sh](demos/08-event-sourcing.sh) crea
+**Cómo verlo:** la demo [08 de Event Sourcing](demos/08-event-sourcing.sh) crea
 una `Order`, muestra sus eventos, borra la tabla `orders` directamente en MySQL
 y la reconstruye. Las `Orders` vuelven con su estado.
 
 #### Transactional Outbox
 
-Este patrón no está en la lista de la lectura de patrones de disponibilidad; se
-agrega porque las [demos de rendimiento y procesamiento
-asíncrono](#demos-de-rendimiento-y-procesamiento-asíncrono) dependen de él. Con
-eventos que alimentan una vista materializada, un evento perdido deja esa vista
-desactualizada para siempre.
-
 **Problema:** un servicio que guarda un cambio en su base y después publica un
 mensaje hace dos escrituras en dos sistemas distintos, sin una transacción que
-las abarque. Si RabbitMQ no está o el servicio se cae entre una y otra, queda
-el cambio sin el mensaje: una `Order` `Pending` que ningún *worker* va a
-procesar. Si se publica primero, queda el mensaje de un cambio que tal vez no se
-guardó.
+las abarque. Si RabbitMQ no está o el servicio se cae entre una y otra, queda el
+cambio sin el mensaje: una `Order` `Pending` que ningún *worker* va a procesar.
+Si se publica primero, queda el mensaje de un cambio que tal vez no se guardó.
 
 **Implementación:** `POST /orders/` guarda la `Order`, su evento `OrderCreated`
 de Event Sourcing y el mensaje `order.created` en la tabla `outbox_messages`,
@@ -870,16 +929,16 @@ View](#materialized-view)-. Ver [Idempotencia](#idempotencia).
 `Users` y `Products` publican sus eventos directamente, sin *outbox*: si
 RabbitMQ no está, el cambio se guarda y el evento se pierde. `Products` usa
 MongoDB sin réplicas, que no admite transacciones con varios documentos. Quedó
-así a propósito, para comparar; ver las decisiones abiertas en
-[ARCHITECTURE.md](ARCHITECTURE.md#decisiones-abiertas-a-discusión).
+así a propósito, para comparar; ver [Decisiones abiertas a
+discusión](ARCHITECTURE.md#decisiones-abiertas-a-discusión) en ARCHITECTURE.md.
 
 **Cómo funciona:**
 
 ![Secuencia del Transactional Outbox](assets/09-transactional-outbox.svg)
 
 El *worker* guarda `order.confirmed` u `order.rejected` en el *outbox* de la
-misma forma. El recorrido completo está en
-[ARCHITECTURE.md](ARCHITECTURE.md#creación-de-una-order-asíncrona).
+misma forma. El recorrido completo está en [Creación de una Order:
+asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.md.
 
 **Código:**
 
@@ -887,25 +946,27 @@ misma forma. El recorrido completo está en
 
 `PublishedAt` es nulo mientras el mensaje está pendiente.
 
-**Cómo verlo:** [demos/09-transactional-outbox.sh](demos/09-transactional-outbox.sh)
-detiene RabbitMQ y crea 5 `Orders`. Todas responden `202`; antes del *outbox*,
-`Orders` respondía `503` y la `Order` quedaba `Pending` para siempre.
-`/health/orders` responde `Degraded`, y los 5 mensajes esperan en
-`outbox_messages`. Después duplica el mensaje `order.created` de la última
-`Order`, como si el *relay* lo hubiera publicado dos veces. Al levantar
-RabbitMQ, el *relay* los publica, los *workers* confirman las `Orders` y el
-*outbox* queda vacío. Las dos copias del mensaje duplicado llegan a la vez a
-dos *workers*: los *logs* muestran que uno confirma la `Order` y el otro la
-descarta, y la `Order` tiene un solo `OrderConfirmed` en su historial y un solo
-`order.confirmed` en el *outbox*. En Grafana, el panel "Outbox de Orders"
-muestra los pendientes subir y volver a cero.
+**Cómo verlo:** la demo [09 de Transactional
+Outbox](demos/09-transactional-outbox.sh) detiene RabbitMQ y crea 5 `Orders`.
+Todas responden `202`; antes del *outbox*, `Orders` respondía `503` y la `Order`
+quedaba `Pending` para siempre. `/health/orders` responde `Degraded`, y los 5
+mensajes esperan en `outbox_messages`. Después duplica el mensaje
+`order.created` de la última `Order`, como si el *relay* lo hubiera publicado
+dos veces. Al levantar RabbitMQ, el *relay* los publica, los *workers* confirman
+las `Orders` y el *outbox* queda vacío. Las dos copias del mensaje duplicado
+llegan a la vez a dos *workers*: los *logs* muestran que uno confirma la `Order`
+y el otro la descarta, y la `Order` tiene un solo `OrderConfirmed` en su
+historial y un solo `order.confirmed` en el *outbox*. En Grafana, el panel
+"Outbox de Orders" muestra los pendientes subir y volver a cero.
 
 > [!TIP]
 >
-> Consulta [Transactions - EF Core](https://learn.microsoft.com/en-us/ef/core/saving/transactions)
-> para tener más información sobre la transacción que guarda la `Order`, su
-> evento y el mensaje, y [SQL Queries - EF Core](https://learn.microsoft.com/en-us/ef/core/querying/sql-queries)
-> sobre `FromSqlRaw`, con el que el *relay* lee los mensajes pendientes.
+> Consulta [Transactions - EF
+> Core](https://learn.microsoft.com/en-us/ef/core/saving/transactions) para
+> tener más información sobre la transacción que guarda la `Order`, su evento y
+> el mensaje, y [SQL Queries - EF
+> Core](https://learn.microsoft.com/en-us/ef/core/querying/sql-queries) sobre
+> `FromSqlRaw`, con el que el *relay* lee los mensajes pendientes.
 
 ## Demos de rendimiento y procesamiento asíncrono
 
@@ -923,8 +984,9 @@ Qué se muestra:
 
 Resultado observable: latencias de lectura estables durante el pico, *backlog*
 absorbido por la cola y throughput que crece al agregar *workers*. El pico se
-genera con [k6/load.js](k6/load.js) y [k6/load-leveling.js](k6/load-leveling.js),
-y se compara antes y después de cada patrón en el dashboard de [Grafana](https://grafana.com/oss/grafana/), en la
+genera con [k6/load.js](k6/load.js) y
+[k6/load-leveling.js](k6/load-leveling.js), y se compara antes y después de cada
+patrón en el dashboard de [Grafana](https://grafana.com/oss/grafana/), en la
 fila "Rendimiento: caché, CQRS y outbox".
 
 ### Qué agrega a las demos de disponibilidad
@@ -949,37 +1011,41 @@ curl -X DELETE http://localhost/products/cache
 ### Patrones de rendimiento
 
 Como en las demos de disponibilidad, cada patrón tiene un script en
-[demos](demos/), del `10` al `16`. Los *logs* de [Docker](https://www.docker.com/) muestran los eventos con
-una etiqueta: `[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en
-`users-service`, `products-service` y `orders-projector`; y `[MATERIALIZED
-VIEW]` en `orders-projector`.
+[demos](demos/), del `10` al `16`. Los *logs* de
+[Docker](https://www.docker.com/) muestran los eventos con una etiqueta:
+`[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en `users-service`,
+`products-service` y `orders-projector`; y `[MATERIALIZED VIEW]` en
+`orders-projector`.
 
 #### Cache-Aside
 
 **Problema:** las lecturas de datos que cambian poco van a la base cada vez, y
 la base se vuelve el cuello de botella de un pico de lecturas.
 
-**Implementación:** `Products` busca primero en [Redis](https://redis.io/). Si el dato no está
--*miss*-, lo lee de [MongoDB](https://www.mongodb.com/) y lo guarda en Redis por 60 segundos; la próxima
-lectura sale de Redis -*hit*-. Al crear o cambiar un `Product`, `Products`
-borra de Redis las claves afectadas, y la próxima lectura trae el dato nuevo.
-Es la aplicación la que maneja la caché: Redis no sabe nada de MongoDB. Si Redis
-no responde, `Products` lee MongoDB directamente; la caché acelera, pero no es
-una dependencia, y por eso no entra en `/health`. Está en los métodos
-`GetOrLoadAsync` e `InvalidateAsync` de la clase `ProductCache`, en
-[ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs), que usan los
-métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
+**Implementación:** `Products` busca primero en [Redis](https://redis.io/). Si
+el dato no está -*miss*-, lo lee de [MongoDB](https://www.mongodb.com/) y lo
+guarda en Redis por 60 segundos; la próxima lectura sale de Redis -*hit*-. Al
+crear o cambiar un `Product`, `Products` borra de Redis las claves afectadas, y
+la próxima lectura trae el dato nuevo. Es la aplicación la que maneja la caché:
+Redis no sabe nada de MongoDB. Si Redis no responde, `Products` lee MongoDB
+directamente; la caché acelera, pero no es una dependencia, y por eso no entra
+en `/health`. Está en los métodos `GetOrLoadAsync` e `InvalidateAsync` de la
+clase `ProductCache`, en
+[ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs), que usan
+los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
 [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
 
 Se borra la clave en lugar de escribir el valor nuevo: así la caché nunca guarda
 un valor que MongoDB no tiene. La caché está en Redis y no en la memoria de
 `Products`, así que la comparten todas las réplicas y una invalidación vale para
-todas -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. El TTL acota cuánto puede durar un dato
-desactualizado si una invalidación falla.
+todas -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-.
+El TTL acota cuánto puede durar un dato desactualizado si una invalidación
+falla.
 
 **Cómo funciona:**
 
-![Secuencia de una lectura y una invalidación con Cache-Aside](assets/10-cache-aside.svg)
+![Secuencia de una lectura y una invalidación con
+Cache-Aside](assets/10-cache-aside.svg)
 
 Si Redis no responde, `Products` lee directamente de MongoDB.
 
@@ -987,10 +1053,10 @@ Si Redis no responde, `Products` lee directamente de MongoDB.
 
 ![Clases de la caché de Products](assets/10-cache-aside-clases.svg)
 
-`ProductCache` no conoce a MongoDB: su método `GetOrLoadAsync` recibe la
-lectura como una función, `load`.
+`ProductCache` no conoce a MongoDB: su método `GetOrLoadAsync` recibe la lectura
+como una función, `load`.
 
-**Cómo verlo:** [demos/10-cache-aside.sh](demos/10-cache-aside.sh) simula una
+**Cómo verlo:** la demo [10 de Cache-Aside](demos/10-cache-aside.sh) simula una
 base que demora 200 ms y lee el mismo `Product` varias veces: la primera lectura
 demora 200 ms y las siguientes, 2 o 3 ms. Después cambia su nombre: la lectura
 siguiente es un *miss* y trae el nombre nuevo. Con Redis detenido, `Products`
@@ -1000,7 +1066,8 @@ apagada y después prendida: la p95 baja de unos 100 ms a unos 3 ms.
 
 > [!TIP]
 >
-> Consulta [Caching Guidance](https://learn.microsoft.com/en-us/azure/architecture/best-practices/caching)
+> Consulta [Caching
+> Guidance](https://learn.microsoft.com/en-us/azure/architecture/best-practices/caching)
 > para tener más información sobre cuándo conviene una caché, cuánto tiempo
 > guardar cada dato y cómo mantenerla consistente con la base.
 
@@ -1015,8 +1082,8 @@ hacen los *workers* desde la cola `orders.process`, a su propio ritmo. La cola
 absorbe el pico: `Users` y `Products` reciben como máximo una llamada por
 réplica del *worker*, sin importar cuántas `Orders` lleguen. Ya estaba en las
 demos de disponibilidad, como base de [Competing
-Consumers](#competing-consumers-para-disponibilidad); las demos de rendimiento lo
-muestra bajo un pico.
+Consumers](#competing-consumers-para-disponibilidad); las demos de rendimiento
+lo muestra bajo un pico.
 
 **Cómo funciona:**
 
@@ -1025,13 +1092,14 @@ muestra bajo un pico.
 El pico se acumula en la cola, no en `Users` ni en `Products`. El código es el
 de [Competing Consumers](#competing-consumers-para-disponibilidad).
 
-**Cómo verlo:** [demos/11-queue-based-load-leveling.sh](demos/11-queue-based-load-leveling.sh)
-crea 30 `Orders` a la vez, directamente en `orders-service`: el Throttling por
-cliente del gateway rechazaría el pico antes de que llegara a la cola. Todas
-responden `202` en pocos milisegundos; la cola baja de a 3 mensajes cada 2
-segundos hasta vaciarse. [k6/load-leveling.js](k6/load-leveling.js) envía 10
-`POST` por segundo durante 10 segundos: la latencia de `create order` se
-mantiene baja y la cola crece durante el pico y se vacía después.
+**Cómo verlo:** la demo [11 de Queue-Based Load
+Leveling](demos/11-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
+directamente en `orders-service`: el Throttling por cliente del gateway
+rechazaría el pico antes de que llegara a la cola. Todas responden `202` en
+pocos milisegundos; la cola baja de a 3 mensajes cada 2 segundos hasta vaciarse.
+[k6/load-leveling.js](k6/load-leveling.js) envía 10 `POST` por segundo durante
+10 segundos: la latencia de `create order` se mantiene baja y la cola crece
+durante el pico y se vacía después.
 
 #### Competing Consumers para rendimiento
 
@@ -1047,10 +1115,10 @@ cambiar el código.
 disponibilidad](#competing-consumers-para-disponibilidad), con 6 réplicas en
 lugar de 3.
 
-**Cómo verlo:**
-[demos/12-competing-consumers-scaling.sh](demos/12-competing-consumers-scaling.sh)
-procesa 30 `Orders` con 3 réplicas, unos 21 segundos, y otras 30 con 6 réplicas,
-unos 12 segundos. Al final vuelve a 3 réplicas.
+**Cómo verlo:** la demo [12 de Competing Consumers para
+rendimiento](demos/12-competing-consumers-scaling.sh) procesa 30 `Orders` con 3
+réplicas, unos 21 segundos, y otras 30 con 6 réplicas, unos 12 segundos. Al
+final vuelve a 3 réplicas.
 
 #### Publisher/Subscriber
 
@@ -1058,8 +1126,9 @@ unos 12 segundos. Al final vuelve a 3 réplicas.
 tiene que conocerlos a todos, y cada interesado nuevo obliga a cambiarlo.
 
 **Implementación:** `Orders`, `Users` y `Products` publican eventos en el
-exchange `andis.events`, de tipo *topic*. En [RabbitMQ](https://www.rabbitmq.com/), un exchange y una cola
-son piezas distintas:
+exchange `andis.events`, de tipo *topic*. En
+[RabbitMQ](https://www.rabbitmq.com/), un exchange y una cola son piezas
+distintas:
 
 * Un **exchange** es donde se publica. No guarda mensajes: según la clave de
   ruteo de cada mensaje, por ejemplo `order.created`, pone una copia en cada
@@ -1080,9 +1149,10 @@ interesan:
 
 Un mismo `order.created` llega a las dos colas. `Orders` no sabe que existen los
 proyectores: agregarlos no cambió el código que publica. La conexión y la
-publicación están en la clase `RabbitMq`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs):
-el método `PublishEventAsync` publica un evento, y el método
-`DeclareSubscriberQueueAsync` declara la cola de un suscriptor con sus claves.
+publicación están en la clase `RabbitMq`, en
+[Common/RabbitMq.cs](src/Common/RabbitMq.cs): el método `PublishEventAsync`
+publica un evento, y el método `DeclareSubscriberQueueAsync` declara la cola de
+un suscriptor con sus claves.
 
 El exchange y las colas corresponden a dos patrones distintos. Entre colas,
 Publisher/Subscriber: cada suscriptor recibe su propia copia de cada evento.
@@ -1106,9 +1176,9 @@ Los contratos de los eventos y la conexión a RabbitMQ están en `Common`, el
 único proyecto que comparten los servicios. Los registros `OrderConfirmed` y
 `OrderRejected` también están ahí; el diagrama no los muestra.
 
-**Cómo verlo:**
-[demos/13-publisher-subscriber.sh](demos/13-publisher-subscriber.sh) muestra los
-enlaces del exchange, crea una `Order` y muestra los *logs* del *worker* y de los
+**Cómo verlo:** la demo [13 de
+Publisher/Subscriber](demos/13-publisher-subscriber.sh) muestra los enlaces del
+exchange, crea una `Order` y muestra los *logs* del *worker* y de los
 proyectores, que la reciben los dos. Después cambia el nombre de un `Product` y
 de un `User`: esos eventos solo los reciben los proyectores.
 
@@ -1130,9 +1200,9 @@ resultado. Está en los métodos `CreateOrder` y `GetOrderStatus` de la clase
 `POST /orders/` crea una `Order` en cada llamada. Si el cliente no recibe el
 `202`, por un *timeout* o un corte de red, no sabe si la `Order` se creó, y si
 reintenta se crea una segunda. Esa `Order` tiene su propio `order.created`, su
-confirmación y su pedido al ERP, con otro número, así que ni el ERP puede
-darse cuenta de que es la misma. Para evitarlo, `POST /orders/` acepta el
-encabezado opcional `Idempotency-Key`, del [borrador de la
+confirmación y su pedido al ERP, con otro número, así que ni el ERP puede darse
+cuenta de que es la misma. Para evitarlo, `POST /orders/` acepta el encabezado
+opcional `Idempotency-Key`, del [borrador de la
 IETF](https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/):
 el cliente elige una clave por `Order`, por ejemplo un
 [UUID](https://datatracker.ietf.org/doc/html/rfc9562), y la repite en cada
@@ -1163,27 +1233,29 @@ token; si la solicitud es anónima, el `User` 0. No se guarda en la tabla
 /orders/projections/rebuild` borra y reconstruye -ver [Event
 Sourcing](#event-sourcing)-. Sin el encabezado, todo sigue como antes, para que
 los clientes y las demos existentes funcionen igual; cada reintento crea otra
-`Order`. Las claves no vencen en la demo. En producción se borran después de
-un plazo, por ejemplo 24 horas, para que la tabla no crezca sin límite, y un
+`Order`. Las claves no vencen en la demo. En producción se borran después de un
+plazo, por ejemplo 24 horas, para que la tabla no crezca sin límite, y un
 reintento posterior crea otra `Order`. Ver [Idempotencia](#idempotencia).
 
 **Cómo funciona:**
 
-![Secuencia de Asynchronous Request-Reply](assets/14-asynchronous-request-reply.svg)
+![Secuencia de Asynchronous
+Request-Reply](assets/14-asynchronous-request-reply.svg)
 
-**Cómo verlo:** [demos/14-asynchronous-request-reply.sh](demos/14-asynchronous-request-reply.sh)
-crea una `Order`, muestra el `202` con sus encabezados y consulta el estado
-respetando `Retry-After` hasta el `303`. Sigue la redirección y muestra la
-`Order` confirmada. Al final crea otra `Order` con `Idempotency-Key` y repite el
-`POST` con la misma clave, como un cliente que no recibió la respuesta: la
-respuesta trae el mismo `id` e `Idempotent-Replayed: true`. Con la misma clave y
-otra cantidad, responde `422`.
+**Cómo verlo:** la demo [14 de Asynchronous
+Request-Reply](demos/14-asynchronous-request-reply.sh) crea una `Order`, muestra
+el `202` con sus encabezados y consulta el estado respetando `Retry-After` hasta
+el `303`. Sigue la redirección y muestra la `Order` confirmada. Al final crea
+otra `Order` con `Idempotency-Key` y repite el `POST` con la misma clave, como
+un cliente que no recibió la respuesta: la respuesta trae el mismo `id` e
+`Idempotent-Replayed: true`. Con la misma clave y otra cantidad, responde `422`.
 
 > [!TIP]
 >
-> Consulta [Controller action return types in ASP.NET Core web API](https://learn.microsoft.com/en-us/aspnet/core/web-api/action-return-types?view=aspnetcore-10.0)
-> para tener más información sobre los resultados que devuelven `CreateOrder`
-> y `GetOrderStatus`, como `Accepted`.
+> Consulta [Controller action return types in ASP.NET Core web
+> API](https://learn.microsoft.com/en-us/aspnet/core/web-api/action-return-types?view=aspnetcore-10.0)
+> para tener más información sobre los resultados que devuelven `CreateOrder` y
+> `GetOrderStatus`, como `Accepted`.
 
 #### CQRS
 
@@ -1203,8 +1275,8 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
   `GetOrdersForUser` de la clase `OrdersQueriesController`, en
   [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
-  Es una consulta a [MySQL](https://www.mysql.com/), sin llamadas a `Users` ni a `Products`, y sin
-  Throttling.
+  Es una consulta a [MySQL](https://www.mysql.com/), sin llamadas a `Users` ni a
+  `Products`, y sin Throttling.
 
 `GET /orders/user/{userId}/details`, la consulta síncrona de la demo de
 disponibilidad, queda como está: la usan los demos de Retry, Circuit Breaker,
@@ -1218,8 +1290,9 @@ los comandos.
 
 La flecha de los eventos es la consistencia eventual: el modelo de lectura se
 actualiza un momento después. El recorrido completo de una consulta desde la
-vista está en
-[ARCHITECTURE.md](ARCHITECTURE.md#consulta-de-detalle-desde-la-vista-eventos).
+vista está en [Consulta de detalle desde la vista:
+eventos](ARCHITECTURE.md#consulta-de-detalle-desde-la-vista-eventos), en
+ARCHITECTURE.md.
 
 **Código:**
 
@@ -1228,7 +1301,7 @@ vista está en
 La separación se ve en el código: un controlador para los comandos, sobre
 `Order`, y otro para las consultas, sobre `OrderDetails`.
 
-**Cómo verlo:** [demos/15-cqrs.sh](demos/15-cqrs.sh) hace la misma consulta por
+**Cómo verlo:** la demo [15 de CQRS](demos/15-cqrs.sh) hace la misma consulta por
 los dos lados. Sin fallas, la síncrona demora unos 100 ms y la vista, 3 ms. Con
 `Products` demorando 300 ms, la síncrona pasa a casi 2 segundos -una llamada por
 `Order`- y la vista no cambia. Después crea una `Order` y consulta enseguida: la
@@ -1253,18 +1326,17 @@ que corre en `orders-projector` y consume la cola `orders.details-view`:
   responden, el mensaje vuelve a la cola.
 * `order.confirmed` y `order.rejected`: el método `SetStatusAsync` actualiza el
   estado.
-* `user.updated` y `product.updated`: actualizan el nombre en todas las filas
-  de ese `User` o `Product`.
+* `user.updated` y `product.updated`: actualizan el nombre en todas las filas de
+  ese `User` o `Product`.
 
 Corre con tres réplicas, como el *worker*. Cada mensaje de la cola va a una
 réplica distinta y se procesa en paralelo, así que los proyectores no pueden
 suponer que los eventos de una `Order` llegan en orden, ni que una copia
-repetida de un mensaje llega después de la original. Los proyectores no
-guardan nada en memoria, y aun así, mientras su resultado dependía del orden de
-los mensajes, solo podía haber uno: ser *stateless* no alcanza para escalar
--ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. Con
-varias réplicas, sin las soluciones que siguen pasaría esto, sin errores
-visibles:
+repetida de un mensaje llega después de la original. Los proyectores no guardan
+nada en memoria, y aun así, mientras su resultado dependía del orden de los
+mensajes, solo podía haber uno: ser *stateless* no alcanza para escalar -ver
+[Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. Con varias
+réplicas, sin las soluciones que siguen pasaría esto, sin errores visibles:
 
 * **Un estado perdido por desorden.** La réplica A recibe `order.created` de la
   `Order` 42 y llama a `Users` y a `Products`, que tardan. Mientras tanto, el
@@ -1275,32 +1347,31 @@ visibles:
 
   **Solución:** el estado solo avanza. `Pending` pasa a `Confirmed` o a
   `Rejected`, y esos dos son finales. El método `SetStatusAsync` crea la fila
-  con el estado final si todavía no existe, y `AddOrderAsync` completa los
-  datos y los nombres sin tocar el estado. Aplicados en cualquier orden, los
-  eventos dejan el mismo resultado, sin necesidad de numerarlos.
+  con el estado final si todavía no existe, y `AddOrderAsync` completa los datos
+  y los nombres sin tocar el estado. Aplicados en cualquier orden, los eventos
+  dejan el mismo resultado, sin necesidad de numerarlos.
 * **Copias que pasan el chequeo.** Buscar la fila o la factura y después
-  insertarla son dos pasos, y dos copias del mismo mensaje en dos réplicas
-  pasan las dos el chequeo. Con `order.invoiced`, la factura queda dos veces en
-  el historial; con `order.created`, la segunda inserción viola la clave
-  primaria y falla.
+  insertarla son dos pasos, y dos copias del mismo mensaje en dos réplicas pasan
+  las dos el chequeo. Con `order.invoiced`, la factura queda dos veces en el
+  historial; con `order.created`, la segunda inserción viola la clave primaria y
+  falla.
 
-  **Solución:** una sola sentencia atómica. La vista se escribe con un
-  *upsert*, [`INSERT … ON DUPLICATE KEY
+  **Solución:** una sola sentencia atómica. La vista se escribe con un *upsert*,
+  [`INSERT … ON DUPLICATE KEY
   UPDATE`](https://dev.mysql.com/doc/refman/8.4/en/insert-on-duplicate.html) de
   MySQL, que inserta la fila o la actualiza si ya existe. La factura se inserta
-  directamente, y un índice único de `order_events` por `Order` y tipo de
-  evento hace fallar la segunda copia. Ver [Idempotencia](#idempotencia).
-* **Una réplica trabada.** Una excepción no prevista, como una falla de la
-  base, dejaría el mensaje sin confirmar ni devolver. Con `prefetch = 1`,
-  RabbitMQ no le entregaría más mensajes a esa réplica hasta que se cerrara su
-  canal.
+  directamente, y un índice único de `order_events` por `Order` y tipo de evento
+  hace fallar la segunda copia. Ver [Idempotencia](#idempotencia).
+* **Una réplica trabada.** Una excepción no prevista, como una falla de la base,
+  dejaría el mensaje sin confirmar ni devolver. Con `prefetch = 1`, RabbitMQ no
+  le entregaría más mensajes a esa réplica hasta que se cerrara su canal.
 
   **Solución:** cualquier excepción devuelve el mensaje a la cola, igual que
   cuando `Users` o `Products` no responden. El *worker* hace lo mismo.
 * **Nombres aplicados al revés.** Dos cambios del nombre de un `User`, primero
   "Ana" y después "Ana María", llegan a réplicas distintas y el viejo se aplica
-  último: la vista queda con "Ana". Cada cambio es idempotente, porque asigna
-  un valor, pero no conmutativo: el resultado depende del orden.
+  último: la vista queda con "Ana". Cada cambio es idempotente, porque asigna un
+  valor, pero no conmutativo: el resultado depende del orden.
 
   **Solución:** `user.updated` y `product.updated` traen la fecha del cambio en
   el campo opcional `OccurredAt`, y la vista guarda la fecha de cada nombre en
@@ -1334,24 +1405,25 @@ pero no rendimiento.
 
 ![Clases de los proyectores de la vista](assets/16-materialized-view-clases.svg)
 
-Los proyectores son los únicos que escriben la vista, y los únicos que llaman a `Users` y
-a `Products`.
+Los proyectores son los únicos que escriben la vista, y los únicos que llaman a
+`Users` y a `Products`.
 
-**Cómo verlo:** [demos/16-materialized-view.sh](demos/16-materialized-view.sh)
+**Cómo verlo:** la demo [16 de Materialized View](demos/16-materialized-view.sh)
 cambia el nombre de un `Product` y la vista lo refleja. Con `Products` fallando
 siempre, la consulta síncrona responde "no disponible" y la vista sigue
-respondiendo con los nombres. Después detiene los proyectores, hace
-que `Users` demore 1,5 segundos y crea una `Order`: la `Order` se confirma, pero
-la vista no la tiene y sus eventos esperan en la cola. Al levantar las tres
-réplicas, `order.created` y `order.confirmed` llegan a la vez a réplicas
-distintas. Mientras una espera a `Users`, la otra crea la fila con el estado
-final, y la vista termina en `Confirmed`; los *logs* muestran qué hizo cada
-réplica. Por último, publica dos `user.updated` del `User` 2 al revés, primero
-el más nuevo: la vista se queda con el nombre más nuevo.
+respondiendo con los nombres. Después detiene los proyectores, hace que `Users`
+demore 1,5 segundos y crea una `Order`: la `Order` se confirma, pero la vista no
+la tiene y sus eventos esperan en la cola. Al levantar las tres réplicas,
+`order.created` y `order.confirmed` llegan a la vez a réplicas distintas.
+Mientras una espera a `Users`, la otra crea la fila con el estado final, y la
+vista termina en `Confirmed`; los *logs* muestran qué hizo cada réplica. Por
+último, publica dos `user.updated` del `User` 2 al revés, primero el más nuevo:
+la vista se queda con el nombre más nuevo.
 
 > [!TIP]
 >
-> Consulta [ExecuteUpdate and ExecuteDelete - EF Core](https://learn.microsoft.com/en-us/ef/core/saving/execute-insert-update-delete)
+> Consulta [ExecuteUpdate and ExecuteDelete - EF
+> Core](https://learn.microsoft.com/en-us/ef/core/saving/execute-insert-update-delete)
 > para tener más información sobre `ExecuteUpdateAsync`, con el que los
 > proyectores cambian un nombre en todas las filas de la vista con una sola
 > sentencia.
@@ -1361,26 +1433,27 @@ el más nuevo: la vista se queda con el nombre más nuevo.
 **Estado: implementada en este repositorio, sobre las demos de rendimiento.**
 
 Escenario: la aplicación se abre a clientes reales. Cada usuario tiene que
-identificarse, ver solo lo suyo y no poder hacer más de lo que le corresponde,
-y nada tiene que llegar a los servicios sin control.
+identificarse, ver solo lo suyo y no poder hacer más de lo que le corresponde, y
+nada tiene que llegar a los servicios sin control.
 
 Qué se muestra:
 
 * Inicio de sesión en un proveedor de identidad externo, y decisiones tomadas
   con los claims del token.
-* [TLS](https://datatracker.ietf.org/doc/html/rfc8446), validación de tokens y compresión en el gateway, sin código en los
-  servicios.
-* Validación y limpieza de cada solicitud antes de que llegue a un servicio,
-  y servicios que solo se alcanzan a través del gateway.
+* [TLS](https://datatracker.ietf.org/doc/html/rfc8446), validación de tokens y
+  compresión en el gateway, sin código en los servicios.
+* Validación y limpieza de cada solicitud antes de que llegue a un servicio, y
+  servicios que solo se alcanzan a través del gateway.
 * Un proxy junto a `Products` que le agrega autenticación y autorización sin
   cambiar su código.
 * Acceso directo, temporal y acotado al almacenamiento de las imágenes.
 
-Resultado observable: por la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway, cualquiera llega a
-cualquier ruta, incluidas las de administración; por la entrada HTTPS, cada
-solicitud necesita un token, los servicios no implementan autenticación ni TLS,
-las políticas se aplican en el borde y cada acceso tiene el mínimo privilegio
-necesario.
+Resultado observable: por la entrada
+[HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway, cualquiera
+llega a cualquier ruta, incluidas las de administración; por la entrada HTTPS,
+cada solicitud necesita un token, los servicios no implementan autenticación ni
+TLS, las políticas se aplican en el borde y cada acceso tiene el mínimo
+privilegio necesario.
 
 ### Qué agrega a las demos de rendimiento
 
@@ -1393,7 +1466,8 @@ necesario.
 | Imágenes de los `Products` | `PUT /products/{id}/image` sube la imagen a través de `Products`; `POST /products/{id}/image/upload-url` entrega una URL firmada para subirla directamente a [Azurite](https://github.com/Azure/Azurite); `GET /products/{id}/image` redirige a una URL firmada para bajarla. |
 | [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) | Deja de publicar en el host los puertos de los servicios y de las bases: la única entrada a los servicios es el gateway. |
 
-Los usuarios de [Keycloak](https://www.keycloak.org/), todos con la contraseña `Pa55w0rd`:
+Los usuarios de [Keycloak](https://www.keycloak.org/), todos con la contraseña
+`Pa55w0rd`:
 
 | Usuario | Rol | `User` de la aplicación | Qué puede hacer |
 | ------- | --- | ----------------------- | --------------- |
@@ -1427,11 +1501,12 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 
 Cada patrón tiene un script en [demos](demos/), del `17` al `21`, y un paso a
 paso en [commands/04-security.azcli](commands/04-security.azcli) que compara la
-misma solicitud por la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la HTTPS, con él. Los
-*logs* de [Docker](https://www.docker.com/) muestran los eventos con una etiqueta: `[HTTPS]` en
-`api-gateway`, una línea por solicitud; `[FEDERATED IDENTITY]` en
-`orders-service`; `[SIDECAR]` en `products-sidecar`; y `[VALET KEY]` en
-`products-service`.
+misma solicitud por la entrada
+[HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la
+HTTPS, con él. Los *logs* de [Docker](https://www.docker.com/) muestran los
+eventos con una etiqueta: `[HTTPS]` en `api-gateway`, una línea por solicitud;
+`[FEDERATED IDENTITY]` en `orders-service`; `[SIDECAR]` en `products-sidecar`; y
+`[VALET KEY]` en `products-service`.
 
 Los patrones están en el orden en que se apoyan unos en otros, que no es el de
 la lectura: Gateway Offloading y Gatekeeper usan los tokens de Federated
@@ -1444,9 +1519,10 @@ contraseñas e implementa el inicio de sesión, la recuperación de contraseñas
 el bloqueo de cuentas, y el usuario tiene una cuenta distinta en cada una. Una
 falla en cualquiera de ellas expone las contraseñas.
 
-**Implementación:** la autenticación se delega en [Keycloak](https://www.keycloak.org/), un proveedor de
-identidad que habla [OpenID Connect](https://openid.net/developers/how-connect-works/). El usuario inicia sesión en Keycloak, que
-emite un token firmado -un JWT- con sus claims:
+**Implementación:** la autenticación se delega en
+[Keycloak](https://www.keycloak.org/), un proveedor de identidad que habla
+[OpenID Connect](https://openid.net/developers/how-connect-works/). El usuario
+inicia sesión en Keycloak, que emite un token firmado -un JWT- con sus claims:
 
 * `preferred_username`: el nombre de usuario, por ejemplo `alice`.
 * `user_id`: el `User` de la aplicación. Keycloak lo agrega a partir de un
@@ -1491,21 +1567,21 @@ decide con los claims que trae el token.
 ![Clases de la identidad en Orders](assets/17-federated-identity-clases.svg)
 
 `Orders` no conoce a Keycloak ni valida tokens: lee los encabezados que arma el
-gateway. Esa confianza depende del [Gatekeeper](#gatekeeper): si alguien llega
-a `Orders` sin pasar por el gateway, puede mandar esos encabezados con
-cualquier valor.
+gateway. Esa confianza depende del [Gatekeeper](#gatekeeper): si alguien llega a
+`Orders` sin pasar por el gateway, puede mandar esos encabezados con cualquier
+valor.
 
-**Cómo verlo:**
-[demos/17-federated-identity.sh](demos/17-federated-identity.sh) crea una
-`Order` para el `User` 2 por la entrada HTTP, sin identificarse. Después bob
-inicia sesión y, por la entrada HTTPS, crea una `Order` sin indicar el `User`:
-es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta sus
-`Orders` y no las de alice, y alice, al revés; carol consulta las de los dos,
-pero no puede crear. Sin token, o con el `user_id` del token cambiado por el de
-alice, el gateway responde 401, porque la firma ya no corresponde a los claims.
-Como en las demás demos, las `Orders` se crean solo para el `User` 2: las del
-`User` 1 son la base de las demos de disponibilidad. En [Grafana](https://grafana.com/oss/grafana/), el panel
-"Eventos de Keycloak por segundo" muestra los inicios de sesión.
+**Cómo verlo:** la demo [17 de Federated Identity](demos/17-federated-identity.sh)
+crea una `Order` para el `User` 2 por la entrada HTTP, sin identificarse.
+Después bob inicia sesión y, por la entrada HTTPS, crea una `Order` sin indicar
+el `User`: es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta
+sus `Orders` y no las de alice, y alice, al revés; carol consulta las de los
+dos, pero no puede crear. Sin token, o con el `user_id` del token cambiado por
+el de alice, el gateway responde 401, porque la firma ya no corresponde a los
+claims. Como en las demás demos, las `Orders` se crean solo para el `User` 2:
+las del `User` 1 son la base de las demos de disponibilidad. En
+[Grafana](https://grafana.com/oss/grafana/), el panel "Eventos de Keycloak por
+segundo" muestra los inicios de sesión.
 
 > [!TIP]
 >
@@ -1517,13 +1593,15 @@ Como en las demás demos, las `Orders` se crean solo para el `User` 2: las del
 
 #### Gateway Offloading
 
-**Problema:** [TLS](https://datatracker.ietf.org/doc/html/rfc8446), la validación de tokens y la compresión son funciones
-especializadas, que necesitan configuración y certificados. Si cada servicio
-las implementa, cada uno lo hace a su manera, en su lenguaje, y actualizar un
-certificado o una política obliga a cambiar todos los servicios.
+**Problema:** [TLS](https://datatracker.ietf.org/doc/html/rfc8446), la
+validación de tokens y la compresión son funciones especializadas, que necesitan
+configuración y certificados. Si cada servicio las implementa, cada uno lo hace
+a su manera, en su lenguaje, y actualizar un certificado o una política obliga a
+cambiar todos los servicios.
 
 **Implementación:** el gateway se hace cargo de esas funciones en la entrada
-HTTPS, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+HTTPS, en
+[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
 * **TLS:** el gateway termina TLS con su certificado; los servicios siguen
   hablando HTTP dentro de la red de Docker, sin certificados. El certificado es
@@ -1531,17 +1609,19 @@ HTTPS, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
   [ApiGateway/Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
   privada en el repositorio; en producción lo emitiría una autoridad de
   certificación.
-* **Validación de tokens:** antes de reenviar cada solicitud, [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request)
+* **Validación de tokens:** antes de reenviar cada solicitud,
+  [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request)
   hace una subsolicitud a `/userinfo` de Keycloak con el token. Si Keycloak
   responde 200, la solicitud sigue; si no, el gateway responde 401 y la
   solicitud no llega al servicio. Después, `identity.js`, en
   [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js), lee
   los claims del token, ya validado, y el gateway se los pasa al servicio en los
   encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
-* **Compresión:** el gateway comprime con [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) las respuestas de más de 1 KB,
-  si el cliente lo acepta.
-* **Throttling por cliente:** el de la [demo de Throttling](#throttling), que
-  el gateway ya aplicaba en la entrada HTTP.
+* **Compresión:** el gateway comprime con
+  [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) las
+  respuestas de más de 1 KB, si el cliente lo acepta.
+* **Throttling por cliente:** el de la [demo de Throttling](#throttling), que el
+  gateway ya aplicaba en la entrada HTTP.
 
 El costo es que el gateway le pregunta a Keycloak por cada solicitud: si
 Keycloak no responde, nadie entra. El [sidecar](#sidecar) muestra la
@@ -1571,13 +1651,12 @@ js_set $user_id identity.userId;
 proxy_set_header X-User-Id $user_id;
 ```
 
-**Cómo verlo:**
-[demos/18-gateway-offloading.sh](demos/18-gateway-offloading.sh) muestra que
-`Orders` no habla TLS y que el gateway sí, con su certificado. Sin token, el
-gateway responde 401, y su *log* muestra que la solicitud no llegó a ningún
-servicio; con token, la reenvía. La lista de `Orders` llega unas 15 veces más
-chica por HTTPS que por HTTP, comprimida por el gateway. En Grafana, el panel
-"Eventos de Keycloak por segundo" muestra una validación de token,
+**Cómo verlo:** la demo [18 de Gateway Offloading](demos/18-gateway-offloading.sh)
+muestra que `Orders` no habla TLS y que el gateway sí, con su certificado. Sin
+token, el gateway responde 401, y su *log* muestra que la solicitud no llegó a
+ningún servicio; con token, la reenvía. La lista de `Orders` llega unas 15 veces
+más chica por HTTPS que por HTTP, comprimida por el gateway. En Grafana, el
+panel "Eventos de Keycloak por segundo" muestra una validación de token,
 `user_info_request`, por cada solicitud HTTPS.
 
 > [!TIP]
@@ -1585,8 +1664,8 @@ chica por HTTPS que por HTTP, comprimida por el gateway. En Grafana, el panel
 > Consulta [Authentication Based on Subrequest
 > Result](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-subrequest-authentication/)
 > para tener más información sobre `auth_request`, y la [documentación de
-> njs](https://nginx.org/en/docs/njs/) sobre el JavaScript de [nginx](https://nginx.org/) que usa
-> `identity.js`.
+> njs](https://nginx.org/en/docs/njs/) sobre el JavaScript de
+> [nginx](https://nginx.org/) que usa `identity.js`.
 
 #### Gatekeeper
 
@@ -1598,17 +1677,18 @@ servicio y a sus datos.
 
 **Implementación:** en la entrada HTTPS, el gateway es el intermediario entre
 los clientes y los servicios, y valida y sanea cada solicitud antes de
-reenviarla, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+reenviarla, en
+[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
-* **Rutas:** publica solo las de la aplicación. Las de administración
-  -`/chaos`, `/patterns`, `/cache`, `/orders/projections/rebuild`- y cualquier
-  otra responden 404 sin llegar a los servicios.
+* **Rutas:** publica solo las de la aplicación. Las de administración -`/chaos`,
+  `/patterns`, `/cache`, `/orders/projections/rebuild`- y cualquier otra
+  responden 404 sin llegar a los servicios.
 * **Ids:** el de un `Product` tiene 24 caracteres hexadecimales, y el de una
   `Order` o un `User` es un número; si no, 404.
 * **Métodos:** cada ruta acepta solo los que usa la aplicación; un `DELETE`
   responde 403.
-* **Cuerpo:** los `POST` y `PUT` tienen que ser [JSON](https://www.json.org/) -415 si no- y medir hasta
-  64 KB -413 si no-.
+* **Cuerpo:** los `POST` y `PUT` tienen que ser [JSON](https://www.json.org/)
+  -415 si no- y medir hasta 64 KB -413 si no-.
 * **Encabezados de identidad:** el gateway arma `X-User-Name`, `X-User-Id` y
   `X-User-Roles` con los claims del token y reemplaza los que haya mandado el
   cliente. Un cliente no se puede hacer pasar por otro.
@@ -1617,13 +1697,14 @@ El gateway no tiene credenciales de las bases ni acceso a los datos: si alguien
 lo compromete, no obtiene más que lo que ya podía pedir a través de él.
 
 Para que sirva, los servicios no tienen que poder alcanzarse sin pasar por el
-gateway. [docker-compose.yaml](docker-compose.yaml) publica en el host el
-puerto de cada servicio y de cada base, para las demos anteriores; por ahí,
-cualquiera llega a la administración o manda encabezados de identidad falsos.
+gateway. [docker-compose.yaml](docker-compose.yaml) publica en el host el puerto
+de cada servicio y de cada base, para las demos anteriores; por ahí, cualquiera
+llega a la administración o manda encabezados de identidad falsos.
 [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de
 publicarlos: los servicios siguen hablando entre sí por la red de Docker, pero
 desde afuera la única entrada es el gateway. Se aplica junto con el otro
-archivo, y [Docker Compose](https://docs.docker.com/compose/) vuelve a crear solo los contenedores que cambian:
+archivo, y [Docker Compose](https://docs.docker.com/compose/) vuelve a crear
+solo los contenedores que cambian:
 
 ```bash
 docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --wait
@@ -1657,21 +1738,21 @@ location / {
 }
 ```
 
-**Cómo verlo:** [demos/19-gatekeeper.sh](demos/19-gatekeeper.sh) compara las
-dos entradas. Por HTTP, las rutas de administración responden 200, y los
-métodos, los cuerpos y los ids inválidos llegan a `Orders`, que los rechaza
-después de recibirlos. Por HTTPS, el gateway los rechaza sin llegar a los
-servicios. alice no puede hacerse pasar por bob con encabezados falsos por
-HTTPS, pero sí por el puerto 8000, sin token. Al aplicar
-`docker-compose.gatekeeper.yaml`, el puerto 8000 deja de responder, y la
-entrada HTTPS sigue funcionando. Al terminar, el script vuelve a publicar los
-puertos. En Grafana, el panel "Solicitudes por segundo, por servicio y código
-HTTP" muestra los rechazos de `Orders` por HTTP; los de HTTPS no aparecen,
-porque no llegaron a `Orders`.
+**Cómo verlo:** la demo [19 de Gatekeeper](demos/19-gatekeeper.sh) compara las dos
+entradas. Por HTTP, las rutas de administración responden 200, y los métodos,
+los cuerpos y los ids inválidos llegan a `Orders`, que los rechaza después de
+recibirlos. Por HTTPS, el gateway los rechaza sin llegar a los servicios. alice
+no puede hacerse pasar por bob con encabezados falsos por HTTPS, pero sí por el
+puerto 8000, sin token. Al aplicar `docker-compose.gatekeeper.yaml`, el puerto
+8000 deja de responder, y la entrada HTTPS sigue funcionando. Al terminar, el
+script vuelve a publicar los puertos. En Grafana, el panel "Solicitudes por
+segundo, por servicio y código HTTP" muestra los rechazos de `Orders` por HTTP;
+los de HTTPS no aparecen, porque no llegaron a `Orders`.
 
 > [!TIP]
 >
-> Consulta [Module ngx_http_core_module](https://nginx.org/en/docs/http/ngx_http_core_module.html)
+> Consulta [Module
+> ngx_http_core_module](https://nginx.org/en/docs/http/ngx_http_core_module.html)
 > para tener más información sobre `location`, `limit_except` y
 > `client_max_body_size`, y [Merge Compose
 > files](https://docs.docker.com/reference/compose-file/merge/) sobre cómo
@@ -1680,24 +1761,29 @@ porque no llegaron a `Orders`.
 #### Sidecar
 
 **Problema:** agregarle a un servicio funciones transversales -autenticación,
-autorización, registro de accesos- obliga a cambiar su código, en su lenguaje,
-y a repetirlo en cada servicio; y un servicio de terceros o legado tal vez no
-se pueda cambiar. Además, el gateway protege solo lo que entra por el gateway:
+autorización, registro de accesos- obliga a cambiar su código, en su lenguaje, y
+a repetirlo en cada servicio; y un servicio de terceros o legado tal vez no se
+pueda cambiar. Además, el gateway protege solo lo que entra por el gateway:
 dentro de la red, cualquier contenedor llama a cualquier servicio.
 
-**Implementación:** un proxy [Envoy](https://www.envoyproxy.io/), `products-sidecar`, corre junto a
-`products-service`, en su mismo espacio de red -[`network_mode:
-service:products-service`](https://docs.docker.com/reference/compose-file/services/#network_mode) en [docker-compose.yaml](docker-compose.yaml)-. Para
-Envoy, `Products` es `127.0.0.1:8000`; para los demás contenedores, el sidecar
-es `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
+**Implementación:** un proxy [Envoy](https://www.envoyproxy.io/),
+`products-sidecar`, corre junto a `products-service`, en su mismo espacio de red
+-[`network_mode:
+service:products-service`](https://docs.docker.com/reference/compose-file/services/#network_mode)
+en [docker-compose.yaml](docker-compose.yaml)-. Para Envoy, `Products` es
+`127.0.0.1:8000`; para los demás contenedores, el sidecar es
+`products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
 configura con [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
 
-* **Autenticación:** el filtro [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) verifica la firma del token con las
-  claves públicas de Keycloak, que pide una vez cada 5 minutos, además del
-  emisor y el vencimiento. Un token inválido recibe 401; sin token, la
-  solicitud sigue como anónima.
-* **Autorización:** el filtro [`rbac`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter) deja leer a cualquiera -`GET`- y exige el
-  rol `admin` para todo lo demás. Si no, 403.
+* **Autenticación:** el filtro
+  [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
+  verifica la firma del token con las claves públicas de Keycloak, que pide una
+  vez cada 5 minutos, además del emisor y el vencimiento. Un token inválido
+  recibe 401; sin token, la solicitud sigue como anónima.
+* **Autorización:** el filtro
+  [`rbac`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter)
+  deja leer a cualquiera -`GET`- y exige el rol `admin` para todo lo demás. Si
+  no, 403.
 * **Registro de accesos:** una línea `[SIDECAR]` por solicitud, con el código,
   el usuario del token y el motivo del rechazo.
 
@@ -1707,9 +1793,9 @@ del gateway le envía `/products/` al sidecar, y la HTTP, directamente a
 `127.0.0.1` y el sidecar sería su única entrada; acá sigue escuchando en el
 puerto 8000 para las demos anteriores.
 
-Una *service mesh*, como [Istio](https://istio.io/) o [Linkerd](https://linkerd.io/), pone un sidecar como este junto a
-cada servicio, y agrega TLS mutuo entre los sidecars; acá hay uno solo, sin TLS
-mutuo.
+Una *service mesh*, como [Istio](https://istio.io/) o
+[Linkerd](https://linkerd.io/), pone un sidecar como este junto a cada servicio,
+y agrega TLS mutuo entre los sidecars; acá hay uno solo, sin TLS mutuo.
 
 **Cómo funciona:**
 
@@ -1748,20 +1834,21 @@ policies:
           value: { list_match: { one_of: { string_match: { exact: admin } } } }
 ```
 
-**Cómo verlo:** [demos/20-sidecar.sh](demos/20-sidecar.sh) cambia el nombre de
+**Cómo verlo:** la demo [20 de Sidecar](demos/20-sidecar.sh) cambia el nombre de
 un `Product` por HTTP, sin identificarse. Por HTTPS, alice lo lee pero no lo
 puede cambiar, y carol sí. Desde adentro de la red, `products-service:8000`
 acepta cualquier cambio, y el sidecar, `products-service:9000`, lo rechaza: 403
 sin token, y 401 con un token al que alice se agregó el rol `admin` sin poder
-volver a firmarlo. El registro del sidecar muestra cada decisión. En Grafana,
-el panel "Solicitudes en el sidecar de Products, por resultado" muestra las
+volver a firmarlo. El registro del sidecar muestra cada decisión. En Grafana, el
+panel "Solicitudes en el sidecar de Products, por resultado" muestra las
 permitidas y las rechazadas.
 
 > [!TIP]
 >
-> Consulta [JWT Authentication](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
-> y [Role Based Access Control
-> -RBAC- Filter](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter)
+> Consulta [JWT
+> Authentication](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
+> y [Role Based Access Control -RBAC-
+> Filter](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter)
 > para tener más información sobre los dos filtros de Envoy que usa el sidecar.
 
 #### Valet Key
@@ -1772,15 +1859,16 @@ gateway tiene que aceptar cuerpos grandes. Si en cambio el cliente accede
 directamente al almacenamiento con las credenciales de la aplicación, puede
 hacer cualquier cosa con todos los datos.
 
-**Implementación:** las imágenes de los `Products` se guardan en [Azurite](https://github.com/Azure/Azurite), el
-emulador de [Azure Storage](https://azure.microsoft.com/products/storage/). `Products` tiene la clave de la cuenta, pero no la
-entrega: le da al cliente una URL firmada -una SAS, *Shared Access
-Signature*- que permite una sola operación, sobre la imagen de un solo
-`Product`, durante 2 minutos como máximo. Con esa URL, el cliente sube o baja
-la imagen directamente de Azurite, y los bytes no pasan por el gateway ni por
-`Products`. En AWS, el equivalente de una SAS es una URL prefirmada de [Amazon
-S3](https://aws.amazon.com/s3/) -*presigned URL*-, que también permite una operación sobre un objeto
-durante un tiempo acotado:
+**Implementación:** las imágenes de los `Products` se guardan en
+[Azurite](https://github.com/Azure/Azurite), el emulador de [Azure
+Storage](https://azure.microsoft.com/products/storage/). `Products` tiene la
+clave de la cuenta, pero no la entrega: le da al cliente una URL firmada -una
+SAS, *Shared Access Signature*- que permite una sola operación, sobre la imagen
+de un solo `Product`, durante 2 minutos como máximo. Con esa URL, el cliente
+sube o baja la imagen directamente de Azurite, y los bytes no pasan por el
+gateway ni por `Products`. En AWS, el equivalente de una SAS es una URL
+prefirmada de [Amazon S3](https://aws.amazon.com/s3/) -*presigned URL*-, que
+también permite una operación sobre un objeto durante un tiempo acotado:
 
 * `POST /products/{id}/image/upload-url` entrega una URL para crear o reemplazar
   la imagen. No sirve para leerla, ni para la imagen de otro `Product`, ni
@@ -1812,22 +1900,23 @@ URL de escritura.
 
 ![Clases de las imágenes de Products](assets/21-valet-key-clases.svg)
 
-**Cómo verlo:** [demos/21-valet-key.sh](demos/21-valet-key.sh) sube una imagen
+**Cómo verlo:** la demo [21 de Valet Key](demos/21-valet-key.sh) sube una imagen
 de 5 MB a través de `Products`, por HTTP; por HTTPS, el gateway la rechaza con
-413. Después carol pide una URL firmada y sube la imagen directamente a
-Azurite. Con esa URL no se puede leer la imagen, ni escribir la de otro
-`Product`, y sin la firma no se puede nada. Una URL que vence a los 5 segundos
-funciona enseguida y no después. Para bajar la imagen, `Products` redirige a
-una URL de lectura. En Grafana, el panel "Bytes de imágenes que recibe
-Products" muestra los 5 MB de la subida sin Valet Key, y el panel "Claves de
-imágenes que entrega Products", las URL firmadas.
+413. Después carol pide una URL firmada y sube la imagen directamente a Azurite.
+Con esa URL no se puede leer la imagen, ni escribir la de otro `Product`, y sin
+la firma no se puede nada. Una URL que vence a los 5 segundos funciona enseguida
+y no después. Para bajar la imagen, `Products` redirige a una URL de lectura. En
+Grafana, el panel "Bytes de imágenes que recibe Products" muestra los 5 MB de la
+subida sin Valet Key, y el panel "Claves de imágenes que entrega Products", las
+URL firmadas.
 
 > [!TIP]
 >
 > Consulta [Grant limited access to Azure Storage resources using shared access
 > signatures](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview)
 > para tener más información sobre las SAS, y [Create a service SAS for a blob
-> with .NET](https://learn.microsoft.com/en-us/azure/storage/blobs/sas-service-create-dotnet)
+> with
+> .NET](https://learn.microsoft.com/en-us/azure/storage/blobs/sas-service-create-dotnet)
 > sobre `GenerateSasUri`, con el que `ProductImages` firma las URL.
 
 ## Demos de facilidad de modificación
@@ -1848,10 +1937,11 @@ Qué se muestra:
 * Un backend para la web y otro para la app móvil.
 
 Resultado observable: un cliente nuevo que se agrega sin conocer el modelo de
-`Orders` ni el [SOAP](https://www.w3.org/TR/soap/) de `Users`, cambios de configuración sin reiniciar ningún
-contenedor, una `Order` que se factura en un ERP aunque el broker del ERP haya
-estado caído, un monolito que se apaga sin que el cliente lo note, y un backend que
-se redespliega sin que el otro cliente lo note.
+`Orders` ni el [SOAP](https://www.w3.org/TR/soap/) de `Users`, cambios de
+configuración sin reiniciar ningún contenedor, una `Order` que se factura en un
+ERP aunque el broker del ERP haya estado caído, un monolito que se apaga sin que
+el cliente lo note, y un backend que se redespliega sin que el otro cliente lo
+note.
 
 ### Qué agrega a las demos de seguridad
 
@@ -1870,9 +1960,10 @@ se redespliega sin que el otro cliente lo note.
 
 Cada patrón tiene un script en [demos](demos/), del `22` al `26`, y un paso a
 paso en [commands/05-modifiability.azcli](commands/05-modifiability.azcli). Los
-*logs* de [Docker](https://www.docker.com/) muestran los eventos con una etiqueta: `[EXTERNAL CONFIG]` en
-los servicios, `[MESSAGING BRIDGE]` en `messaging-bridge` y en
-`orders-projector`, `[ERP]` en `legacy-erp` y `[STRANGLER]` en `api-gateway`.
+*logs* de [Docker](https://www.docker.com/) muestran los eventos con una
+etiqueta: `[EXTERNAL CONFIG]` en los servicios, `[MESSAGING BRIDGE]` en
+`messaging-bridge` y en `orders-projector`, `[ERP]` en `legacy-erp` y
+`[STRANGLER]` en `api-gateway`.
 
 Estas demos no se conectan a ninguna nube: corren con Docker. Cada patrón nombra
 los servicios equivalentes de Azure y de AWS. Cómo verlos bajo carga está en
@@ -1893,13 +1984,14 @@ propio modelo. Si usa directamente sus nombres, sus estados y su protocolo, ese
 modelo se filtra por todo su código: cada cambio en el otro sistema obliga a
 cambiarlo, y su propio modelo queda atado a decisiones de otro equipo.
 
-**Escenario:** `Purchases`, un cliente nuevo, muestra para un `Product` todas sus
-compras: quién lo compró, cuántas unidades y si la compra está confirmada. Los
-datos están en `Orders`, que habla de `user_id`, `product_id` y estados
-`Pending`, `Confirmed` y `Rejected`, y en `Users`, que habla [SOAP](https://www.w3.org/TR/soap/).
+**Escenario:** `Purchases`, un cliente nuevo, muestra para un `Product` todas
+sus compras: quién lo compró, cuántas unidades y si la compra está confirmada.
+Los datos están en `Orders`, que habla de `user_id`, `product_id` y estados
+`Pending`, `Confirmed` y `Rejected`, y en `Users`, que habla
+[SOAP](https://www.w3.org/TR/soap/).
 
-**Implementación:** [PurchasesService](src/PurchasesService/) separa el modelo de
-`Purchases` de la capa que traduce.
+**Implementación:** [PurchasesService](src/PurchasesService/) separa el modelo
+de `Purchases` de la capa que traduce.
 
 * **El modelo:** `Purchase`, en
   [PurchasesService/Purchase.cs](src/PurchasesService/Purchase.cs), con número,
@@ -1910,21 +2002,25 @@ datos están en `Orders`, que habla de `user_id`, `product_id` y estados
   * La clase `OrdersTranslator` lee `GET /orders/`, filtra por `Product`, deja
     afuera las `Orders` rechazadas y traduce el estado.
   * La clase `UsersTranslator` arma el sobre SOAP y lee solo el nombre.
-  * La clase `OrdersPurchaseSource` las combina, y le pregunta a `Users` una sola
-    vez por comprador.
-* **Lo que se descarta:** la capa lee solo los campos que usa. Si `Orders` agrega
-  campos, como la fecha de creación que la demo le agrega con un flag, la capa no
-  cambia.
-* **El endpoint:** `GET /purchases/product/{productId}`, publicado por el gateway en
-  la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).
+  * La clase `OrdersPurchaseSource` las combina, y le pregunta a `Users` una
+    sola vez por comprador.
+* **Lo que se descarta:** la capa lee solo los campos que usa. Si `Orders`
+  agrega campos, como la fecha de creación que la demo le agrega con un flag, la
+  capa no cambia.
+* **El endpoint:** `GET /purchases/product/{productId}`, publicado por el
+  gateway en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).
 
-La capa puede ser parte del servicio, como acá, o un servicio aparte que comparten
-varios clientes. En Azure, una capa compartida podría ser una aplicación de [Azure
-Functions](https://azure.microsoft.com/products/functions/) o una política de [Azure API Management](https://azure.microsoft.com/products/api-management/), y en AWS, una función de [AWS
-Lambda](https://aws.amazon.com/lambda/) o [Amazon API Gateway](https://aws.amazon.com/api-gateway/).
+La capa puede ser parte del servicio, como acá, o un servicio aparte que
+comparten varios clientes. En Azure, una capa compartida podría ser una
+aplicación de [Azure Functions](https://azure.microsoft.com/products/functions/)
+o una política de [Azure API
+Management](https://azure.microsoft.com/products/api-management/), y en AWS, una
+función de [AWS Lambda](https://aws.amazon.com/lambda/) o [Amazon API
+Gateway](https://aws.amazon.com/api-gateway/).
 
-La clase `ErpFormat` de [Messaging Bridge](#messaging-bridge) también traduce, pero
-formatos de mensajes entre dos brokers. Esta capa protege el modelo de un servicio.
+La clase `ErpFormat` de [Messaging Bridge](#messaging-bridge) también traduce,
+pero formatos de mensajes entre dos brokers. Esta capa protege el modelo de un
+servicio.
 
 **Cómo funciona:**
 
@@ -1947,13 +2043,14 @@ return orders
 ```
 
 **Cómo verlo:**
-[demos/22-anti-corruption-layer.sh](demos/22-anti-corruption-layer.sh) muestra, para
-el mismo `Product`, la respuesta de `Orders`, la de `Users` por SOAP y la de
-`Purchases`. Después cambia el modelo de `Orders`: prende un flag en [Consul](https://developer.hashicorp.com/consul) con el
-que cada `Order` trae su fecha de creación, y muestra que la respuesta de
-`Purchases` es idéntica a la de antes. Crea una `Order` para el `User` 2 y la
-muestra como una compra de bob. Al final, con `grep`, muestra que solo los dos
-traductores nombran los campos de `Orders` y el sobre SOAP.
+la demo [22 de Anti-corruption Layer](demos/22-anti-corruption-layer.sh) muestra,
+para el mismo `Product`, la respuesta de `Orders`, la de `Users` por SOAP y la
+de `Purchases`. Después cambia el modelo de `Orders`: prende un flag en
+[Consul](https://developer.hashicorp.com/consul) con el que cada `Order` trae su
+fecha de creación, y muestra que la respuesta de `Purchases` es idéntica a la de
+antes. Crea una `Order` para el `User` 2 y la muestra como una compra de bob. Al
+final, con `grep`, muestra que solo los dos traductores nombran los campos de
+`Orders` y el sobre SOAP.
 
 **Qué cambios anticipa:**
 
@@ -1974,9 +2071,10 @@ traductores nombran los campos de `Orders` y el sobre SOAP.
 | Usar directamente el modelo de `Orders` y el SOAP de `Users` | Menos código y menos latencia | Cada cambio en `Orders` o en `Users` se propaga por `Purchases`, y su modelo queda atado al de otros equipos |
 | Pedirle a `Orders` una API con el modelo de `Purchases` | Sin traducción en `Purchases` | `Orders` pasa a depender de cada cliente, y su API crece con las necesidades de todos |
 
-La capa de la demo pide todas las `Orders` y las filtra, porque `Orders` no tiene
-una consulta por `Product`. Con muchas `Orders`, esa consulta se vuelve lenta: la
-capa aísla el modelo, pero no resuelve lo que el otro sistema no ofrece.
+La capa de la demo pide todas las `Orders` y las filtra, porque `Orders` no
+tiene una consulta por `Product`. Con muchas `Orders`, esa consulta se vuelve
+lenta: la capa aísla el modelo, pero no resuelve lo que el otro sistema no
+ofrece.
 
 > [!TIP]
 >
@@ -2043,12 +2141,13 @@ responde](assets/23-external-configuration-store.svg)
 configuración](assets/23-external-configuration-store-clases.svg)
 
 **Cómo verlo:**
-[demos/23-external-configuration-store.sh](demos/23-external-configuration-store.sh)
+la demo [23 de External Configuration Store](demos/23-external-configuration-store.sh)
 cambia cada valor de la tabla en Consul y muestra el efecto: una `Order` de 10
-unidades pasa de `202 Accepted` a `400 Bad Request`, el detalle gana una columna de
-precio, la caché dura 5 segundos y `Orders` deja de llegar a `Products` y vuelve.
-Después pausa Consul, y el límite sigue vigente. Al final muestra que cada proceso
-se enteró del cambio por su cuenta y que ningún contenedor se reinició.
+unidades pasa de `202 Accepted` a `400 Bad Request`, el detalle gana una columna
+de precio, la caché dura 5 segundos y `Orders` deja de llegar a `Products` y
+vuelve. Después pausa Consul, y el límite sigue vigente. Al final muestra que
+cada proceso se enteró del cambio por su cuenta y que ningún contenedor se
+reinició.
 
 **Qué cambios anticipa:**
 
@@ -2067,8 +2166,10 @@ se enteró del cambio por su cuenta y que ningún contenedor se reinició.
 | Dónde está la configuración | Variables de entorno: sin componentes nuevos y con el valor versionado junto al despliegue, pero cambiarla exige reiniciar | Almacén central: cambios en vivo y un solo lugar, a cambio de otro componente, y de que un error se propaga enseguida a todos |
 | Cómo se entera cada proceso | *Polling*: simple y fácil de seguir, con hasta 2 segundos de demora y consultas sin novedades | Notificaciones o consultas bloqueantes de Consul: enseguida y sin consultas de más, pero con conexiones abiertas y más código |
 
-El almacén de la demo no guarda secretos: para eso están [Azure Key Vault](https://azure.microsoft.com/products/key-vault/) y [AWS
-Secrets Manager](https://aws.amazon.com/secrets-manager/), con control de acceso y auditoría.
+El almacén de la demo no guarda secretos: para eso están [Azure Key
+Vault](https://azure.microsoft.com/products/key-vault/) y [AWS Secrets
+Manager](https://aws.amazon.com/secrets-manager/), con control de acceso y
+auditoría.
 
 > [!TIP]
 >
@@ -2084,12 +2185,13 @@ Secrets Manager](https://aws.amazon.com/secrets-manager/), con control de acceso
 pueden cambiar. Integrarlos por HTTP obliga a modificar a los dos, los acopla en
 el tiempo y hay que construir los reintentos a mano.
 
-**Qué es [ActiveMQ](https://activemq.apache.org/):** un broker de mensajes de código abierto de Apache
-Foundation, escrito en Java. Es un intermediario que recibe mensajes, los guarda
-y los entrega, para que quien envía y quien recibe no tengan que estar
-disponibles al mismo tiempo. Implementa [JMS](https://jakarta.ee/specifications/messaging/), la API estándar de mensajería de
-Java, y por eso es común en sistemas corporativos antiguos. Tiene dos variantes:
-Classic, la que usa la demo, y Artemis, la de nueva generación.
+**Qué es [ActiveMQ](https://activemq.apache.org/):** un broker de mensajes de
+código abierto de Apache Foundation, escrito en Java. Es un intermediario que
+recibe mensajes, los guarda y los entrega, para que quien envía y quien recibe
+no tengan que estar disponibles al mismo tiempo. Implementa
+[JMS](https://jakarta.ee/specifications/messaging/), la API estándar de
+mensajería de Java, y por eso es común en sistemas corporativos antiguos. Tiene
+dos variantes: Classic, la que usa la demo, y Artemis, la de nueva generación.
 
 * **Colas y tópicos:** el mensaje de una cola lo recibe un solo consumidor, y el
   de un tópico todos los suscriptores. La demo usa colas.
@@ -2097,8 +2199,12 @@ Classic, la que usa la demo, y Artemis, la de nueva generación.
   vuelve a entregar.
 * **Persistencia:** los mensajes persistentes se guardan en disco y sobreviven a
   un reinicio del broker.
-* **Protocolos:** el nativo es [OpenWire](https://activemq.apache.org/components/classic/documentation/openwire), y también admite [AMQP](https://www.amqp.org/), [STOMP](https://stomp.github.io/) y [MQTT](https://mqtt.org/).
-* **Clientes:** desde [.NET](https://dotnet.microsoft.com/) se usa [Apache NMS](https://activemq.apache.org/components/nms/).
+* **Protocolos:** el nativo es
+  [OpenWire](https://activemq.apache.org/components/classic/documentation/openwire),
+  y también admite [AMQP](https://www.amqp.org/),
+  [STOMP](https://stomp.github.io/) y [MQTT](https://mqtt.org/).
+* **Clientes:** desde [.NET](https://dotnet.microsoft.com/) se usa [Apache
+  NMS](https://activemq.apache.org/components/nms/).
 
 Un envío, en el método `SendToErpAsync` de la clase `OrdersToErpBridge`:
 
@@ -2123,15 +2229,17 @@ muestra las colas y sus mensajes.
 
 Ninguno es mejor por sí mismo. La demo necesita dos brokers porque el patrón
 existe para conectar infraestructuras incompatibles: con uno solo no habría nada
-que puentear. En Azure, el lado moderno sería [Azure Service Bus](https://azure.microsoft.com/products/service-bus/), y en AWS,
-[Amazon SQS](https://aws.amazon.com/sqs/); [Amazon MQ](https://aws.amazon.com/amazon-mq/) ofrece ActiveMQ administrado.
+que puentear. En Azure, el lado moderno sería [Azure Service
+Bus](https://azure.microsoft.com/products/service-bus/), y en AWS, [Amazon
+SQS](https://aws.amazon.com/sqs/); [Amazon
+MQ](https://aws.amazon.com/amazon-mq/) ofrece ActiveMQ administrado.
 
 **El ERP simulado:** [LegacyErp/Program.cs](src/LegacyErp/Program.cs) representa
 el sistema que no se puede cambiar. Simula la creación de una factura para cada
-orden de compra. No conoce RabbitMQ, ni [JSON](https://www.json.org/), ni la aplicación, y no comparte
-código con ella: solo sabe leer pedidos de la cola `ERP.PEDIDOS` de ActiveMQ y
-escribir facturas en la cola `ERP.FACTURAS`. El método `ExecuteAsync` de la
-clase `Erp` repite este ciclo:
+orden de compra. No conoce RabbitMQ, ni [JSON](https://www.json.org/), ni la
+aplicación, y no comparte código con ella: solo sabe leer pedidos de la cola
+`ERP.PEDIDOS` de ActiveMQ y escribir facturas en la cola `ERP.FACTURAS`. El
+método `ExecuteAsync` de la clase `Erp` repite este ciclo:
 
 1. Espera un mensaje en `ERP.PEDIDOS`.
 2. Valida que sea un registro de orden de pedido.
@@ -2153,19 +2261,20 @@ Tres detalles del ciclo:
 
 * **De RabbitMQ a ActiveMQ:** la clase `OrdersToErpBridge`, en
   [MessagingBridge/OrdersToErpBridge.cs](src/MessagingBridge/OrdersToErpBridge.cs),
-  es un suscriptor más de `order.confirmed`, con su cola `bridge.erp`. `Orders` no
-  sabe que existe.
+  es un suscriptor más de `order.confirmed`, con su cola `bridge.erp`. `Orders`
+  no sabe que existe.
 * **De ActiveMQ a RabbitMQ:** la clase `ErpToOrdersBridge`, en
   [MessagingBridge/ErpToOrdersBridge.cs](src/MessagingBridge/ErpToOrdersBridge.cs),
-  lee las facturas y publica `order.invoiced`. El método `ApplyAsync` de la clase
-  `OrderDetailsProjector` la agrega al historial de la `Order`.
-* **Entrega al menos una vez:** el puente confirma en un broker recién después de
-  que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente se cae
-  en el medio, el mensaje se repite: el ERP emite la misma factura, porque su número
-  sale del pedido, y `Orders` no la registra dos veces. Los proyectores insertan
-  la factura sin preguntar antes si ya está, y un índice único de `order_events`
-  por `Order` y tipo de evento rechaza la copia, aunque las dos lleguen a la vez
-  a dos réplicas distintas. Ver [Idempotencia](#idempotencia).
+  lee las facturas y publica `order.invoiced`. El método `ApplyAsync` de la
+  clase `OrderDetailsProjector` la agrega al historial de la `Order`.
+* **Entrega al menos una vez:** el puente confirma en un broker recién después
+  de que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente
+  se cae en el medio, el mensaje se repite: el ERP emite la misma factura,
+  porque su número sale del pedido, y `Orders` no la registra dos veces. Los
+  proyectores insertan la factura sin preguntar antes si ya está, y un índice
+  único de `order_events` por `Order` y tipo de evento rechaza la copia, aunque
+  las dos lleguen a la vez a dos réplicas distintas. Ver
+  [Idempotencia](#idempotencia).
 
 `Orders` cambió en dos cosas, aunque el patrón busca no tocar los sistemas: el
 evento `OrderConfirmed` suma campos opcionales con los datos de la `Order`, y
@@ -2193,12 +2302,12 @@ sentidos](assets/24-messaging-bridge.svg)
 
 ![Clases del puente](assets/24-messaging-bridge-clases.svg)
 
-**Cómo verlo:**
-[demos/24-messaging-bridge.sh](demos/24-messaging-bridge.sh) crea una `Order` para
-el `User` 2 y muestra su historial con `OrderInvoiced`, y el registro de ancho fijo
-que pasó por el puente. Después detiene ActiveMQ y crea otra `Order`: se confirma
-igual, y su mensaje espera en la cola `bridge.erp`. Cuando ActiveMQ vuelve, el
-mensaje se entrega y la `Order` se factura.
+**Cómo verlo:** la demo [24 de Messaging Bridge](demos/24-messaging-bridge.sh)
+crea una `Order` para el `User` 2 y muestra su historial con `OrderInvoiced`, y
+el registro de ancho fijo que pasó por el puente. Después detiene ActiveMQ y
+crea otra `Order`: se confirma igual, y su mensaje espera en la cola
+`bridge.erp`. Cuando ActiveMQ vuelve, el mensaje se entrega y la `Order` se
+factura.
 
 **Qué cambios anticipa:**
 
@@ -2224,8 +2333,8 @@ mensaje se entrega y la `Order` se factura.
 > Consulta [Messaging Bridge
 > pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/messaging-bridge)
 > para tener más información sobre el patrón, la [documentación de ActiveMQ
-> Classic](https://activemq.apache.org/components/classic/documentation) sobre el
-> broker, y [Message
+> Classic](https://activemq.apache.org/components/classic/documentation) sobre
+> el broker, y [Message
 > Translator](https://www.enterpriseintegrationpatterns.com/patterns/messaging/MessageTranslator.html)
 > sobre la traducción.
 
@@ -2249,9 +2358,9 @@ note quién le responde:
 
 Tres detalles que lo diferencian de los microservicios:
 
-* **Una sola base:** un archivo [SQLite](https://www.sqlite.org/) dentro del contenedor, con los mismos
-  datos iniciales que los microservicios. Al recrear el contenedor, vuelve a ese
-  estado.
+* **Una sola base:** un archivo [SQLite](https://www.sqlite.org/) dentro del
+  contenedor, con los mismos datos iniciales que los microservicios. Al recrear
+  el contenedor, vuelve a ese estado.
 * **El detalle de las `Orders`:** es un JOIN entre tres tablas. Esa es la
   comodidad que se pierde al separar los datos, y por la que `Orders` llama a
   `Users` y a `Products` por HTTP en los microservicios.
@@ -2262,16 +2371,18 @@ Tres detalles que lo diferencian de los microservicios:
 al monolito o al servicio que la reemplaza. El nombre del patrón viene de la
 higuera estranguladora, que crece alrededor de un árbol hasta reemplazarlo.
 
-* **La fachada:** un tercer [`server`](https://nginx.org/en/docs/http/ngx_http_core_module.html#server) de
+* **La fachada:** un tercer
+  [`server`](https://nginx.org/en/docs/http/ngx_http_core_module.html#server) de
   [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), en el
   puerto 8090. Responde quién atendió en `X-Served-By`.
 * **La tabla de rutas:**
   [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf).
-  Migrar una ruta es cambiar una línea y recargar [nginx](https://nginx.org/), sin cortar el servicio.
-  Volver atrás es lo mismo.
+  Migrar una ruta es cambiar una línea y recargar [nginx](https://nginx.org/),
+  sin cortar el servicio. Volver atrás es lo mismo.
 
-En Azure, la fachada podría ser Azure API Management o [Azure Front Door](https://azure.microsoft.com/products/frontdoor/), y en
-AWS, Amazon API Gateway.
+En Azure, la fachada podría ser Azure API Management o [Azure Front
+Door](https://azure.microsoft.com/products/frontdoor/), y en AWS, Amazon API
+Gateway.
 
 **Cómo funciona:**
 
@@ -2287,12 +2398,13 @@ set $products_route monolith:8000;
 set $orders_route   monolith:8000;
 ```
 
-**Cómo verlo:** [demos/25-strangler-fig.sh](demos/25-strangler-fig.sh) hace las
+**Cómo verlo:** la demo [25 de Strangler Fig](demos/25-strangler-fig.sh) hace las
 mismas solicitudes mientras migra `Products`, `Users` y `Orders`, de a una, y
-muestra quién atiende cada ruta. A mitad de camino cambia el nombre de un `Product`
-por la fachada: lo recibe el microservicio, y el JOIN del monolito sigue mostrando
-el nombre viejo. Es el costo de la convivencia. Al final apaga el monolito, y las
-solicitudes siguen respondiendo. Al terminar, deja la fachada como estaba.
+muestra quién atiende cada ruta. A mitad de camino cambia el nombre de un
+`Product` por la fachada: lo recibe el microservicio, y el JOIN del monolito
+sigue mostrando el nombre viejo. Es el costo de la convivencia. Al final apaga
+el monolito, y las solicitudes siguen respondiendo. Al terminar, deja la fachada
+como estaba.
 
 **Qué cambios anticipa:**
 
@@ -2304,8 +2416,8 @@ solicitudes siguen respondiendo. Al terminar, deja la fachada como estaba.
 | Cambiar el contrato de una ruta | No | La fachada no traduce: los clientes lo notan |
 | Cambiar un dato que los dos sistemas leen | No | Los datos divergen hasta resolver la sincronización |
 
-A diferencia de los otros tres, este patrón anticipa un solo cambio: reemplazar el
-monolito. Cuando termina, la fachada y su tabla de rutas ya no hacen falta.
+A diferencia de los otros tres, este patrón anticipa un solo cambio: reemplazar
+el monolito. Cuando termina, la fachada y su tabla de rutas ya no hacen falta.
 
 **Ventajas y desventajas:**
 
@@ -2314,15 +2426,16 @@ monolito. Cuando termina, la fachada y su tabla de rutas ya no hacen falta.
 | Migración progresiva | Riesgo acotado por ruta, marcha atrás inmediata y valor desde la primera ruta | Dos sistemas conviviendo, datos que hay que sincronizar y una fachada que es un punto de falla |
 | Reescritura completa | Sin convivencia ni sincronización | Todo el riesgo junto, sin valor hasta el final, y el sistema viejo sigue cambiando mientras tanto |
 
-La demo no sincroniza los datos: los dos sistemas arrancan con los mismos, y por eso
-responden igual a las consultas. Tampoco es igual todo el comportamiento: el
+La demo no sincroniza los datos: los dos sistemas arrancan con los mismos, y por
+eso responden igual a las consultas. Tampoco es igual todo el comportamiento: el
 monolito confirma la `Order` al crearla, y `Orders` lo hace después.
 
 **Cómo resolver la divergencia de datos:** en la demo, el nombre de un `Product`
-cambia en [MongoDB](https://www.mongodb.com/), y el JOIN del monolito sigue leyendo su copia en SQLite. La
-regla de fondo es que cada dato tenga un solo dueño en cada momento: quien lo
-escribe. Las demás copias son de lectura y se actualizan desde ese dueño. Las
-formas de lograrlo, de más simple a más invasiva para el monolito:
+cambia en [MongoDB](https://www.mongodb.com/), y el JOIN del monolito sigue
+leyendo su copia en SQLite. La regla de fondo es que cada dato tenga un solo
+dueño en cada momento: quien lo escribe. Las demás copias son de lectura y se
+actualizan desde ese dueño. Las formas de lograrlo, de más simple a más invasiva
+para el monolito:
 
 | Solución | Cómo funciona | A favor | En contra |
 | -------- | ------------- | ------- | ---------- |
@@ -2333,15 +2446,15 @@ formas de lograrlo, de más simple a más invasiva para el monolito:
 | Escritura doble | Cada escritura va a las dos bases | Parece lo más simple | Si falla la segunda escritura, las bases divergen sin aviso; no se recomienda sin un [Transactional Outbox](#transactional-outbox) |
 
 Para esta aplicación, la opción con mejor relación entre costo y resultado es
-sincronizar con eventos: `Products` ya publica `product.updated`, y al monolito le
-alcanzaría un consumidor con su propia cola. Habría que ampliar el evento, porque
-hoy trae el nombre pero no el precio.
+sincronizar con eventos: `Products` ya publica `product.updated`, y al monolito
+le alcanzaría un consumidor con su propia cola. Habría que ampliar el evento,
+porque hoy trae el nombre pero no el precio.
 
 El dato también cambia de dueño en algún momento. Una secuencia habitual:
 
 1. Copiar los datos históricos a la base nueva.
-2. Sincronizar los cambios del monolito hacia el servicio, que todavía es solo de
-   lectura.
+2. Sincronizar los cambios del monolito hacia el servicio, que todavía es solo
+   de lectura.
 3. Comparar las respuestas de los dos: la fachada envía las lecturas a ambos, y
    solo devuelve la del monolito.
 4. Pasar las escrituras al servicio, que se vuelve el dueño, e invertir la
@@ -2350,10 +2463,13 @@ El dato también cambia de dueño en algún momento. Una secuencia habitual:
 
 Los identificadores requieren un cuidado aparte. Si `Orders` y el monolito crean
 `Orders` a la vez, los dos generan el mismo id para `Orders` distintas: hay que
-reservar rangos distintos o usar identificadores globales, como un [UUID](https://datatracker.ietf.org/doc/html/rfc9562).
+reservar rangos distintos o usar identificadores globales, como un
+[UUID](https://datatracker.ietf.org/doc/html/rfc9562).
 
-En producción, [Azure Database Migration Service](https://azure.microsoft.com/products/database-migration/) y [AWS Database Migration Service](https://aws.amazon.com/dms/)
-hacen la copia inicial y la replicación continua de los cambios.
+En producción, [Azure Database Migration
+Service](https://azure.microsoft.com/products/database-migration/) y [AWS
+Database Migration Service](https://aws.amazon.com/dms/) hacen la copia inicial
+y la replicación continua de los cambios.
 
 > [!TIP]
 >
@@ -2376,14 +2492,15 @@ muestra una tabla con el precio de cada `Product` y el total. La app, en una
 pantalla chica y con una red que puede ser lenta, muestra solo el `Product` y el
 estado.
 
-**Implementación:** un backend por cliente, que mantiene el equipo de ese cliente.
+**Implementación:** un backend por cliente, que mantiene el equipo de ese
+cliente.
 
 * **`bff-web`:** [BffWeb/Program.cs](src/BffWeb/Program.cs). Pide las `Orders` a
   `Orders`, el nombre y el precio de cada `Product` a `Products`, y calcula el
   total.
-* **`bff-mobile`:** [BffMobile/Program.cs](src/BffMobile/Program.cs). Hace una sola
-  consulta, el detalle por `User` de `Orders`, y devuelve solo el `Product`, el
-  estado y cuántas son.
+* **`bff-mobile`:** [BffMobile/Program.cs](src/BffMobile/Program.cs). Hace una
+  sola consulta, el detalle por `User` de `Orders`, y devuelve solo el
+  `Product`, el estado y cuántas son.
 * **El gateway:** publica `/web/` y `/mobile/` en la entrada HTTP.
 * **El despliegue:** cada BFF es un contenedor aparte, así que se cambia y se
   redespliega sin tocar al otro ni a los servicios.
@@ -2391,8 +2508,10 @@ estado.
 No es lo mismo que el gateway: el gateway es uno solo para todos los clientes, y
 acá hay un backend por cliente. El gateway solo enruta a cada uno.
 
-En Azure, cada BFF podría correr en [Azure Container Apps](https://azure.microsoft.com/products/container-apps/) y publicarse con Azure API
-Management, y en AWS, correr en AWS Lambda y publicarse con Amazon API Gateway.
+En Azure, cada BFF podría correr en [Azure Container
+Apps](https://azure.microsoft.com/products/container-apps/) y publicarse con
+Azure API Management, y en AWS, correr en AWS Lambda y publicarse con Amazon API
+Gateway.
 
 **Cómo funciona:**
 
@@ -2411,10 +2530,10 @@ return Results.Ok(new
 ```
 
 **Cómo verlo:**
-[demos/26-backends-for-frontends.sh](demos/26-backends-for-frontends.sh) muestra la
-respuesta de cada BFF para el `User` 1: 238 bytes para la web y 107 para la app.
-Después redespliega `bff-mobile` mientras consulta a los dos clientes. La app
-puede recibir algún `502 Bad Gateway`; la web sigue respondiendo `200 OK`, y
+la demo [26 de Backends for Frontends](demos/26-backends-for-frontends.sh) muestra
+la respuesta de cada BFF para el `User` 1: 238 bytes para la web y 107 para la
+app. Después redespliega `bff-mobile` mientras consulta a los dos clientes. La
+app puede recibir algún `502 Bad Gateway`; la web sigue respondiendo `200 OK`, y
 `bff-web` no se reinicia.
 
 **Qué cambios anticipa:**
@@ -2436,8 +2555,8 @@ puede recibir algún `502 Bad Gateway`; la web sigue respondiendo `200 OK`, y
 | Una API para todos | Un solo servicio, sin repetir código | Respuestas que no le sirven bien a ninguno, y cada cambio se coordina con todos los clientes |
 | Que cada cliente llame a los servicios | Sin componentes nuevos | Más llamadas desde la red del cliente, y el cliente queda atado a los contratos internos |
 
-Los BFF de la demo solo están en la entrada HTTP, sin autenticación. En producción
-irían detrás de la entrada HTTPS, con los patrones de seguridad.
+Los BFF de la demo solo están en la entrada HTTP, sin autenticación. En
+producción irían detrás de la entrada HTTPS, con los patrones de seguridad.
 
 > [!TIP]
 >
@@ -2449,12 +2568,14 @@ irían detrás de la entrada HTTPS, con los patrones de seguridad.
 
 ### Antes y después en Grafana
 
-El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes ni
-reinicios. Para mostrarlo, [demos/load-modifiability.sh](demos/load-modifiability.sh)
-lanza un escenario de [k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
-marcado con una línea vertical en el dashboard, con una anotación de [Grafana](https://grafana.com/oss/grafana/),
-para distinguir el antes y el después. Los scripts del `22` al `26` también marcan
-sus pasos si Grafana está levantado.
+El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes
+ni reinicios. Para mostrarlo,
+[demos/load-modifiability.sh](demos/load-modifiability.sh) lanza un escenario de
+[k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
+marcado con una línea vertical en el dashboard, con una anotación de
+[Grafana](https://grafana.com/oss/grafana/), para distinguir el antes y el
+después. Los scripts del `22` al `26` también marcan sus pasos si Grafana está
+levantado.
 
 ```bash
 docker compose --profile observability up -d --wait
@@ -2475,16 +2596,18 @@ segundo: ilustran el efecto y no son una prueba de rendimiento.
 | Backends for Frontends | 20 solicitudes por segundo, mitad de cada cliente, y se redespliega `bff-mobile` | "Respuestas por cliente" | La web respondió `200 OK` las 600 veces. La app recibió 11 `502 Bad Gateway` de 600, mientras se reemplazaba su contenedor |
 
 Las métricas que dependen de quién respondió las informa k6 con el encabezado
-`X-Served-By`, para no tener que instrumentar [nginx](https://nginx.org/). El p95 que informa k6 se
-calcula desde que empieza la corrida: después de un pico, baja despacio.
+`X-Served-By`, para no tener que instrumentar [nginx](https://nginx.org/). El
+p95 que informa k6 se calcula desde que empieza la corrida: después de un pico,
+baja despacio.
 
 ### Tamaño del cambio
 
-[Grafana](https://grafana.com/oss/grafana/) muestra el efecto de un cambio en ejecución, pero la facilidad de
-modificación se mide con otra pregunta: cuánto cuesta hacer el cambio. En un
-escenario de calidad -UT1-, esa es la medida de respuesta. Los números salen de
-[demos/measure-change-size.sh](demos/measure-change-size.sh), que se puede volver a
-ejecutar:
+[Grafana](https://grafana.com/oss/grafana/) muestra el efecto de un cambio en
+ejecución, pero la facilidad de modificación se mide con otra pregunta: cuánto
+cuesta hacer el cambio. En un escenario de calidad -UT1-, esa es la medida de
+respuesta. Los números salen de
+[demos/measure-change-size.sh](demos/measure-change-size.sh), que se puede
+volver a ejecutar:
 
 ```bash
 ./demos/measure-change-size.sh
@@ -2507,9 +2630,11 @@ Cómo se calcula:
 * **Línea efectiva:** una línea que no está vacía ni es un comentario, es decir,
   que no empieza con `//` o `#`. Los comentarios de este repositorio son
   extensos y distorsionarían la comparación.
-* **Qué se cuenta:** código [C#](https://learn.microsoft.com/dotnet/csharp/), proyectos, `Dockerfile`, YAML de [Docker Compose](https://docs.docker.com/compose/)
-  y configuración de [nginx](https://nginx.org/). No se cuentan la documentación, los diagramas, los
-  scripts de `demos/`, los escenarios de `k6/`, el dashboard ni el archivo
+* **Qué se cuenta:** código [C#](https://learn.microsoft.com/dotnet/csharp/),
+  proyectos, `Dockerfile`, YAML de [Docker
+  Compose](https://docs.docker.com/compose/) y configuración de
+  [nginx](https://nginx.org/). No se cuentan la documentación, los diagramas,
+  los scripts de `demos/`, los escenarios de `k6/`, el dashboard ni el archivo
   `.sln`: son parte de la demostración, no de la aplicación.
 * **Líneas nuevas:** las líneas efectivas de los archivos que el patrón agrega.
 * **Líneas en archivos existentes:** las agregadas más las borradas según un
@@ -2521,16 +2646,15 @@ Cómo se calcula:
   varios patrones, y cada línea se le asigna al patrón al que pertenece: por el
   servicio en `docker-compose.yaml`, y por el bloque en `nginx.conf`. El script
   verifica que lo repartido, más las 51 líneas que quedan fuera de los patrones,
-  sume lo que dice `git`: 145 líneas en ambos casos. Lo que agregan las
-  [demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue) no se
-  cuenta: el servicio `users-service-v2`, el puerto 8091 y su bloque en
-  `nginx.conf`. Los archivos de `Orders` y
-  `Products` también se reparten, por su contenido.
+  sume lo que dice `git`: 145 líneas en ambos casos. Lo que agregan las [demos
+  de facilidad de despliegue](#demos-de-facilidad-de-despliegue) no se cuenta:
+  el servicio `users-service-v2`, el puerto 8091 y su bloque en `nginx.conf`.
+  Los archivos de `Orders` y `Products` también se reparten, por su contenido.
 * **Lo que queda fuera:** no se cuentan el ERP, su broker ni el monolito, porque
-  representan sistemas que ya existirían, ni `Purchases`, que es el cliente nuevo: de
-  Anti-corruption Layer se cuenta solo la capa. Tampoco se cuenta el flag de la
-  fecha de creación en el método `ListOrders`, que simula un cambio de otro equipo. El control los incluye, para que
-  la suma coincida con `git`.
+  representan sistemas que ya existirían, ni `Purchases`, que es el cliente
+  nuevo: de Anti-corruption Layer se cuenta solo la capa. Tampoco se cuenta el
+  flag de la fecha de creación en el método `ListOrders`, que simula un cambio
+  de otro equipo. El control los incluye, para que la suma coincida con `git`.
 * **Qué incluye de más:** el proveedor de configuración incluye su métrica para
   Grafana.
 
@@ -2554,23 +2678,23 @@ Cómo se calcula:
 
 Cómo leerlo:
 
-* **La demora no es la diferencia:** cambiar un límite tarda lo mismo por las dos
-  vías, porque recrear este contenedor es rápido. La diferencia está en los
-  reinicios: la variable de entorno corta el servicio y pierde el estado en memoria
-  de `Orders`, como los interruptores de los patrones.
-* **El almacén tampoco es gratis:** la variable de entorno queda versionada en el
-  repositorio, y el cambio en el almacén no.
+* **La demora no es la diferencia:** cambiar un límite tarda lo mismo por las
+  dos vías, porque recrear este contenedor es rápido. La diferencia está en los
+  reinicios: la variable de entorno corta el servicio y pierde el estado en
+  memoria de `Orders`, como los interruptores de los patrones.
+* **El almacén tampoco es gratis:** la variable de entorno queda versionada en
+  el repositorio, y el cambio en el almacén no.
 * **Una línea no es una unidad de esfuerzo:** estas medidas sirven para comparar
   alternativas en esta aplicación, no para estimar. No miden la dificultad de
   diseñar el cambio ni de probarlo, y migrar una ruta de una línea presupone el
   trabajo previo de escribir el servicio y resolver sus datos.
-* **Falta una alternativa real:** no hay una aplicación equivalente sin los patrones
-  con la cual comparar cada cambio. Salvo el límite, que se midió de las dos
-  formas, los números describen el cambio con el patrón.
-* **Solo se miden cambios anticipados:** cada fila es un cambio para el que hay un
-  patrón. Los que un patrón no anticipa cuestan lo mismo que antes, o más: un
-  campo nuevo de `Orders` que quieren mostrar la web y la app hay que agregarlo en
-  los dos BFF.
+* **Falta una alternativa real:** no hay una aplicación equivalente sin los
+  patrones con la cual comparar cada cambio. Salvo el límite, que se midió de
+  las dos formas, los números describen el cambio con el patrón.
+* **Solo se miden cambios anticipados:** cada fila es un cambio para el que hay
+  un patrón. Los que un patrón no anticipa cuestan lo mismo que antes, o más: un
+  campo nuevo de `Orders` que quieren mostrar la web y la app hay que agregarlo
+  en los dos BFF.
 
 ## Demos de facilidad de despliegue
 
@@ -2645,16 +2769,16 @@ para kubectl. Los *logs* de `api-gateway` muestran cada solicitud de la entrada
 de despliegue publicada en el puerto 8091 con la etiqueta `[DEPLOY]`, la
 instancia que la atendió y su versión.
 
-Como las demos de facilidad de modificación, estas no se conectan a ninguna nube:
-corren con [Docker](https://www.docker.com/). Cada estrategia nombra los servicios equivalentes de Azure y de
-AWS. Cómo verlas bajo carga está en [Las estrategias en
-Grafana](#las-estrategias-en-grafana).
+Como las demos de facilidad de modificación, estas no se conectan a ninguna
+nube: corren con [Docker](https://www.docker.com/). Cada estrategia nombra los
+servicios equivalentes de Azure y de AWS. Cómo verlas bajo carga está en [Las
+estrategias en Grafana](#las-estrategias-en-grafana).
 
 Cambiar de estrategia de despliegue -pasar de Blue/Green a Canary, o cambiar la
 configuración de Canary- es reescribir `deployment-routes.conf` en el contenedor
-del gateway y recargar [nginx](https://nginx.org/), sin cortar el servicio. La función `deploy_routes`
-de [demos/common.sh](demos/common.sh) lo hace en los scripts; el archivo del
-repositorio no cambia.
+del gateway y recargar [nginx](https://nginx.org/), sin cortar el servicio. La
+función `deploy_routes` de [demos/common.sh](demos/common.sh) lo hace en los
+scripts; el archivo del repositorio no cambia.
 
 Las cuatro estrategias de despliegue facilitan el mismo tipo de despliegue: una
 versión nueva de un servicio que es compatible con la anterior. Ninguna resuelve
@@ -2698,7 +2822,8 @@ son -resumidas-:
   4. Separar el cambio de esquema del cambio de código, en despliegues
      distintos, a veces con un feature flag que activa el uso de lo nuevo.
 
-En Azure, [Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/blue-green-deployment)
+En Azure, [Azure Container
+Apps](https://learn.microsoft.com/en-us/azure/container-apps/blue-green-deployment)
 lo hace con revisiones y etiquetas, y [App
 Service](https://azure.microsoft.com/products/app-service/), con [*deployment
 slots*](https://learn.microsoft.com/en-us/azure/app-service/deploy-staging-slots)
@@ -2735,7 +2860,7 @@ map $host $users_target {
   versión `v2` directamente, desde adentro de la red de Docker, con la función
   `get_user_inside`.
 
-La demo [demos/27-blue-green.sh](demos/27-blue-green.sh) muestra que la versión
+La demo [27 de Blue/Green Deployment](demos/27-blue-green.sh) muestra que la versión
 `v1` atiende la entrada de despliegue publicada en el puerto 8091 y prueba la
 `v2` por adentro, con su campo nuevo. Después cambia de versión mientras una
 sonda pide el `User` 1 cada 0.1 segundos: las respuestas pasan de la versión
@@ -2779,7 +2904,7 @@ strategy:
     scaleDownDelaySeconds: 60
 ```
 
-La demo [demos/31-argo-blue-green.sh](demos/31-argo-blue-green.sh) sigue los
+La demo [31 de Blue/Green Deployment con Kubernetes](demos/31-argo-blue-green.sh) sigue los
 mismos pasos que la demo 27, y en cada uno muestra el estado del `Rollout` como
 lo muestra Argo: cada versión con sus pods y su papel, `stable`, `active` o
 `preview`. La conmutación y la vuelta atrás, con una sonda pidiendo el `User` 1
@@ -2810,8 +2935,8 @@ Rollouts; en AWS, en [Amazon EKS](https://aws.amazon.com/eks/).
 > [!TIP]
 >
 > Consulta [Blue/Green
-> Deployment](https://martinfowler.com/bliki/BlueGreenDeployment.html), de Martin
-> Fowler, sobre el origen de la técnica, y [Blue/Green Deployments on
+> Deployment](https://martinfowler.com/bliki/BlueGreenDeployment.html), de
+> Martin Fowler, sobre el origen de la técnica, y [Blue/Green Deployments on
 > AWS](https://docs.aws.amazon.com/whitepapers/latest/blue-green-deployments/welcome.html)
 > sobre cómo aplicarla en AWS.
 
@@ -2896,7 +3021,7 @@ docker stop "users-v1-$1"
   [SOAP](https://www.w3.org/TR/soap/), hasta `GetUser`, que es una lectura, es
   un POST, y nginx no reintenta un POST que ya envió.
 
-La demo [demos/28-rolling-upgrade.sh](demos/28-rolling-upgrade.sh) arma el grupo
+La demo [28 de Rolling Upgrade](demos/28-rolling-upgrade.sh) arma el grupo
 con tres instancias de la versión `v1` y las reemplaza en tres pasos. Después de
 cada paso muestra qué instancias tiene el grupo y cuántas respuestas dio cada
 versión. Durante todo el reemplazo, una sonda pide el `User` 1 cada 0.1
@@ -2957,7 +3082,7 @@ steps:
   - analysis: ...
 ```
 
-La demo [demos/32-k8s-rolling-upgrade.sh](demos/32-k8s-rolling-upgrade.sh)
+La demo [32 de Rolling Upgrade con Kubernetes](demos/32-k8s-rolling-upgrade.sh)
 muestra primero el Deployment: la versión `v2` reemplaza a la `v1` sin errores,
 y la `v3-bad` llega a los tres pods y falla hasta el `undo`. Después cambia el
 Deployment por el `Rollout` y despliega la `v3-bad`: llega a un solo pod, el
@@ -3061,7 +3186,7 @@ El reparto es por solicitud: el mismo cliente puede recibir una versión y
 después la otra. Para que cada cliente vea siempre la misma, el hash puede usar
 una cookie o el `User`.
 
-La demo [demos/29-canary.sh](demos/29-canary.sh) manda a la versión `v2` el 10%,
+La demo [29 de Canary Testing](demos/29-canary.sh) manda a la versión `v2` el 10%,
 el 50% y el 100% de las solicitudes, y con cada porcentaje cuenta cuántas
 respuestas dio cada versión. Después vuelve al 10% con una versión `v2` que
 falla: fallan solo sus respuestas, cerca del 10%. Al final vuelve todo a la
@@ -3115,10 +3240,10 @@ strategy:
       - analysis: ...
 ```
 
-La demo [demos/33-argo-canary.sh](demos/33-argo-canary.sh) despliega la versión
-`v2`, que avanza sola del 10% al 100% en un minuto y medio, sin errores.
-Después despliega la `v3-bad`: con el 10%, el análisis mide alrededor del 30%
-de errores, y Argo vuelve todo a la `v2` en medio minuto. En cada cambio muestra
+La demo [33 de Canary Testing con Kubernetes](demos/33-argo-canary.sh) despliega la versión
+`v2`, que avanza sola del 10% al 100% en un minuto y medio, sin errores. Después
+despliega la `v3-bad`: con el 10%, el análisis mide alrededor del 30% de
+errores, y Argo vuelve todo a la `v2` en medio minuto. En cada cambio muestra
 los pesos de la ruta, y al final, lo que midió el análisis.
 
 En Azure, Argo Rollouts funciona igual en [Azure Kubernetes
@@ -3147,8 +3272,8 @@ Service](https://azure.microsoft.com/products/kubernetes-service/); en AWS, en
 
 > [!TIP]
 >
-> Consulta [Canary Release](https://martinfowler.com/bliki/CanaryRelease.html), de
-> Martin Fowler, y [Traffic splitting in Azure Container
+> Consulta [Canary Release](https://martinfowler.com/bliki/CanaryRelease.html),
+> de Martin Fowler, y [Traffic splitting in Azure Container
 > Apps](https://learn.microsoft.com/en-us/azure/container-apps/traffic-splitting)
 > sobre cómo repartir el tráfico en Azure.
 
@@ -3270,14 +3395,14 @@ El feature flag y sus estrategias los crean las funciones `experiment_start` y
 `experiment_split` de [demos/common.sh](demos/common.sh), con la API de
 administración de Unleash.
 
-**Cómo verlo:** [demos/30-ab-testing.sh](demos/30-ab-testing.sh) levanta
+**Cómo verlo:** la demo [30 de A/B Testing](demos/30-ab-testing.sh) levanta
 Unleash, muestra que la versión `v1` no tiene experimento y despliega la `v2`
 con Blue/Green. Pide los dos `Users`: 'alice' cae en la B y 'bob' en la A. Pide
 a 'bob' tres veces, y siempre recibe la A; con `X-Segment: beta`, recibe la B.
 Después cambia el reparto en Unleash para que todos vean la B, y los dos `Users`
-la reciben sin desplegar nada. Detiene Unleash, y `Users` sigue respondiendo
-con la B. Al final vuelve el reparto a la mitad y muestra cuántas veces se
-mostró cada variante, según las métricas de `Users`.
+la reciben sin desplegar nada. Detiene Unleash, y `Users` sigue respondiendo con
+la B. Al final vuelve el reparto a la mitad y muestra cuántas veces se mostró
+cada variante, según las métricas de `Users`.
 
 **Qué facilita en el despliegue:**
 
@@ -3299,18 +3424,18 @@ mostró cada variante, según las métricas de `Users`.
 
 > [!TIP]
 >
-> Consulta [Feature Toggles](https://martinfowler.com/articles/feature-toggles.html),
-> de Martin Fowler, sobre los *flags* de experimentos, y [Experimentation in Azure
-> App
+> Consulta [Feature
+> Toggles](https://martinfowler.com/articles/feature-toggles.html), de Martin
+> Fowler, sobre los *flags* de experimentos, y [Experimentation in Azure App
 > Configuration](https://learn.microsoft.com/en-us/azure/azure-app-configuration/concept-experimentation)
 > sobre cómo hacerlos en Azure.
 
 ### Las estrategias en Grafana
 
-La demo [demos/load-deployment.sh](demos/load-deployment.sh) lanza un escenario
-de [k6](https://k6.io/) y despliega la versión `v2` mientras corre. Cada paso
-queda marcado con una línea vertical en el dashboard, con la etiqueta
-`despliegue`. Los scripts del `27` al `30` también marcan sus pasos si
+La demo [despliegue con carga](demos/load-deployment.sh) lanza un escenario de
+[k6](https://k6.io/) y despliega la versión `v2` mientras corre. Cada paso queda
+marcado con una línea vertical en el dashboard, con la etiqueta `despliegue`.
+Los scripts del `27` al `30` también marcan sus pasos si
 [Grafana](https://grafana.com/oss/grafana/) está levantado.
 
 ```bash
@@ -3330,7 +3455,8 @@ solicitudes por segundo: ilustran el efecto y no son una prueba de rendimiento.
 | A/B Testing | Los dos `Users` consultan a la versión `v2`, y la mitad de las consultas de bob traen `X-Segment: beta` | "Respuestas por variante" | alice recibió la B las 601 veces; bob, la A 300 veces y la B las 300 en que trajo el segmento |
 
 Las métricas por versión las informa k6 con el encabezado `X-Version`, para no
-tener que instrumentar [nginx](https://nginx.org/). Las del experimento son de `Users`.
+tener que instrumentar [nginx](https://nginx.org/). Las del experimento son de
+`Users`.
 
 Las demos 31 a 33 tienen sus propios escenarios, con el clúster de
 [Kubernetes](https://kubernetes.io/) creado. No necesitan el resto de Docker
@@ -3354,8 +3480,8 @@ Rollouts](https://argoproj.github.io/rollouts/), con una línea roja en el 5%.
 | Canary Testing, demo 33 | La versión `v2` hasta el 100%, y después la `v3-bad` | Lo mismo, y "Errores de cada versión, según Users" | La versión `v2` sigue a los pesos del 10% y el 50%, sin errores. La `v3` supera la línea del 5%, y Argo vuelve atrás: 17 respuestas `503` de 3999, todas de la `v3` |
 
 Además de los `503` de la versión `v3`, hubo unas pocas solicitudes sin
-respuesta: 6 de 2400 en Rolling Upgrade y 1 de 3999 en Canary. Coinciden con
-los cambios de pods: NGINX Gateway Fabric recarga nginx cada vez que cambian
-los pods detrás de un Service, y una recarga puede cortar alguna conexión que
-k6 tenía abierta para reutilizar. En la demo 28, el gateway de Docker Compose
-no se recarga: encuentra las instancias nuevas por DNS.
+respuesta: 6 de 2400 en Rolling Upgrade y 1 de 3999 en Canary. Coinciden con los
+cambios de pods: NGINX Gateway Fabric recarga nginx cada vez que cambian los
+pods detrás de un Service, y una recarga puede cortar alguna conexión que k6
+tenía abierta para reutilizar. En la demo 28, el gateway de Docker Compose no se
+recarga: encuentra las instancias nuevas por DNS.

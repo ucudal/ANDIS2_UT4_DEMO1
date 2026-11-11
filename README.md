@@ -64,8 +64,8 @@ directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azu
 Endpoints disponibles a través del gateway, en `http://localhost`. Por la
 entrada HTTPS, `https://localhost`, son los mismos, salvo los de
 administración -`/chaos`, `/patterns`, `/cache` y `/orders/projections/rebuild`-,
-y necesitan un token de Keycloak: ver
-[PATTERNS.md](PATTERNS.md#demos-de-seguridad).
+y necesitan un token de Keycloak: ver [Demos de
+seguridad](PATTERNS.md#demos-de-seguridad) en PATTERNS.md.
 
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
@@ -78,7 +78,7 @@ y necesitan un token de Keycloak: ver
 | `PUT` | `/products/{id}/image` | Sube la imagen de un `Product` a través de `Products`, sin Valet Key |
 | `POST` | `/products/{id}/image/upload-url` | Entrega una URL firmada para subir la imagen de un `Product` directamente a Azurite: Valet Key |
 | `GET` | `/products/{id}/image` | Redirige a una URL firmada para bajar la imagen de un `Product` |
-| `PUT`, `DELETE` | `/products/cache` | Prende o apaga la caché y simula una base lenta, para las pruebas: ver [PATTERNS.md](PATTERNS.md#qué-agrega-a-las-demos-de-disponibilidad) |
+| `PUT`, `DELETE` | `/products/cache` | Prende o apaga la caché y simula una base lenta, para las pruebas: ver [Qué agrega a las demos de disponibilidad](PATTERNS.md#qué-agrega-a-las-demos-de-disponibilidad) en PATTERNS.md |
 | `GET` | `/orders/` | Lista las `Orders` con su estado |
 | `GET` | `/orders/{id}` | Obtiene una `Order` |
 | `POST` | `/orders/` | Crea una `Order` en estado `Pending` y la encola para procesarla; responde `202 Accepted` con `Location` |
@@ -88,7 +88,7 @@ y necesitan un token de Keycloak: ver
 | `GET` | `/orders/{id}/events` | Eventos de una `Order` y el estado que resulta de reproducirlos |
 | `POST` | `/orders/projections/rebuild` | Reconstruye la tabla de `Orders` a partir de los eventos |
 | `GET` | `/health/users`, `/health/products`, `/health/orders` | Salud de cada servicio |
-| `PUT`, `DELETE` | `/users/chaos`, `/products/chaos`, `/orders/chaos` | Inyección de fallas para las pruebas: ver [PATTERNS.md](PATTERNS.md#qué-agrega-a-la-aplicación-base) |
+| `PUT`, `DELETE` | `/users/chaos`, `/products/chaos`, `/orders/chaos` | Inyección de fallas para las pruebas: ver [Qué agrega a la aplicación base](PATTERNS.md#qué-agrega-a-la-aplicación-base) en PATTERNS.md |
 | `GET`, `PUT`, `DELETE` | `/orders/patterns` | Prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, para que cada prueba muestre un patrón por vez |
 
 `orders-service` llama a `users-service` y a `products-service` al armar el
@@ -226,7 +226,7 @@ encuentran como `products-service:9000`.
 | Circuit Breaker | `AddCircuitBreaker` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs); la degradación está en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
 | Bulkhead | `AddRateLimiter` con un `ConcurrencyLimiter` por dependencia, en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs) |
 | Throttling | `AddRateLimiter`, política `throttling`, en [OrdersService/Program.cs](src/OrdersService/Program.cs), aplicada en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs); por cliente, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone) y [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req) para `POST /orders/` |
-| Rate Limiting | Del lado del cliente: [demos/05-rate-limiting.sh](demos/05-rate-limiting.sh) y [k6/rate-limiting.js](k6/rate-limiting.js) crean `Orders` sin superar el límite del gateway |
+| Rate Limiting | Del lado del cliente: la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y [k6/rate-limiting.js](k6/rate-limiting.js) crean `Orders` sin superar el límite del gateway |
 | Health Endpoint Monitoring | `AddHealthChecks` y `MapHealthChecks` en el `Program.cs` de cada servicio; [`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck) en [docker-compose.yaml](docker-compose.yaml); rutas `/health/*` en `nginx.conf` |
 | Competing Consumers | Los métodos `ExecuteAsync` y `ProcessAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs), consumen la cola `orders.process`; servicio `orders-worker` con 3 réplicas en [docker-compose.yaml](docker-compose.yaml) |
 | Event Sourcing | La clase `OrderEvent`, en [OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs), y el método `Replay` de la clase `OrderProjection`, en [OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs); tabla `order_events` en [OrdersService/mysqlinit/mysqlinit.sql](src/OrdersService/mysqlinit/mysqlinit.sql) |
@@ -281,7 +281,7 @@ Mientras corren las pruebas, también se puede mirar:
 * Las colas, sus consumidores y los enlaces del exchange `andis.events` en la
   consola de [RabbitMQ](https://www.rabbitmq.com/): <http://localhost:15672>, usuario y contraseña `guest`.
 * El tamaño de cada cambio: `./demos/measure-change-size.sh`, explicado en
-  [PATTERNS.md](PATTERNS.md#tamaño-del-cambio).
+  [Tamaño del cambio](PATTERNS.md#tamaño-del-cambio), en PATTERNS.md.
 * La configuración central en la consola de [Consul](https://developer.hashicorp.com/consul): <http://localhost:8500>.
 * Las colas del ERP en la consola de [ActiveMQ](https://activemq.apache.org/): <http://localhost:8161/admin/>,
   usuario y contraseña `admin`.
