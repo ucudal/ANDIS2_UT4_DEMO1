@@ -777,7 +777,10 @@ registra con `[COMPETING CONSUMERS]`. El índice único de `order_events` por
 `Orders`. Cada *worker* tarda 2 segundos por `Order`, y las 9 se procesan en
 unos 6 segundos, 3 por réplica. Después crea 9 más y detiene una réplica
 mientras procesa: la `Order` que tenía la termina otra réplica. Para ver la cola
-y sus consumidores, abre la consola de RabbitMQ.
+y sus consumidores, abre la consola de RabbitMQ. Dos copias del mismo mensaje
+procesadas a la vez por dos réplicas se ven en
+[demos/09-transactional-outbox.sh](demos/09-transactional-outbox.sh) -ver
+[Transactional Outbox](#transactional-outbox)-.
 
 > [!TIP]
 >
@@ -888,9 +891,14 @@ misma forma. El recorrido completo está en
 detiene RabbitMQ y crea 5 `Orders`. Todas responden `202`; antes del *outbox*,
 `Orders` respondía `503` y la `Order` quedaba `Pending` para siempre.
 `/health/orders` responde `Degraded`, y los 5 mensajes esperan en
-`outbox_messages`. Al levantar RabbitMQ, el *relay* los publica, los *workers*
-confirman las `Orders` y el *outbox* queda vacío. En Grafana, el panel "Outbox
-de Orders" muestra los pendientes subir y volver a cero.
+`outbox_messages`. Después duplica el mensaje `order.created` de la última
+`Order`, como si el *relay* lo hubiera publicado dos veces. Al levantar
+RabbitMQ, el *relay* los publica, los *workers* confirman las `Orders` y el
+*outbox* queda vacío. Las dos copias del mensaje duplicado llegan a la vez a
+dos *workers*: los *logs* muestran que uno confirma la `Order` y el otro la
+descarta, y la `Order` tiene un solo `OrderConfirmed` en su historial y un solo
+`order.confirmed` en el *outbox*. En Grafana, el panel "Outbox de Orders"
+muestra los pendientes subir y volver a cero.
 
 > [!TIP]
 >
@@ -1165,8 +1173,11 @@ reintento posterior crea otra `Order`. Ver [Idempotencia](#idempotencia).
 
 **Cómo verlo:** [demos/14-asynchronous-request-reply.sh](demos/14-asynchronous-request-reply.sh)
 crea una `Order`, muestra el `202` con sus encabezados y consulta el estado
-respetando `Retry-After` hasta el `303`. Al final sigue la redirección y muestra
-la `Order` confirmada.
+respetando `Retry-After` hasta el `303`. Sigue la redirección y muestra la
+`Order` confirmada. Al final crea otra `Order` con `Idempotency-Key` y repite el
+`POST` con la misma clave, como un cliente que no recibió la respuesta: la
+respuesta trae el mismo `id` e `Idempotent-Replayed: true`. Con la misma clave y
+otra cantidad, responde `422`.
 
 > [!TIP]
 >
@@ -1329,9 +1340,14 @@ a `Products`.
 **Cómo verlo:** [demos/16-materialized-view.sh](demos/16-materialized-view.sh)
 cambia el nombre de un `Product` y la vista lo refleja. Con `Products` fallando
 siempre, la consulta síncrona responde "no disponible" y la vista sigue
-respondiendo con los nombres. Por último, detiene el proyector y crea una
-`Order`: la `Order` se confirma, pero la vista no la tiene y sus eventos esperan
-en la cola. Al levantar el proyector, la vista se pone al día.
+respondiendo con los nombres. Después detiene las réplicas del proyector, hace
+que `Users` demore 1,5 segundos y crea una `Order`: la `Order` se confirma, pero
+la vista no la tiene y sus eventos esperan en la cola. Al levantar las tres
+réplicas, `order.created` y `order.confirmed` llegan a la vez a réplicas
+distintas. Mientras una espera a `Users`, la otra crea la fila con el estado
+final, y la vista termina en `Confirmed`; los *logs* muestran qué hizo cada
+réplica. Por último, publica dos `user.updated` del `User` 2 al revés, primero
+el más nuevo: la vista se queda con el nombre más nuevo.
 
 > [!TIP]
 >

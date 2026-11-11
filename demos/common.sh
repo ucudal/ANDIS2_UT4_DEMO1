@@ -179,6 +179,15 @@ update_user() {
         -d "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><UpdateUser xmlns=\"http://ucu.edu.uy/andis/users\"><id>$1</id><name>$2</name><email>$3</email></UpdateUser></soap:Body></soap:Envelope>" > /dev/null
 }
 
+# publish_event <clave de ruteo> <json>: publica un evento en el exchange
+# andis.events con la API de la consola de RabbitMQ, como si lo hubiera
+# publicado un servicio. Sirve para simular mensajes repetidos o desordenados.
+publish_event() {
+    curl -s -u guest:guest -X POST "http://localhost:15672/api/exchanges/%2F/andis.events/publish" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg rk "$1" --arg p "$2" '{properties: {}, routing_key: $rk, payload: $p, payload_encoding: "string"}')" > /dev/null
+}
+
 # Funciones de los demos de seguridad, de la 17 en adelante. Usan jq.
 
 HTTPS_GATEWAY=${HTTPS_GATEWAY:-https://localhost}

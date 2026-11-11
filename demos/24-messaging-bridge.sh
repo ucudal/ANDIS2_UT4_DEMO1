@@ -73,4 +73,5 @@ echo "  Mensajes esperando en la cola bridge.erp de RabbitMQ: $(queue_length bri
 sleep 1
 logs_since "$since"
 note "Nada se perdió. La entrega es al menos una vez: si se repite un pedido,"
-note "el ERP emite la misma factura y Orders no la registra dos veces."
+note "el ERP emite la misma factura, y el índice único de order_events evita"
+note "que Orders la registre dos veces, aunque las copias lleguen a la vez."

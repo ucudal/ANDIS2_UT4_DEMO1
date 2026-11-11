@@ -15,10 +15,12 @@ cleanup() {
 trap cleanup EXIT
 
 # Muestra lo que dejaron en los logs los suscriptores desde un momento dado.
+# Con -t, cada línea trae la hora: se ordenan por hora y no por réplica.
 subscribers_log() {
     sleep 4
-    docker compose logs --since "$1" orders-worker orders-projector 2>&1 \
-        | grep -E 'recibió|procesando la orden|vista|actualizado' | sed -E 's/^([^ ]+) +\| +/  \1  /' || true
+    docker compose logs -t --since "$1" orders-worker orders-projector 2>&1 \
+        | grep -E 'recibió|procesando la orden|vista|actualizado' | sort -t'|' -k2 \
+        | sed -E 's/^([^ ]+) +\| +[0-9TZ:.-]+ +/  \1  /' || true
 }
 
 title "Publisher/Subscriber"
