@@ -294,6 +294,40 @@ Mientras corren las pruebas, también se puede mirar:
   `kubectl argo rollouts get rollout users -n andis --watch`, de [Argo
   Rollouts](https://argoproj.github.io/rollouts/).
 
+### Tests de las demos
+
+Los scripts muestran lo que pasa, pero no fallan si un patrón deja de
+funcionar. Para eso están los tests de integración de
+[tests/DemoTests](tests/DemoTests/), con [NUnit](https://nunit.org/): al menos
+uno por demo, que hace lo mismo que su script y verifica el resultado. Usan las
+mismas funciones de [demos/common.sh](demos/common.sh) para detener
+contenedores, cambiar las rutas del gateway o escalar réplicas.
+
+Necesitan el [SDK de .NET](https://dotnet.microsoft.com/download) 10 y la
+aplicación levantada; los tests no levantan los contenedores:
+
+```bash
+docker compose up -d --build --wait
+dotnet test tests/DemoTests --filter "TestCategory!=Gatekeeper&TestCategory!=Kubernetes"
+```
+
+Los tests corren de a uno, en el orden de las demos, porque comparten el estado
+de la aplicación. Cada uno deja los servicios como estaban: sin fallas simuladas,
+con todos los patrones prendidos y con los nombres de ejemplo de los `Users` y
+los `Products`. Las `Orders` que crean son del `User` 2, así que las del `User` 1
+no cambian. Algunos tienen una categoría, para elegir cuáles correr:
+
+| Categoría | Qué hacen | Qué necesitan |
+| --------- | --------- | ------------- |
+| Sin categoría | Cambian datos, pero no los contenedores | `docker compose up` |
+| `Disruptive` | Detienen, escalan o recrean contenedores | `docker compose up` |
+| `FeatureFlags` | Levantan [Unleash](https://www.getunleash.io/), con el perfil `feature-flags` | `docker compose up` |
+| `Gatekeeper` | Recrean los servicios con [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) y los vuelven a la normalidad; tarda varios minutos | `docker compose up` |
+| `Kubernetes` | Las demos 31 a 33; si no está el clúster, se ignoran | `./demos/k8s-up.sh` |
+
+Para correr solo los tests de una demo, por ejemplo la de Retry:
+`dotnet test tests/DemoTests --filter "FullyQualifiedName~Demo01"`.
+
 ## Observabilidad y pruebas de carga
 
 Los scripts de [demos](demos/) muestran cada patrón paso a paso, con pocas
