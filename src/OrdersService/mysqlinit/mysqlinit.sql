@@ -12,13 +12,22 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 -- Event Sourcing: historial inmutable de eventos de cada orden.
+--
+-- Idempotencia: hoy cada tipo de evento ocurre a lo sumo una vez por orden
+-- -'OrderCreated', 'OrderConfirmed', 'OrderRejected' y 'OrderInvoiced'-. El
+-- índice único lo garantiza aunque dos réplicas procesen a la vez dos copias
+-- del mismo mensaje: la segunda inserción falla en lugar de dejar el evento
+-- dos veces en el historial. Si algún día un tipo de evento pudiera repetirse,
+-- por ejemplo un cambio de cantidad, este índice dejaría de servir y haría
+-- falta otro criterio, como un identificador por mensaje. El índice también
+-- cubre las búsquedas por 'order_id'.
 CREATE TABLE IF NOT EXISTS order_events (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     order_id INT NOT NULL,
     type VARCHAR(50) NOT NULL,
     data JSON NOT NULL,
     occurred_at DATETIME(6) NOT NULL,
-    INDEX ix_order_events_order_id (order_id)
+    UNIQUE INDEX ux_order_events_order_id_type (order_id, type)
 );
 
 -- Transactional Outbox: eventos pendientes de publicar en RabbitMQ. Se escriben
@@ -35,12 +44,17 @@ CREATE TABLE IF NOT EXISTS outbox_messages (
 
 -- Materialized View: detalle de cada orden con el nombre del cliente y del
 -- producto. Lo mantiene OrderDetailsProjector a partir de los eventos.
+-- 'customer_name_at' y 'product_name_at' guardan cuándo cambió cada nombre:
+-- con varias réplicas del proyector, un nombre más viejo no pisa a uno más
+-- nuevo.
 CREATE TABLE IF NOT EXISTS order_details (
     order_id INT PRIMARY KEY,
     user_id INT NOT NULL,
     customer_name VARCHAR(100) NULL,
+    customer_name_at DATETIME(6) NULL,
     product_id VARCHAR(64) NULL,
     product_name VARCHAR(100) NULL,
+    product_name_at DATETIME(6) NULL,
     quantity INT NOT NULL,
     status VARCHAR(20) NOT NULL,
     updated_at DATETIME(6) NOT NULL,

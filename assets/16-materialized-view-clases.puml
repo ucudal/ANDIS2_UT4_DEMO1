@@ -11,7 +11,7 @@ class OrderDetailsProjector {
   #ExecuteAsync(stoppingToken)
   -ApplyAsync(routingKey, body) : bool
   -AddOrderAsync(db, httpClientFactory, created) : bool
-  -SetStatusAsync(db, orderId, status)
+  -SetStatusAsync(db, orderId, status, userId, productId, quantity)
 }
 class Dependencies <<static>> {
   {static} +GetUserAsync(client, userId) : CallResult

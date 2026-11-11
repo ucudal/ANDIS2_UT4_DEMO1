@@ -33,6 +33,11 @@ public record OrderRejected(int OrderId, string Reason);
 // sabe que viene de otro broker.
 public record OrderInvoiced(int OrderId, string InvoiceNumber, string IssuedOn);
 
-public record UserUpdated(int UserId, string Name);
+// Materialized View: OccurredAt es el momento del cambio, según el reloj del
+// servicio que lo publica. Con varias réplicas del proyector, dos cambios del
+// mismo nombre pueden aplicarse en otro orden; la fecha permite descartar el
+// más viejo -ver OrderDetailsProjector.cs-. Es opcional, como los campos nuevos
+// de OrderConfirmed: un mensaje anterior sigue siendo válido.
+public record UserUpdated(int UserId, string Name, DateTime? OccurredAt = null);
 
-public record ProductUpdated(string ProductId, string? Name);
+public record ProductUpdated(string ProductId, string? Name, DateTime? OccurredAt = null);

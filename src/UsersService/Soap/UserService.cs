@@ -63,6 +63,9 @@ public class UserService : IUserService
         user.Name = name;
         user.Email = email;
         await _db.SaveChangesAsync();
+        // Fecha del cambio: el proyector la usa para no pisar un nombre más nuevo
+        // con uno más viejo -ver Events.cs-.
+        var changedAt = DateTime.UtcNow;
 
         // Publisher/Subscriber: se avisa del cambio a quien le interese, sin
         // saber quién es; hoy, a la vista materializada de Orders.
@@ -73,7 +76,7 @@ public class UserService : IUserService
         // evita en Orders -ver OutboxRelay.cs-.
         try
         {
-            await _rabbitMq.PublishEventAsync(Events.UserUpdated, new UserUpdated(user.Id, user.Name));
+            await _rabbitMq.PublishEventAsync(Events.UserUpdated, new UserUpdated(user.Id, user.Name, changedAt));
             _logger.LogInformation("[PUB/SUB] Publicado {RoutingKey} del User {UserId}", Events.UserUpdated, user.Id);
         }
         catch (Exception ex)

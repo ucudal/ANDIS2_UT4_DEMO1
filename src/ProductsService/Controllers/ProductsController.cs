@@ -73,6 +73,9 @@ public class ProductsController : ControllerBase
             .Set(p => p.Name, product.Name)
             .Set(p => p.Price, product.Price);
         var result = await _productsCollection.UpdateOneAsync(p => p.Id == productId, update);
+        // Fecha del cambio: el proyector la usa para no pisar un nombre más nuevo
+        // con uno más viejo -ver Events.cs-.
+        var changedAt = DateTime.UtcNow;
         if (result.MatchedCount == 0)
             return NotFound(new { detail = "Product not found" });
 
@@ -82,7 +85,7 @@ public class ProductsController : ControllerBase
         // RabbitMQ no está, el evento se pierde -ver UserService.cs-.
         try
         {
-            await _rabbitMq.PublishEventAsync(Events.ProductUpdated, new ProductUpdated(productId, product.Name));
+            await _rabbitMq.PublishEventAsync(Events.ProductUpdated, new ProductUpdated(productId, product.Name, changedAt));
             _logger.LogInformation("[PUB/SUB] Publicado {RoutingKey} del Product {ProductId}", Events.ProductUpdated, productId);
         }
         catch (Exception ex)

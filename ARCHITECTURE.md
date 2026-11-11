@@ -80,8 +80,8 @@ link; si no está, explicarlo.-->
   <!-- → Son un servicio con tres procesos. El criterio es la propiedad de los
   datos y el despliegue independiente: comparten la base y la imagen, y un
   cambio en el modelo de Orders obliga a desplegar los tres juntos. Que escalen
-  distinto -tres réplicas del worker, una del proyector- no los vuelve servicios
-  distintos. Serían tres si cada uno tuviera sus propios datos y se pudiera
+  distinto -una réplica de orders-service, tres del worker y tres del
+  proyector- no los vuelve servicios distintos. Serían tres si cada uno tuviera sus propios datos y se pudiera
   cambiar y desplegar por separado. -->
 
 ## Comunicación entre servicios
@@ -866,7 +866,8 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
 | `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | — |
-| El proyector tiene una sola réplica | Los eventos de cada `Order` se aplican en orden | Si se cae, la vista se atrasa hasta que vuelva | — |
+| Los cambios de nombre se ordenan por la hora de cada contenedor | Varias réplicas del proyector, sin numerar los cambios en `Users` ni en `Products` | Si los relojes no están sincronizados, un nombre viejo puede pisar uno nuevo, o uno nuevo puede descartarse | [Materialized View](PATTERNS.md#materialized-view) |
+| Un mensaje que falla siempre vuelve a la cola | Ningún mensaje se descarta por una falla pasajera | Un *poison message* se reintenta para siempre y ocupa a una réplica cada 5 segundos | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
 | Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
 | Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de [Azurite](https://github.com/Azure/Azurite) y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
@@ -905,10 +906,14 @@ producción. Varias se resuelven en las demos siguientes, descritas en
   Keycloak en modo desarrollo: modo producción, con PostgreSQL y varias
   réplicas. Las dos consultas de detalle: elegir una y retirar la otra, o un
   feature flag mientras se migra. Users y Products sin outbox: Transactional
-  Outbox o captura de cambios con Debezium. El proyector con una sola réplica:
-  varias réplicas que reciban los eventos de una misma Order en orden, por
-  ejemplo particionando por Order, o single active consumer de RabbitMQ para
-  tener una de respaldo. El cliente que consulta el estado: webhooks, WebSockets
+  Outbox o captura de cambios con Debezium. Los nombres ordenados por la hora de
+  cada contenedor: un número de versión que Users y Products incrementen en
+  cada cambio. El mensaje que falla siempre: una dead-letter queue, después de
+  algunos reintentos. Para ordenar los eventos sin depender de upserts ni de
+  fechas, había dos alternativas que no se eligieron: particionar la cola por
+  Order, que conserva el orden y escala pero agrega infraestructura, o single
+  active consumer de RabbitMQ, que deja una réplica activa y las demás de
+  respaldo y da disponibilidad pero no rendimiento. El cliente que consulta el estado: webhooks, WebSockets
   o Server-Sent Events. Las contraseñas: un almacén de secretos, como Azure Key
   Vault, AWS Secrets Manager o HashiCorp Vault. Una sola instancia de RabbitMQ y
   de cada base: clústeres y réplicas, como colas quorum de RabbitMQ y réplicas

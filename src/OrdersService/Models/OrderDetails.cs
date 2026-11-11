@@ -21,11 +21,20 @@ public class OrderDetails
     [Column("customer_name")]
     public string? CustomerName { get; set; }
 
+    // Momento en que cambió el nombre del cliente, según quien lo informó. Con
+    // varias réplicas del proyector, un nombre más viejo no pisa a uno más
+    // nuevo -ver OrderDetailsProjector.cs-.
+    [Column("customer_name_at")]
+    public DateTime? CustomerNameAt { get; set; }
+
     [Column("product_id")]
     public string? ProductId { get; set; }
 
     [Column("product_name")]
     public string? ProductName { get; set; }
+
+    [Column("product_name_at")]
+    public DateTime? ProductNameAt { get; set; }
 
     [Column("quantity")]
     public int Quantity { get; set; }

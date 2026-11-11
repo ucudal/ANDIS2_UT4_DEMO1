@@ -41,7 +41,7 @@ directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azu
 | `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + [MongoDB Driver](https://www.mongodb.com/docs/drivers/csharp/) + [StackExchange.Redis](https://stackexchange.github.io/StackExchange.Redis/) | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
 | `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + [RabbitMQ.Client](https://www.rabbitmq.com/client-libraries/dotnet) | — |
-| `orders-projector` | Mantiene la vista materializada del detalle de las `Orders` a partir de los eventos; es la misma imagen que `orders-service` con el proyector habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
+| `orders-projector` ×3 | Mantiene la vista materializada del detalle de las `Orders` a partir de los eventos; es la misma imagen que `orders-service` con el proyector habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
 | `rabbitmq` | Exchange `andis.events` y colas `orders.process` y `orders.details-view` | RabbitMQ 4.4 | 5672, 15672 consola |
 | `redis` | Caché de `Products` | Redis 8 | 6379 |
 | `products-sidecar` | Autenticación, autorización y registro de accesos de `Products`, sin cambiar su código; comparte el espacio de red de `products-service` | [Envoy](https://www.envoyproxy.io/) 1.40 | — |
@@ -171,7 +171,9 @@ Las bases de datos se crean con datos de ejemplo la primera vez que se levantan
 los contenedores, con los scripts de `src/*/mysqlinit`, `src/*/mongoinit` y
 `src/*/pginit`. Para volver a empezar desde cero hay que borrar las carpetas
 `mysqldata`, `mongodbdata` y `pgdata`; los comandos están al final de cada
-archivo de [`commands`](commands/).
+archivo de [`commands`](commands/). Lo mismo hace falta si cambia uno de esos
+scripts, como `mysqlinit.sql`: con la carpeta ya creada, no se vuelven a
+ejecutar.
 
 ### Conectarse a las bases de datos
 

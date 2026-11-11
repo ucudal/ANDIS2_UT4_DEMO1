@@ -79,7 +79,25 @@ public class OrderProcessingWorker : BackgroundService
                 return;
             }
 
-            if (await ProcessAsync(created.OrderId, stoppingToken))
+            bool processed;
+            try
+            {
+                processed = await ProcessAsync(created.OrderId, stoppingToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Cualquier falla -la base no responde, un error de SQL- devuelve
+                // el mensaje a la cola. Sin este catch, RabbitMQ.Client registra
+                // la excepción y deja el mensaje sin ack ni nack: con prefetch 1,
+                // esta réplica no recibe más mensajes hasta que se cierre el
+                // canal. Trade-off: un mensaje que falla siempre -un poison
+                // message- vuelve a la cola para siempre; la alternativa es una
+                // dead-letter queue, que la demo no tiene.
+                _logger.LogError(ex, "Worker {Worker}: no se pudo procesar la orden {OrderId}; vuelve a la cola", _workerName, created.OrderId);
+                processed = false;
+            }
+
+            if (processed)
             {
                 await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, stoppingToken);
             }

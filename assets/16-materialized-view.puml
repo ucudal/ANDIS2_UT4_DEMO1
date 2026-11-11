@@ -2,17 +2,18 @@
 !include PlantUML.style
 hide footbox
 queue "Cola\norders.details-view" as Q
-participant "Proyector\nOrderDetailsProjector" as PR
+participant "Proyector, réplica A\nOrderDetailsProjector" as PA
+participant "Proyector, réplica B\nOrderDetailsProjector" as PB
 participant "Users y Products\nusers-service, products-service" as U
 database "Vista\norder_details" as V
 
-Q ->> PR : order.created
-PR ->> U : nombre del cliente y del producto, una sola vez
-U -->> PR : los nombres
-PR ->> V : agrega la fila, con los nombres\nAddOrderAsync
-Q ->> PR : order.confirmed
-PR ->> V : actualiza el estado\nSetStatusAsync
-Q ->> PR : product.updated
-PR ->> V : cambia el nombre en todas las filas del Product\nExecuteUpdateAsync
+Q ->> PA : order.created
+PA ->> U : nombre del cliente y del producto, una sola vez
+Q ->> PB : order.confirmed, mientras A espera
+PB ->> V : upsert: si la fila no existe, la crea Confirmed\nSetStatusAsync
+U -->> PA : los nombres
+PA ->> V : upsert: completa los datos y los nombres,\nsin tocar el estado\nAddOrderAsync
+Q ->> PB : product.updated
+PB ->> V : cambia el nombre en todas las filas del Product,\nsi es más nuevo que el que tienen\nExecuteUpdateAsync
 note right V : la consulta lee solo esta tabla,\nsin llamar a Users ni a Products
 @enduml

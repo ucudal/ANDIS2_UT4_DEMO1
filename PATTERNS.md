@@ -707,7 +707,7 @@ fila "Rendimiento: caché, CQRS y outbox".
 | Componente | Para qué |
 | ---------- | -------- |
 | `redis` | Caché de `Products`. |
-| `orders-projector` | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
+| `orders-projector` -3 réplicas- | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
 | Exchange `andis.events` | Eventos `order.created`, `order.confirmed`, `order.rejected`, `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación [SOAP](https://www.w3.org/TR/soap/) `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
 | Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [MongoDB](https://www.mongodb.com/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
@@ -986,8 +986,75 @@ que corre en `orders-projector` y consume la cola `orders.details-view`:
 * `user.updated` y `product.updated`: actualizan el nombre en todas las filas
   de ese `User` o `Product`.
 
-Corre con una sola réplica, para que los eventos de una misma `Order` se
-apliquen en orden.
+Corre con tres réplicas, como el *worker*. Cada mensaje de la cola va a una
+réplica distinta y se procesa en paralelo, así que el proyector no puede
+suponer que los eventos de una `Order` llegan en orden, ni que una copia
+repetida de un mensaje llega después de la original. El proyector no guarda
+nada en memoria, y aun así, mientras su resultado dependía del orden de los
+mensajes, solo podía tener una réplica: ser *stateless* no alcanza para escalar
+-ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. Con
+varias réplicas, sin las soluciones que siguen pasaría esto, sin errores
+visibles:
+
+* **Un estado perdido por desorden.** La réplica A recibe `order.created` de la
+  `Order` 42 y llama a `Users` y a `Products`, que tardan. Mientras tanto, el
+  *worker* confirma la `Order` y la réplica B recibe `order.confirmed`: no
+  encuentra la fila y descarta el estado. Después A inserta la fila como
+  `Pending`, y la vista muestra `Pending` para siempre, aunque la `Order` esté
+  `Confirmed`.
+
+  **Solución:** el estado solo avanza. `Pending` pasa a `Confirmed` o a
+  `Rejected`, y esos dos son finales. El método `SetStatusAsync` crea la fila
+  con el estado final si todavía no existe, y `AddOrderAsync` completa los
+  datos y los nombres sin tocar el estado. Aplicados en cualquier orden, los
+  eventos dejan el mismo resultado, sin necesidad de numerarlos.
+* **Copias que pasan el chequeo.** Buscar la fila o la factura y después
+  insertarla son dos pasos, y dos copias del mismo mensaje en dos réplicas
+  pasan las dos el chequeo. Con `order.invoiced`, la factura queda dos veces en
+  el historial; con `order.created`, la segunda inserción viola la clave
+  primaria y falla.
+
+  **Solución:** una sola sentencia atómica. La vista se escribe con un
+  *upsert*, [`INSERT … ON DUPLICATE KEY
+  UPDATE`](https://dev.mysql.com/doc/refman/8.4/en/insert-on-duplicate.html) de
+  MySQL, que inserta la fila o la actualiza si ya existe. La factura se inserta
+  directamente, y un índice único de `order_events` por `Order` y tipo de
+  evento hace fallar la segunda copia. Ver [Idempotencia](#idempotencia).
+* **Una réplica trabada.** Una excepción no prevista, como una falla de la
+  base, dejaría el mensaje sin confirmar ni devolver. Con `prefetch = 1`,
+  RabbitMQ no le entregaría más mensajes a esa réplica hasta que se cerrara su
+  canal.
+
+  **Solución:** cualquier excepción devuelve el mensaje a la cola, igual que
+  cuando `Users` o `Products` no responden. El *worker* hace lo mismo.
+* **Nombres aplicados al revés.** Dos cambios del nombre de un `User`, primero
+  "Ana" y después "Ana María", llegan a réplicas distintas y el viejo se aplica
+  último: la vista queda con "Ana". Cada cambio es idempotente, porque asigna
+  un valor, pero no conmutativo: el resultado depende del orden.
+
+  **Solución:** `user.updated` y `product.updated` traen la fecha del cambio en
+  el campo opcional `OccurredAt`, y la vista guarda la fecha de cada nombre en
+  `customer_name_at` y `product_name_at`. Un nombre más viejo que el de la fila
+  no se aplica. `AddOrderAsync` usa como fecha el momento en que leyó los
+  nombres.
+
+Las soluciones tienen sus costos:
+
+* Comparar fechas de distintos contenedores supone que sus relojes están
+  sincronizados. Una alternativa más robusta, y más invasiva, es un número de
+  versión que `Users` y `Products` incrementen en cada cambio.
+* Un mensaje que falla siempre, un *poison message*, vuelve a la cola para
+  siempre. La alternativa es una [*dead-letter
+  queue*](https://www.rabbitmq.com/docs/dlx), que la demo no tiene.
+* El índice único supone que cada tipo de evento ocurre a lo sumo una vez por
+  `Order`, y hoy es así. Un evento que pudiera repetirse, como un cambio de
+  cantidad, necesitaría otro criterio, por ejemplo un identificador por mensaje.
+
+Hay dos alternativas que conservan el orden y no se eligieron. Particionar la
+cola por `Order` escala, pero agrega infraestructura. [*Single active
+consumer*](https://www.rabbitmq.com/docs/consumers#single-active-consumer) de
+RabbitMQ deja una réplica activa y las demás de respaldo: da disponibilidad,
+pero no rendimiento.
 
 **Cómo funciona:**
 
@@ -1817,7 +1884,10 @@ Tres detalles del ciclo:
 * **Entrega al menos una vez:** el puente confirma en un broker recién después de
   que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente se cae
   en el medio, el mensaje se repite: el ERP emite la misma factura, porque su número
-  sale del pedido, y `Orders` no la registra dos veces.
+  sale del pedido, y `Orders` no la registra dos veces. El proyector inserta la
+  factura sin preguntar antes si ya está, y un índice único de `order_events`
+  por `Order` y tipo de evento rechaza la copia, aunque las dos lleguen a la vez
+  a dos réplicas distintas. Ver [Idempotencia](#idempotencia).
 
 `Orders` cambió en dos cosas, aunque el patrón busca no tocar los sistemas: el
 evento `OrderConfirmed` suma campos opcionales con los datos de la `Order`, y
