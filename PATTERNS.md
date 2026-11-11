@@ -560,6 +560,28 @@ confirmarlo, RabbitMQ se lo entrega a otra. El recorrido completo de una
 `ProcessAsync` devuelve `false` cuando `Users` o `Products` no responden: el
 mensaje vuelve a la cola.
 
+Que las réplicas se repartan la cola no evita que dos procesen la misma
+`Order`. El *outbox* entrega cada mensaje al menos una vez -ver [Transactional
+Outbox](#transactional-outbox)-, y las dos copias de un `order.created` pueden
+llegar a la vez a dos réplicas. Si el *worker* preguntara si la `Order` sigue
+`Pending` y después la cambiara, en dos pasos, pasaría esto:
+
+1. Las dos réplicas leen la `Order` como `Pending`.
+2. Las dos esperan los 2 segundos de la demora y las respuestas de `Users` y de
+   `Products`.
+3. Las dos la confirman: quedan dos `OrderConfirmed` en el historial de [Event
+   Sourcing](#event-sourcing) y dos `order.confirmed` en el *outbox*, que
+   llegan dos veces al proyector y al ERP.
+
+Por eso el primer paso de la transacción es un `UPDATE` que cambia el estado
+solo si la `Order` sigue `Pending`. Es una sola sentencia atómica: MySQL bloquea
+la fila, la segunda réplica espera a que la primera confirme, ve que la `Order`
+ya no está `Pending` y no cambia nada. Recién si el `UPDATE` cambió la fila se
+agregan el evento y el mensaje; si no, la réplica descarta la `Order` y lo
+registra con `[COMPETING CONSUMERS]`. El índice único de `order_events` por
+`Order` y tipo de evento queda como segunda barrera. Ver
+[Idempotencia](#idempotencia).
+
 **Cómo verlo:**
 [demos/07-competing-consumers.sh](demos/07-competing-consumers.sh) crea 9
 `Orders`. Cada *worker* tarda 2 segundos por `Order`, y las 9 se procesan en
@@ -644,8 +666,13 @@ LOCKED`: con más de una instancia del *relay*, cada mensaje lo publica una sola
 
 La entrega es **al menos una vez**: si el *relay* se cae después de publicar y
 antes de marcar, publica de nuevo el mismo mensaje. Por eso los suscriptores son
-idempotentes: el *worker* ignora las `Orders` que ya no están `Pending`, y el
-proyector de la vista materializada actualiza la fila si ya existe.
+idempotentes, aunque las dos copias lleguen a la vez a réplicas distintas. El
+*worker* cambia el estado con un `UPDATE` que solo afecta a las `Orders` que
+siguen `Pending`, y descarta la copia si otra réplica ya la procesó -ver
+[Competing Consumers para
+disponibilidad](#competing-consumers-para-disponibilidad)-. El proyector de la
+vista materializada escribe cada fila con un *upsert* -ver [Materialized
+View](#materialized-view)-. Ver [Idempotencia](#idempotencia).
 
 `Users` y `Products` publican sus eventos directamente, sin *outbox*: si
 RabbitMQ no está, el cambio se guarda y el evento se pierde. `Products` usa

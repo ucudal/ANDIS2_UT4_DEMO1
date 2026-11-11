@@ -445,7 +445,9 @@ distintos servicios no coincidan.
 * **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
   el mismo evento, si se cae entre publicar el evento y marcarlo como
   publicado<!--TODO: confirmar cambio de redacción-->. Los suscriptores son
-  idempotentes: aplicar el mismo evento dos veces deja el mismo resultado.
+  idempotentes: aplicar el mismo evento dos veces deja el mismo resultado,
+  aunque las dos copias lleguen a la vez a réplicas distintas. Ver
+  [Idempotencia](PATTERNS.md#idempotencia) en PATTERNS.md.
 * **Los nombres se piden o se copian.** La consulta síncrona los pide cada vez:
   siempre están al día, pero dependen de que `Users` y `Products` respondan. La
   vista los copia una vez y los actualiza con los eventos: no depende de nadie,

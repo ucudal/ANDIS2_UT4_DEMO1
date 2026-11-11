@@ -133,15 +133,35 @@ public class OrderProcessingWorker : BackgroundService
     // Devuelve false si la orden no se pudo procesar porque una dependencia no
     // está disponible; en ese caso el mensaje vuelve a la cola.
     //
-    // Es idempotente: si la orden ya no está Pending, no hace nada. Hace falta
-    // porque el outbox entrega cada mensaje al menos una vez, no exactamente una.
+    // Es idempotente: el outbox entrega cada mensaje al menos una vez, no
+    // exactamente una, y una Order que ya no está Pending no se procesa de
+    // nuevo. Pero preguntar si está Pending y después cambiarla son dos pasos
+    // -check-then-act-, y con varias réplicas eso no alcanza:
+    //
+    // 1. El relay publica dos veces el mismo order.created -ver OutboxRelay.cs-.
+    // 2. Las dos copias llegan a la vez a dos réplicas.
+    // 3. Las dos leen la Order como Pending, esperan la demora y las llamadas a
+    //    Users y Products, y las dos guardan el cambio.
+    //
+    // Quedarían dos OrderConfirmed en el historial y dos order.confirmed en el
+    // outbox, que llegarían dos veces al proyector y al ERP.
+    //
+    // Por eso la lectura inicial solo evita trabajo inútil con un duplicado que
+    // llega después; lo que decide es el primer paso de la transacción: un
+    // UPDATE que cambia el estado solo si sigue Pending. Es una sola sentencia,
+    // y MySQL bloquea la fila: la segunda réplica espera a que la primera
+    // confirme, ve que ya no está Pending, no cambia nada y descarta la Order.
+    // El índice único de order_events es una segunda barrera -ver
+    // mysqlinit.sql-.
     private async Task<bool> ProcessAsync(int orderId, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
         var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
 
-        var order = await db.Orders.FindAsync([orderId], cancellationToken);
+        // Sin seguimiento de cambios: el estado se escribe con el UPDATE
+        // condicional, no guardando esta entidad.
+        var order = await db.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
         if (order is null || order.Status != OrderStatus.Pending)
             return true;
 
@@ -162,6 +182,7 @@ public class OrderProcessingWorker : BackgroundService
         var rejection = user.NotFound ? $"El usuario {order.UserId} no existe"
             : product.NotFound ? $"El producto {order.ProductId} no existe"
             : null;
+        var newStatus = rejection is null ? OrderStatus.Confirmed : OrderStatus.Rejected;
 
         var orderEvent = rejection is null
             ? OrderEvent.Create(orderId, OrderEventTypes.OrderConfirmed, new OrderConfirmedData(_workerName))
@@ -174,15 +195,28 @@ public class OrderProcessingWorker : BackgroundService
             : OutboxMessage.Create(Events.OrderRejected, new OrderRejected(orderId, rejection));
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // Competing Consumers: la transición de estado condicional y atómica.
+        var changed = await db.Orders
+            .Where(o => o.Id == orderId && o.Status == OrderStatus.Pending)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, newStatus), cancellationToken);
+        if (changed == 0)
+        {
+            // Otra réplica ya la procesó: no se agrega ni el evento ni el mensaje.
+            await transaction.RollbackAsync(cancellationToken);
+            _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} descarta la orden {OrderId}: ya la procesó otra réplica",
+                _workerName, orderId);
+            return true;
+        }
+
         db.OrderEvents.Add(orderEvent);
         db.OutboxMessages.Add(outboxMessage);
-        order.Status = rejection is null ? OrderStatus.Confirmed : OrderStatus.Rejected;
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker}: orden {OrderId} {Status}{Reason}",
-            _workerName, orderId, order.Status, rejection is null ? "" : $" [{rejection}]");
-        Count(order.Status.ToString());
+            _workerName, orderId, newStatus, rejection is null ? "" : $" [{rejection}]");
+        Count(newStatus);
         return true;
     }
 
