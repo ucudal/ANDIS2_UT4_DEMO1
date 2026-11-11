@@ -444,11 +444,11 @@ EOF
 # Necesitan kind, kubectl y el plugin de Argo Rollouts para kubectl:
 #   brew install kind kubectl argoproj/tap/kubectl-argo-rollouts
 #
-# El clúster tiene su propia base de Users y no usa nada de Docker Compose. Los
-# clientes llegan por el Gateway del clúster, en el puerto 8092, en lugar de la
-# entrada de despliegue del 8091. Cada versión de Users es una imagen:
-# users-service:v1, users-service:v2 y users-service:v3-bad, que falla en el
-# 30% de las solicitudes desde que arranca.
+# El clúster de Kubernetes tiene su propia base de Users y no usa nada de Docker
+# Compose. Los clientes llegan por el Gateway del clúster, en el puerto 8092, en
+# lugar de la entrada de despliegue del 8091. Cada versión de Users es una
+# imagen: users-service:v1, users-service:v2 y users-service:v3-bad, que falla
+# en el 30% de las solicitudes desde que arranca.
 
 # Crear el clúster, una sola vez: construye las tres imágenes, instala Gateway
 # API, NGINX Gateway Fabric, Argo Rollouts y su plugin de Gateway API, y aplica
@@ -465,37 +465,50 @@ kubectl get pods,services,gateway -n andis
 # comando por paso. Los clientes van al Service users-active; la versión nueva
 # se prueba por users-preview, en http://preview.localhost:8092.
 
-# Aplicar el Rollout users con la versión v1, sus dos Service y las rutas
+# Aplicar los manifiestos de k8s/blue-green. El Rollout users -en rollout.yaml-
+# es como un Deployment de Kubernetes, los pods de Users con su imagen, pero con
+# una estrategia de despliegue, acá 'blueGreen', que Argo Rollouts ejecuta. Los
+# dos Service -en services.yaml- son el conmutador: users-active, al que el
+# Gateway manda a los clientes, y users-preview, para probar la versión nueva;
+# las rutas del Gateway están en httproute.yaml. El comando 'status' termina
+# cuando los pods de la versión v1 están listos
 kubectl apply -f k8s/blue-green
 kubectl argo rollouts status users -n andis
 
-# El Rollout: una versión, la v1, que es stable y active
+# El Rollout como lo ve Argo: cada versión con sus pods y su papel. Hay una
+# sola, la v1: stable -la versión en producción- y active -la que reciben los
+# clientes-
 kubectl argo rollouts get rollout users -n andis
 
-# Responde la versión v1: el encabezado X-Version
+# Responde la versión v1: lo dice el encabezado X-Version
 curl -si -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# Desplegar la versión v2: Argo levanta sus pods al lado de los de la v1, y se
-# detiene a esperar. La v2 queda como preview
+# Desplegar la versión v2 es cambiar la imagen del Rollout. Argo levanta los
+# pods de la v2 al lado de los de la v1, apunta users-preview a ellos y se
+# detiene a esperar que alguien conmute. En el Rollout, la v2 aparece como
+# preview, y la v1 sigue como active
 kubectl argo rollouts set image users users=users-service:v2 -n andis
 kubectl argo rollouts get rollout users -n andis
 
-# Los clientes siguen en la versión v1...
+# Los clientes siguen recibiendo la versión v1, porque users-active no cambió...
 curl -s -o /dev/null -w '%{http_code} versión %header{x-version}\n' \
   -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# ...y la versión v2 se prueba por users-preview. curl resuelve
+# ...y la versión v2 se prueba por users-preview, con otro nombre,
+# preview.localhost, que el Gateway manda a ese Service. curl resuelve
 # preview.localhost a la máquina local
 curl -si -X POST http://preview.localhost:8092/users/UserService.svc -d "$soap1" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# Conmutar: Argo apunta users-active a los pods de la versión v2. Los de la v1
-# siguen vivos un minuto, con la etiqueta delay
+# Conmutar: 'promote' hace que Argo apunte users-active a los pods de la
+# versión v2. Cambia el Service, no el Gateway ni la dirección de los clientes.
+# Los pods de la v1 no se borran enseguida: siguen vivos un minuto, y en el
+# Rollout aparecen con la etiqueta delay
 kubectl argo rollouts promote users -n andis
 kubectl argo rollouts get rollout users -n andis
 
@@ -505,15 +518,17 @@ curl -s -o /dev/null -w '%{http_code} versión %header{x-version}\n' \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# Volver atrás: dentro de ese minuto, Argo vuelve a los pods de la versión v1
-# enseguida, sin esperar a que arranquen
+# Volver atrás: 'undo' apunta users-active otra vez a los pods de la versión
+# v1. Dentro de ese minuto esos pods siguen vivos, así que la vuelta atrás es
+# inmediata: no hay que esperar a que arranquen pods nuevos
 kubectl argo rollouts undo users -n andis
 curl -s -o /dev/null -w '%{http_code} versión %header{x-version}\n' \
   -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# Borrar el Rollout, sus Service y las rutas
+# Borrar lo que se aplicó al principio: el Rollout, con sus pods, los dos
+# Service y las rutas
 kubectl delete -f k8s/blue-green
 
 # La demo completa, con una sonda que pide el User 1 cada 0.1 segundos durante
@@ -533,14 +548,21 @@ kubectl delete -f k8s/blue-green
 # Argo Rollouts, que después de cada paso mide en Prometheus los errores de los
 # pods nuevos, y vuelve atrás solo si fallan.
 
-# Parte 1. Aplicar el Service, la ruta y el Deployment users, con 3 pods de la
-# versión v1
+# Parte 1. Aplicar el Service users, que reparte entre todos los pods con la
+# etiqueta app=users, de cualquier versión; la ruta del Gateway hacia ese
+# Service; y el Deployment users, con 3 pods de la versión v1 -en
+# k8s/rolling-upgrade/service.yaml y deployment.yaml-. Con 'rollout status',
+# kubectl espera a que los pods estén listos, y 'get pods -l app=users' muestra
+# los pods con esa etiqueta
 kubectl apply -f k8s/rolling-upgrade/service.yaml -f k8s/rolling-upgrade/deployment.yaml
 kubectl rollout status deployment/users -n andis
 kubectl get pods -n andis -l app=users
 
-# Desplegar la versión v2: Kubernetes levanta un pod nuevo, espera a que esté
-# listo y recién entonces detiene uno viejo, tres veces
+# Desplegar la versión v2 es cambiar la imagen del Deployment, con 'set image'.
+# Kubernetes reemplaza los pods de a uno: levanta uno nuevo -maxSurge: 1-,
+# espera a que esté listo, según su readinessProbe, que pide /health, y recién
+# entonces detiene uno viejo -maxUnavailable: 0-, tres veces. Mientras tanto,
+# el Service reparte entre los pods de las dos versiones
 kubectl set image deployment/users users=users-service:v2 -n andis
 kubectl rollout status deployment/users -n andis
 kubectl get pods -n andis -l app=users
@@ -554,7 +576,8 @@ for i in $(seq 12); do
 done | sort | uniq -c
 
 # Desplegar la versión v3, con un error: responde /health, así que para
-# Kubernetes sus pods están listos, y la despliega en los tres
+# Kubernetes sus pods están listos, y la despliega en los tres. Un Deployment no
+# mira si los pods responden bien a los clientes, solo si están listos
 kubectl set image deployment/users users=users-service:v3-bad -n andis
 kubectl rollout status deployment/users -n andis
 
@@ -567,17 +590,32 @@ for i in $(seq 30); do
     -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 done | sort | uniq -c
 
-# Volver atrás, a mano, a la versión v2
+# Volver atrás, a mano: 'rollout undo' es otro reemplazo de a un pod, hacia la
+# versión anterior, la v2
 kubectl rollout undo deployment/users -n andis
 kubectl rollout status deployment/users -n andis
 
+# Volver a hacer 12 solicitudes: todas las atiende nuevamente la versión v2
+for i in $(seq 12); do
+  curl -s -o /dev/null -w '%{http_code} versión %header{x-version}\n' \
+    -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
+    -H 'Content-Type: text/xml; charset=utf-8' \
+    -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
+done | sort | uniq -c
+
 # Parte 2. Cambiar el Deployment por el Rollout users, con 3 pods de la versión
-# v2. Los pasos y el análisis están en k8s/rolling-upgrade/rollout.yaml
+# v2. El Rollout reemplaza los pods de a uno, como el Deployment, pero en pasos:
+# un pod nuevo, análisis, dos pods nuevos, análisis, y los tres. Cada análisis
+# es un AnalysisRun, que mide en Prometheus la fracción de errores de los pods
+# nuevos: si llega al 5%, Argo aborta y vuelve a la versión anterior. Los pasos
+# están en k8s/rolling-upgrade/rollout.yaml, y el análisis, en
+# k8s/base/analysis-error-rate.yaml
 kubectl delete deployment users -n andis
 kubectl apply -f k8s/rolling-upgrade/rollout.yaml
 kubectl argo rollouts status users -n andis
 
-# El análisis necesita tráfico: pedir el User 1 cada 0.1 segundos, en segundo
+# El análisis necesita tráfico: mide los errores de las solicitudes que
+# atendieron los pods nuevos. Pedir el User 1 cada 0.1 segundos, en segundo
 # plano
 while true; do
   curl -s -o /dev/null -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
@@ -586,13 +624,15 @@ while true; do
   sleep 0.1
 done &
 
-# Desplegar la versión v3 con el error, y mirar el Rollout en vivo: un pod
-# nuevo y un AnalysisRun. En menos de un minuto el análisis falla, y Argo vuelve
-# a la versión v2. Salir con Ctrl+C
+# Desplegar la versión v3 con el error, y mirar el Rollout en vivo con
+# '--watch': aparecen un pod nuevo y un AnalysisRun. En menos de un minuto el
+# análisis falla, Argo vuelve a la versión v2 y el Rollout queda Degraded.
+# Salir con Ctrl+C
 kubectl argo rollouts set image users users=users-service:v3-bad -n andis
 kubectl argo rollouts get rollout users -n andis --watch
 
-# Lo que midió el análisis: la fracción de errores de los pods de la versión v3
+# Lo que midió el análisis: cada AnalysisRun, con su resultado -Successful o
+# Failed- y sus medidas, la fracción de errores de los pods de la versión v3
 kubectl get analysisrun -n andis \
   -o jsonpath='{range .items[*]}{.metadata.name}: {.status.phase} {.status.metricResults[0].measurements[*].value}{"\n"}{end}'
 
@@ -619,15 +659,20 @@ kubectl delete -f k8s/rolling-upgrade --ignore-not-found
 # entre los Service users-stable y users-canary: 10%, análisis, 50%, análisis y
 # 100%. Si un análisis falla, vuelve todo a la versión estable.
 
-# Aplicar el Rollout users con la versión v1, sus dos Service y la ruta
+# Aplicar los manifiestos de k8s/canary: el Rollout users, con la estrategia
+# 'canary' y la versión v1; dos Service, users-stable para la versión estable y
+# users-canary para la nueva; y la ruta users del Gateway, que tiene a los dos
+# Service como destinos, cada uno con un peso. Los pesos son el reparto: Argo
+# los cambia en cada paso
 kubectl apply -f k8s/canary
 kubectl argo rollouts status users -n andis
 
-# Los pesos de la ruta: todo a users-stable
+# Los pesos de la ruta: todo a users-stable, 100% contra 0%
 kubectl get httproute users -n andis \
   -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.name} {.weight}%{"\n"}{end}'
 
-# El análisis necesita tráfico: pedir el User 1 cada 0.1 segundos, en segundo
+# El análisis necesita tráfico: mide los errores de las solicitudes que
+# atendieron los pods nuevos. Pedir el User 1 cada 0.1 segundos, en segundo
 # plano
 while true; do
   curl -s -o /dev/null -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
@@ -636,18 +681,22 @@ while true; do
   sleep 0.1
 done &
 
-# Desplegar la versión v2 y mirar el Rollout en vivo: avanza sola del 10% al
-# 100% en un minuto y medio, con un análisis exitoso en cada paso. Salir con
-# Ctrl+C
+# Desplegar la versión v2 es cambiar la imagen del Rollout. Argo apunta
+# users-canary a los pods nuevos y avanza solo: 10%, análisis, 50%, análisis y
+# 100%, en un minuto y medio. Al terminar, users-stable apunta a la v2. Mirarlo
+# en vivo con '--watch'; salir con Ctrl+C
 kubectl argo rollouts set image users users=users-service:v2 -n andis
 kubectl argo rollouts get rollout users -n andis --watch
 
-# Mientras avanza, en otra terminal, los pesos de la ruta en cada paso
+# Mientras avanza, en otra terminal, los pesos de la ruta en cada paso: los
+# cambia Argo, con su plugin de Gateway API
 kubectl get httproute users -n andis \
   -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.name} {.weight}%{"\n"}{end}'
 
-# Desplegar la versión v3 con el error: con el 10%, el análisis falla, y Argo
-# vuelve todo a la versión v2. Salir con Ctrl+C
+# Desplegar la versión v3 con el error: con el 10%, el análisis mide cerca del
+# 30% de errores y falla. Argo aborta: devuelve el 100% del peso a
+# users-stable, que sigue en la v2, y el Rollout queda Degraded. Salir con
+# Ctrl+C
 kubectl argo rollouts set image users users=users-service:v3-bad -n andis
 kubectl argo rollouts get rollout users -n andis --watch
 
@@ -669,6 +718,7 @@ kubectl delete -f k8s/canary
 #   50%, hasta el 100%.
 # - "Errores de cada versión, según Users": la versión v3 supera la línea roja
 #   del 5%, y Argo vuelve atrás.
+
 ./demos/load-deployment.sh k8s-canary
 
 # Prometheus del clúster, con las métricas de cada pod de Users:
