@@ -411,11 +411,18 @@ cadena, y la aplicación usa las tres:
   producto, por ejemplo para una factura, no. El objetivo de nivel de servicio
   tiene que decir qué es una respuesta exitosa. -->
 * ¿Qué cambia en la tabla si se agregan tres réplicas de `products-service`?
+  ¿Qué tiene que cumplir `products-service` para que se pueda replicar? Ver
+  [Stateless y estado por réplica](PATTERNS.md#stateless-y-estado-por-réplica)
+  en PATTERNS.md.
   <!-- → products-service deja de ser un eslabón débil: con tres réplicas
   independientes, falla solo si fallan las tres, y su disponibilidad pasa a ser
   casi del 100%. La consulta de detalle completa queda con seis componentes de
   99,9%, unos 99,4%, y el punto único de falla de Products pasa a ser
-  products-db, que sigue siendo una sola instancia. -->
+  products-db, que sigue siendo una sola instancia. Se puede replicar porque es
+  stateless: los Products están en MongoDB y la caché en Redis, compartida por
+  todas las réplicas. Con una caché en memoria, cada réplica tendría su copia y
+  una invalidación llegaría a una sola. Los ajustes de chaos y de la caché sí
+  quedan en cada réplica: un PUT cambiaría una sola. -->
 * El gateway le pregunta a Keycloak por cada solicitud HTTPS, y el *sidecar*
   verifica la firma del token con las claves públicas de Keycloak, sin
   preguntarle. ¿Qué gana y qué pierde cada uno? ¿Cómo quedaría la tabla si el
