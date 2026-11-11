@@ -1,0 +1,124 @@
+@startuml
+' El estilo de PlantUML.style, copiado acá para que el servidor de PlantUML
+' pueda dibujar este diagrama desde GitHub, sin el archivo incluido
+<style>
+    Root {
+        RoundCorner 0
+        BackgroundColor Transparent
+        element {
+          FontColor #006EAF
+          BorderColor #006EAF
+          LineColor #006EAF
+        }
+        stereotype {
+          FontColor #006EAF
+        }
+    }
+</style>
+left to right direction
+skinparam nodesep 30
+skinparam ranksep 90
+
+node "Cliente\ncurl, navegador, scripts de demos/" <<device>> as client
+
+node "Host con Docker" <<device>> {
+  node "Red de Docker Compose" <<execution environment>> {
+
+    node "api-gateway\nnginx 1.25" <<container>> as gw {
+      artifact "nginx.conf" as gwa
+    }
+    node "keycloak\nKeycloak 26.8" <<container>> as kc {
+      artifact "andis-realm.json" as kca
+    }
+    node "consul\nConsul 1.21" <<container>> as cs
+    node "monolith\nASP.NET Core 10" <<container>> as mono {
+      artifact "Monolith.dll" as monoa
+    }
+    node "messaging-bridge\n.NET 10" <<container>> as br {
+      artifact "MessagingBridge.dll" as bra
+    }
+
+    rectangle "ERP legado" as erp {
+      queue "legacy-broker\nActiveMQ 6.1" <<container>> as amq
+      node "legacy-erp\n.NET 10" <<container>> as le {
+        artifact "LegacyErp.dll" as lea
+      }
+    }
+
+    rectangle "Users" as users {
+      node "users-service\nASP.NET Core 10" <<container>> as us {
+        artifact "UsersService.dll" as usa
+      }
+      database "users-db\nPostgreSQL 18" <<container>> as udb {
+        artifact "pginit.sql" as udba
+      }
+    }
+
+    rectangle "Products" as products {
+      node "products-service\nASP.NET Core 10" <<container>> as ps {
+        artifact "ProductsService.dll" as psa
+      }
+      node "products-sidecar\nEnvoy 1.40" <<container>> as sc {
+        artifact "envoy.yaml" as sca
+      }
+      database "products-db\nMongoDB 9" <<container>> as pdb {
+        artifact "mongoinit.js" as pdba
+      }
+      database "redis\nRedis 8" <<container>> as rd
+      database "azurite\nAzurite 3.37" <<container>> as az
+    }
+
+    rectangle "Orders" as orders {
+      node "orders-service\nASP.NET Core 10" <<container>> as os {
+        artifact "OrdersService.dll" as osa
+      }
+      node "orders-worker ×3\nASP.NET Core 10" <<container>> as ow {
+        artifact "OrdersService.dll" as owa
+      }
+      node "orders-projector\nASP.NET Core 10" <<container>> as op {
+        artifact "OrdersService.dll" as opa
+      }
+      queue "rabbitmq\nRabbitMQ 4.4\nexchange andis.events" <<container>> as mq
+      database "orders-db\nMySQL 26" <<container>> as odb {
+        artifact "mysqlinit.sql" as odba
+      }
+    }
+  }
+}
+
+client --> gw : HTTP :80, HTTPS :443,\nfachada :8090, despliegue :8091
+client --> kc : HTTP :8080\ninicio de sesión
+client --> az : HTTP :10000\nURL firmadas
+gw --> mono : HTTP :8000\nfachada
+gw --> kc : HTTP :8080\nvalida tokens
+gw --> us : HTTP :8000\n/users/
+gw --> ps : HTTP :8000\n/products/, por HTTP
+gw --> sc : HTTP :9000\n/products/, por HTTPS
+gw --> os : HTTP :8000\n/orders/
+sc --> ps : HTTP :8000\n127.0.0.1
+sc --> kc : HTTP :8080\nclaves públicas
+os --> cs : HTTP :8500\nconfiguración
+ps --> cs : HTTP :8500\nconfiguración
+ps --> az : HTTP :10000
+os --> mq : AMQP :5672\npublica
+us --> mq : AMQP :5672\npublica
+ps --> mq : AMQP :5672\npublica
+mq --> ow : AMQP :5672\nconsume
+mq --> op : AMQP :5672\nconsume
+mq --> br : AMQP :5672\nconsume y publica
+br --> amq : OpenWire :61616
+le --> amq : OpenWire :61616
+orders --> us : HTTP :8000
+orders --> ps : HTTP :8000
+us --> udb : TCP :5432
+ps --> pdb : TCP :27017
+ps --> rd : TCP :6379
+os --> odb : TCP :3306
+ow --> odb : TCP :3306
+op --> odb : TCP :3306
+' Solo para ubicar los nodos, no son conexiones
+mq -[hidden]-> br
+br -[hidden]-> erp
+os -[hidden]-> cs
+gw -[hidden]-> kc
+@enduml

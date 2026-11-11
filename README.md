@@ -200,112 +200,13 @@ el usuario `admin` y la contraseña `Pa55w0rd`. Los usuarios de la aplicación
 
 ## Diagrama de despliegue
 
-```mermaid
----
-config:
-  class:
-    hideEmptyMembersBox: true
-  theme: base
-  themeVariables:
-    fontSize: 14px
-    background: transparent
-    mainBkg: transparent
-    secondaryColor: transparent
-    tertiaryColor: transparent
-    clusterBkg: transparent
-    clusterBorder: '#006EAF'
-    edgeLabelBackground: transparent
-    primaryTextColor: '#006EAF'
-    primaryBorderColor: '#006EAF'
-    nodeBorder: '#006EAF'
-    textColor: '#006EAF'
-    titleColor: '#006EAF'
-    lineColor: '#006EAF'
-    useGradient: false
-    dropShadow: false
----
-flowchart LR
-    client["«device»<br/>Cliente<br/>(curl, navegador, scripts de demos/)"]
+[![Diagrama de despliegue: los contenedores de Docker Compose, sus artefactos y
+sus conexiones](assets/deployment.svg)](assets/deployment.svg)
 
-    subgraph host["«device» Host con Docker"]
-        direction LR
-
-        subgraph net["«execution environment» Red de Docker Compose"]
-            direction LR
-
-            gw["«container» api-gateway<br/>nginx 1.25<br/>──────────<br/>«artifact» nginx.conf"]
-            kc["«container» keycloak<br/>Keycloak 26.8<br/>──────────<br/>«artifact» andis-realm.json"]
-            cs["«container» consul<br/>Consul 1.21"]
-            mono["«container» monolith<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» Monolith.dll"]
-            br["«container» messaging-bridge<br/>.NET 10<br/>──────────<br/>«artifact» MessagingBridge.dll"]
-
-            subgraph erp["ERP legado"]
-                direction TB
-                amq[["«container» legacy-broker<br/>ActiveMQ 6.1"]]
-                le["«container» legacy-erp<br/>.NET 10<br/>──────────<br/>«artifact» LegacyErp.dll"]
-            end
-
-            subgraph users["Users"]
-                direction TB
-                us["«container» users-service<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» UsersService.dll"]
-                udb[("«container» users-db<br/>PostgreSQL 18<br/>──────────<br/>«artifact» pginit.sql")]
-            end
-
-            subgraph products["Products"]
-                direction TB
-                ps["«container» products-service<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» ProductsService.dll"]
-                sc["«container» products-sidecar<br/>Envoy 1.40<br/>──────────<br/>«artifact» envoy.yaml"]
-                pdb[("«container» products-db<br/>MongoDB 9<br/>──────────<br/>«artifact» mongoinit.js")]
-                rd[("«container» redis<br/>Redis 8")]
-                az[("«container» azurite<br/>Azurite 3.37")]
-            end
-
-            subgraph orders["Orders"]
-                direction TB
-                os["«container» orders-service<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» OrdersService.dll"]
-                ow["«container» orders-worker ×3<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» OrdersService.dll"]
-                op["«container» orders-projector<br/>ASP.NET Core 10<br/>──────────<br/>«artifact» OrdersService.dll"]
-                mq[["«container» rabbitmq<br/>RabbitMQ 4.4<br/>──────────<br/>exchange andis.events"]]
-                odb[("«container» orders-db<br/>MySQL 26<br/>──────────<br/>«artifact» mysqlinit.sql")]
-            end
-        end
-    end
-
-    client -- "HTTP :80, HTTPS :443, fachada :8090, despliegue :8091" --> gw
-    gw -- "HTTP :8000 fachada" --> mono
-    os -- "HTTP :8500 configuración" --> cs
-    ps -- "HTTP :8500 configuración" --> cs
-    mq -- "AMQP :5672 consume y publica" --> br
-    br -- "OpenWire :61616" --> amq
-    le -- "OpenWire :61616" --> amq
-    client -- "HTTP :8080 inicio de sesión" --> kc
-    client -- "HTTP :10000 URL firmadas" --> az
-    gw -- "HTTP :8080 valida tokens" --> kc
-    gw -- "HTTP :8000 /users/" --> us
-    gw -- "HTTP :8000 /products/, por HTTP" --> ps
-    gw -- "HTTP :9000 /products/, por HTTPS" --> sc
-    sc -- "HTTP :8000 127.0.0.1" --> ps
-    sc -- "HTTP :8080 claves públicas" --> kc
-    ps -- "HTTP :10000" --> az
-    gw -- "HTTP :8000 /orders/" --> os
-    os -- "HTTP :8000" --> us
-    os -- "HTTP :8000" --> ps
-    os -- "AMQP :5672 publica" --> mq
-    us -- "AMQP :5672 publica" --> mq
-    ps -- "AMQP :5672 publica" --> mq
-    mq -- "AMQP :5672 consume" --> ow
-    mq -- "AMQP :5672 consume" --> op
-    ow -- "HTTP :8000" --> us
-    ow -- "HTTP :8000" --> ps
-    op -- "HTTP :8000" --> us
-    op -- "HTTP :8000" --> ps
-    us -- "TCP :5432" --> udb
-    ps -- "TCP :27017" --> pdb
-    ps -- "TCP :6379" --> rd
-    os -- "TCP :3306" --> odb
-    ow -- "TCP :3306" --> odb
-    op -- "TCP :3306" --> odb
-```
+Para verlo en tamaño completo y hacer zoom, abrir
+[assets/deployment.svg](assets/deployment.svg) o el diagrama dibujado [desde su
+fuente](https://www.plantuml.com/plantuml/proxy?fmt=svg&src=https://raw.githubusercontent.com/ucudal/ANDIS2_UT4_DEMO1/main/assets/deployment.puml),
+[assets/deployment.puml](assets/deployment.puml).
 
 Cada nodo `«container»` es un contenedor definido en
 [docker-compose.yaml](docker-compose.yaml). Los servicios escuchan en el puerto
