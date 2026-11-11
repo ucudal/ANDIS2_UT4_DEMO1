@@ -122,7 +122,7 @@ sus propias rutas.
 | `rabbitmq` | Exchange `andis.events`, donde se publican los eventos, y cola `orders.process` con las `Orders` pendientes de procesar. Consola en <http://localhost:15672> -usr: `guest` pwd: `guest`-. |
 | `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`WORKER__ENABLED=true`-. Consume la cola y confirma o rechaza cada `Order`. |
 | Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
-| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. |
+| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
 | Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
 | Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
 
@@ -171,6 +171,10 @@ segundos, con *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408,
 [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), con
 `Microsoft.Extensions.Http.Resilience`.
 
+Reintentar solo es seguro si la operación es idempotente: una llamada que falla
+por *timeout* pudo haberse ejecutado igual. Cómo lo resuelve la aplicación está
+en [Idempotencia](ARCHITECTURE.md#idempotencia), en ARCHITECTURE.md.
+
 **Cómo funciona:**
 
 ![Secuencia de un reintento de Orders a Products](assets/01-retry.svg)
@@ -216,81 +220,6 @@ muestran cada `[RETRY]` con su demora y su causa; el comando para verlos está e
 > IHttpClientFactory](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-10.0)
 > sobre los `HttpClient` con nombre, uno por dependencia.
 
-##### Idempotencia
-
-Una operación es **idempotente** si ejecutarla varias veces tiene el mismo
-efecto que ejecutarla una vez. El Retry solo es seguro si lo que reintenta es
-idempotente: una llamada que falla por *timeout* pudo haberse ejecutado igual, y
-el reintento la ejecuta otra vez. El catálogo de Azure lo advierte en el [patrón
-Retry](https://learn.microsoft.com/azure/architecture/patterns/retry).
-
-En esta aplicación, una misma operación puede ejecutarse más de una vez por
-cuatro razones:
-
-* El Retry de `Orders` reintenta las llamadas a `Users` y a `Products`.
-* Un cliente que no recibe la respuesta de `POST /orders/`, por un *timeout* o
-  un corte de red, la vuelve a mandar.
-* El *relay* del [Transactional Outbox](#transactional-outbox) y el [Messaging
-  Bridge](#messaging-bridge) entregan cada mensaje **al menos una vez**: si se
-  caen entre publicar un mensaje y marcarlo, lo publican de nuevo.
-* Con [Competing Consumers](#competing-consumers-para-disponibilidad), las dos
-  copias de un mensaje repetido pueden procesarse **a la vez**, en réplicas
-  distintas.
-
-Las dos últimas son el precio de tener réplicas *stateless* que se reparten el
-trabajo: cualquier réplica puede recibir cualquier mensaje, también la copia de
-uno que otra réplica está procesando -ver [Stateless y estado por
-réplica](#stateless-y-estado-por-réplica)-. Para que eso no rompa nada, cada
-operación tiene que poder repetirse.
-
-**Depende de lo que hace la operación, no del verbo HTTP.** [RFC
-9110](https://datatracker.ietf.org/doc/html/rfc9110#name-idempotent-methods)
-define `GET`, `PUT` y `DELETE` como idempotentes, y `POST` no. Pero el Retry
-reintenta `GetUser`, que viaja como `POST` porque `Users` usa SOAP, y es seguro
-porque solo lee. Reintentar `CreateUser`, que también es un `POST`, no lo sería.
-
-**Cómo lo resuelve la aplicación.** Cada operación que se puede repetir usa una
-técnica distinta. Sin ella pasaría lo que dice la tabla:
-
-| Operación | Sin idempotencia | Técnica | Dónde |
-| --------- | ---------------- | ------- | ----- |
-| Factura del ERP | Un pedido repetido generaría otra factura, con otro número | Identificador determinístico: el número de factura sale del número de pedido | [Messaging Bridge](#messaging-bridge) |
-| Confirmación de una `Order` | Dos *workers* confirmarían la misma `Order`, con dos `OrderConfirmed` y dos `order.confirmed` | Transición de estado condicional: un `UPDATE` que solo cambia una `Order` `Pending` | [Competing Consumers para disponibilidad](#competing-consumers-para-disponibilidad) |
-| Fila de la vista materializada | Una copia de `order.created` fallaría por la clave primaria, y un estado que llega antes que la fila se perdería | *Upsert*: insertar o actualizar en una sola sentencia | [Materialized View](#materialized-view) |
-| Historial de eventos | La misma factura quedaría dos veces | Índice único por `Order` y tipo de evento | [Materialized View](#materialized-view) |
-| `POST /orders/` | Un reintento del cliente crearía otra `Order` | Clave de idempotencia, en el encabezado `Idempotency-Key` | [Asynchronous Request-Reply](#asynchronous-request-reply) |
-
-**La trampa del *check-then-act*.** Preguntar si algo ya se hizo y, si no,
-hacerlo, son dos pasos. Con un solo consumidor alcanza; con dos a la vez, los
-dos preguntan antes de que ninguno escriba, y los dos escriben. La verificación
-y la escritura tienen que ser una sola operación atómica: un `UPDATE` con
-condición, un *upsert* o una inserción que falla por una restricción única. Es
-lo que el catálogo de Azure describe como [Idempotent
-Consumer](https://learn.microsoft.com/azure/architecture/patterns/idempotent-consumer).
-
-Dos matices:
-
-* **Deduplicar no es responder igual.** `CreateUser` rechaza un email repetido
-  con un *Fault*: no crea un segundo `User`, pero un cliente que reintenta
-  recibe un error en lugar del `id` del primero. `POST /orders/` con
-  `Idempotency-Key`, en cambio, responde lo mismo que la primera vez.
-* **Idempotente no es conmutativo.** Asignar un nombre es idempotente: hacerlo
-  dos veces deja el mismo nombre. Pero dos asignaciones distintas aplicadas en
-  otro orden dejan otro resultado. Por eso la vista materializada guarda la
-  fecha de cada nombre.
-
-**Costos.** Recordar qué ya se hizo es estado adicional: claves, índices y filas
-que viven en la base, no en la réplica. Ese estado crece, y en producción se
-borra después de un plazo; un reintento que llega después se trata como una
-operación nueva.
-
-> [!TIP]
->
-> Consulta [REL04-BP04 Make mutating operations
-> idempotent](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_prevent_interaction_failure_idempotent.html)
-> de AWS Well-Architected para tener más información sobre las claves de
-> idempotencia, dónde guardarlas y cuándo vencerlas.
-
 #### Circuit Breaker
 
 **Problema:** si una dependencia está caída, seguir llamándola -y reintentando-
@@ -305,6 +234,12 @@ funciona, se cierra. El detalle de `Orders` no devuelve error: muestra `"no
 disponible [circuito abierto]"` en lugar del nombre: lo arma el método
 `GetOrdersForUser` de la clase `OrdersController`, en
 [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+
+El estado del circuito vive en la memoria de cada proceso: con tres *workers*,
+cada uno tiene sus propios circuitos. Qué estado vive en cada réplica, y qué
+hizo falta para que los componentes se puedan replicar, está en [Stateless y
+estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica), en
+ARCHITECTURE.md.
 
 **Cómo funciona:**
 
@@ -353,111 +288,6 @@ porque reintentaría cada llamada antes de que se abriera el circuito.
 > [Polly](https://www.pollydocs.org/) que usa el *pipeline*, entre ellas el
 > Circuit Breaker y su `CircuitBreakerManualControl`.
 
-##### Stateless y estado por réplica
-
-El Circuit Breaker guarda estado: cuántas llamadas fallaron en los últimos 10
-segundos y si el circuito está abierto. Ese estado vive en la memoria de cada
-proceso. `orders-service` tiene una sola réplica, pero los *workers* son tres, y
-cada uno tiene sus propios circuitos. Es un buen momento para preguntarse dónde
-vive el estado de cada componente, porque de eso depende que se pueda tener más
-de una réplica.
-
-**Qué es *stateless*.** Un servicio es *stateless* si no depende de datos
-guardados en su memoria o en su disco local entre una solicitud, o un mensaje, y
-el siguiente: el estado vive afuera, en una base, una caché compartida o un
-almacén de configuración. No significa que no haya estado, sino que el estado no
-vive en la instancia.
-
-**Por qué importa:**
-
-* Cualquier réplica atiende cualquier solicitud o cualquier mensaje: el gateway
-  y RabbitMQ reparten el trabajo sin tener que mandar a un cliente siempre a la
-  misma réplica, lo que se llama afinidad de sesión.
-* Una réplica se reemplaza, se reinicia o se agrega sin que se pierda nada. Es
-  lo que aprovechan [Competing
-  Consumers](#competing-consumers-para-disponibilidad) y estrategias de
-  despliegue como [Rolling Upgrade](#rolling-upgrade).
-* Alcanzan instancias más chicas, que se agregan o se quitan según la carga.
-
-**Qué componentes son *stateless*.** Casi todos, con el estado por réplica que
-se describe más abajo:
-
-| Componente | Réplicas | Dónde está su estado |
-| ---------- | -------- | -------------------- |
-| `orders-service` | 1 | MySQL: `orders`, `order_events`, `outbox_messages` e `idempotency_keys` |
-| `orders-worker` | 3 | MySQL y la cola `orders.process` |
-| `orders-projector` | 3 | MySQL, `order_details`, y la cola `orders.details-view` |
-| `users-service` y `users-service-v2` | 1 de cada versión | PostgreSQL; la variante de cada `User`, en Unleash |
-| `products-service` | 1 | MongoDB, la caché en Redis y las imágenes en Azurite |
-| `bff-web` y `bff-mobile` | 1 | No tienen: llaman a los servicios en cada solicitud |
-| `api-gateway` | 1 | Las sesiones, en Keycloak; el límite de `POST /orders/` por cliente, en su memoria |
-| `messaging-bridge` | 1 | RabbitMQ y ActiveMQ; tiene una sola instancia para conservar el orden de los pedidos |
-
-**Qué hizo falta para que lo fueran.** El código que se ve ya tiene resuelto
-cada caso. Esto es lo que hubo, o lo que habría habido con la solución más
-directa, y cómo se resolvió:
-
-| Caso | Sin la solución | Solución | Dónde |
-| ---- | --------------- | -------- | ----- |
-| Caché de `Products` | Con una caché en la memoria de cada réplica, al cambiar un `Product` la invalidación borraría la copia de una sola, y las demás seguirían respondiendo el dato viejo hasta que venciera | La caché está en Redis, compartida: una invalidación vale para todas las réplicas | [Cache-Aside](#cache-aside) |
-| Variante del A/B Testing | Si cada réplica eligiera la variante al azar, o la recordara en memoria, un mismo `User` vería una variante distinta según la réplica que lo atendiera, y el experimento no se podría medir | Unleash la elige con un *hash* del id del `User`: todas las réplicas eligen la misma | [A/B Testing](#ab-testing) |
-| Configuración | Con los valores en las variables de entorno, o leídos una sola vez al arrancar, cambiarlos obligaría a redesplegar cada réplica, y las réplicas quedarían con valores distintos mientras tanto | Los valores están en Consul; cada proceso los vuelve a leer cada 2 segundos, y el código los lee en cada uso | [External Configuration Store](#external-configuration-store) |
-| Identidad | Una sesión guardada en la memoria de una instancia obligaría a mandar todas las solicitudes de un usuario a esa instancia | El token de Keycloak viaja en cada solicitud, y ninguna instancia guarda la sesión | [Federated Identity](#federated-identity) |
-| *Relay* del *outbox* | Con dos instancias que leyeran los mensajes pendientes, las dos publicarían los mismos | `SELECT ... FOR UPDATE SKIP LOCKED`: cada mensaje lo toma una sola instancia | [Transactional Outbox](#transactional-outbox) |
-| *Worker* | Preguntaba si la `Order` seguía `Pending` y después la cambiaba: dos copias del mismo mensaje en dos réplicas a la vez la confirmaban dos veces | Un `UPDATE` condicional cambia el estado solo si la `Order` sigue `Pending` | [Competing Consumers para disponibilidad](#competing-consumers-para-disponibilidad) |
-| Proyectores | Había uno solo: no guardaba nada en memoria, pero su resultado dependía de procesar los eventos en orden | *Upserts*, un estado que solo avanza, un índice único y la fecha de cada nombre | [Materialized View](#materialized-view) |
-| Claves de `Idempotency-Key` | En un diccionario en memoria, un reintento que llegara a otra réplica crearía una segunda `Order`, y un reinicio borraría las claves | La tabla `idempotency_keys`, en la misma transacción que la `Order` | [Asynchronous Request-Reply](#asynchronous-request-reply) |
-
-***Stateless* no alcanza.** Los proyectores no guardan nada en memoria, y aun
-así no se podían escalar mientras su resultado dependía del orden de los
-mensajes. Ser *stateless* permite tener varias réplicas, pero además cada
-réplica tiene que tolerar mensajes que llegan en cualquier orden, repetidos y a
-la vez -ver [Idempotencia](#idempotencia)-.
-
-**Estado por réplica que queda a propósito.** Algunos componentes guardan estado
-en memoria porque compartirlo costaría una llamada remota en cada solicitud. Al
-escalar, cada réplica decide por su cuenta:
-
-* **Circuit Breaker y Bulkhead**, en
-  [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs): cada réplica
-  cuenta sus propias fallas, abre su propio circuito y tiene sus propios lugares
-  en cada compartimento. Con tres *workers*, el circuito hacia `Products` de uno
-  puede estar abierto y el de otro, todavía cerrado.
-* **Throttling de `Orders`**, en
-  [OrdersService/Program.cs](src/OrdersService/Program.cs): 20 consultas de
-  detalle a la vez **por réplica**. Con N réplicas de `orders-service`, el
-  límite efectivo es 20 × N.
-* **Throttling del gateway**, con `limit_req_zone`: el límite de `POST /orders/`
-  por cliente está en la memoria de **una** instancia de nginx. Con dos
-  gateways, un cliente podría crear el doble de `Orders`.
-* **Ajustes de las demos**, `PatternSettings`, `ChaosSettings` y
-  `CacheSettings`: un `PUT` llega a **una** réplica. `PUT /orders/patterns`
-  cambia `orders-service`, pero no los *workers* ni los proyectores, que siguen
-  con todos los patrones prendidos.
-* **La última configuración leída** de Consul y de Unleash: cada réplica tiene
-  su copia, y durante unos segundos dos réplicas pueden tener valores distintos.
-
-Para un límite global, el contador tiene que salir del proceso, por ejemplo a
-Redis, a cambio de una llamada remota en cada solicitud.
-
-**Costos.** El almacén externo puede volverse un cuello de botella o un punto
-único de falla: la demo tiene una sola instancia de MySQL, de Redis y de
-RabbitMQ. Además, cada acceso agrega latencia. El estado que queda en memoria a
-propósito evita esas llamadas, a cambio de límites aproximados.
-
-> [!TIP]
->
-> Consulta [REL05-BP06 Make systems stateless where
-> possible](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_mitigate_interaction_failure_stateless.html)
-> de AWS Well-Architected y [Architecture strategies for designing a reliable
-> scaling
-> strategy](https://learn.microsoft.com/azure/well-architected/reliability/scaling)
-> de Azure Well-Architected para tener más información sobre el diseño
-> *stateless* y la afinidad de sesión, e [Implement stateless
-> design](https://patterns.greensoftware.foundation/architecture/system-topology/implement-stateless-design)
-> de la Green Software Foundation sobre su relación con la eficiencia
-> energética.
-
 #### Bulkhead
 
 **Problema:** si una dependencia se pone lenta, las llamadas pendientes se
@@ -476,7 +306,7 @@ pero se llama en cada consulta, tiene 20 en curso y 5 en espera. Los
 compartimentos son de cada proceso: `orders-service`, cada *worker* y cada
 proyector tienen los suyos, así que `Products` puede recibir 5 llamadas a la vez
 de cada uno -ver [Stateless y estado por
-réplica](#stateless-y-estado-por-réplica)-.
+réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 
 **Cómo funciona:**
 
@@ -553,7 +383,7 @@ Es el límite que respeta el cliente de la demo de Rate Limiting.
 Los dos límites están en la memoria de cada instancia: con N réplicas de
 `orders-service`, el servicio atiende hasta 20 × N consultas de detalle a la
 vez, y con dos gateways, un cliente puede crear el doble de `Orders` -ver
-[Stateless y estado por réplica](#stateless-y-estado-por-réplica)-.
+[Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 
 **Cómo funciona:**
 
@@ -762,7 +592,7 @@ Cada mensaje lo recibe una sola réplica. Si una réplica se cae antes de
 confirmarlo, RabbitMQ se lo entrega a otra. Funciona porque el *worker* es
 *stateless*: la `Order` está en MySQL y el mensaje en la cola, así que cualquier
 réplica puede terminar lo que otra empezó -ver [Stateless y estado por
-réplica](#stateless-y-estado-por-réplica)-. El recorrido completo de una
+réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. El recorrido completo de una
 `Order`, desde el `POST` hasta su confirmación, está en [Creación de una Order:
 asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.md.
 
@@ -836,7 +666,7 @@ La lectura del principio de `ProcessAsync` sigue estando, sin seguimiento de
 cambios -`AsNoTracking`-. No decide nada: solo evita llamar a `Users` y a
 `Products` cuando una copia llega después de que la `Order` ya se procesó. El
 índice único de `order_events` por `Order` y tipo de evento queda como segunda
-barrera. Ver [Idempotencia](#idempotencia).
+barrera. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
 **Cómo verlo:** la demo [07 de Competing
 Consumers](demos/07-competing-consumers.sh) crea 9 `Orders`. Cada *worker* tarda
@@ -924,7 +754,7 @@ siguen `Pending`, y descarta la copia si otra réplica ya la procesó -ver
 [Competing Consumers para
 disponibilidad](#competing-consumers-para-disponibilidad)-. Los proyectores de
 la vista materializada escriben cada fila con un *upsert* -ver [Materialized
-View](#materialized-view)-. Ver [Idempotencia](#idempotencia).
+View](#materialized-view)-. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
 `Users` y `Products` publican sus eventos directamente, sin *outbox*: si
 RabbitMQ no está, el cambio se guarda y el evento se pierde. `Products` usa
@@ -1038,7 +868,7 @@ los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
 Se borra la clave en lugar de escribir el valor nuevo: así la caché nunca guarda
 un valor que MongoDB no tiene. La caché está en Redis y no en la memoria de
 `Products`, así que la comparten todas las réplicas y una invalidación vale para
-todas -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-.
+todas -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 El TTL acota cuánto puede durar un dato desactualizado si una invalidación
 falla.
 
@@ -1235,7 +1065,7 @@ Sourcing](#event-sourcing)-. Sin el encabezado, todo sigue como antes, para que
 los clientes y las demos existentes funcionen igual; cada reintento crea otra
 `Order`. Las claves no vencen en la demo. En producción se borran después de un
 plazo, por ejemplo 24 horas, para que la tabla no crezca sin límite, y un
-reintento posterior crea otra `Order`. Ver [Idempotencia](#idempotencia).
+reintento posterior crea otra `Order`. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
 **Cómo funciona:**
 
@@ -1335,7 +1165,7 @@ suponer que los eventos de una `Order` llegan en orden, ni que una copia
 repetida de un mensaje llega después de la original. Los proyectores no guardan
 nada en memoria, y aun así, mientras su resultado dependía del orden de los
 mensajes, solo podía haber uno: ser *stateless* no alcanza para escalar -ver
-[Stateless y estado por réplica](#stateless-y-estado-por-réplica)-. Con varias
+[Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. Con varias
 réplicas, sin las soluciones que siguen pasaría esto, sin errores visibles:
 
 * **Un estado perdido por desorden.** La réplica A recibe `order.created` de la
@@ -1361,7 +1191,7 @@ réplicas, sin las soluciones que siguen pasaría esto, sin errores visibles:
   UPDATE`](https://dev.mysql.com/doc/refman/8.4/en/insert-on-duplicate.html) de
   MySQL, que inserta la fila o la actualiza si ya existe. La factura se inserta
   directamente, y un índice único de `order_events` por `Order` y tipo de evento
-  hace fallar la segunda copia. Ver [Idempotencia](#idempotencia).
+  hace fallar la segunda copia. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 * **Una réplica trabada.** Una excepción no prevista, como una falla de la base,
   dejaría el mensaje sin confirmar ni devolver. Con `prefetch = 1`, RabbitMQ no
   le entregaría más mensajes a esa réplica hasta que se cerrara su canal.
@@ -2092,7 +1922,7 @@ réplica puede quedar con un valor distinto y nadie ve la configuración complet
 en un solo lugar. Con el almacén, cada réplica lee los mismos valores; durante
 los 2 segundos entre una lectura y la siguiente, dos réplicas todavía pueden
 tener valores distintos -ver [Stateless y estado por
-réplica](#stateless-y-estado-por-réplica)-.
+réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 
 **Qué es Consul:** una herramienta de HashiCorp para coordinar servicios en
 sistemas distribuidos. Ofrece descubrimiento de servicios, chequeos de salud, un
@@ -2274,7 +2104,7 @@ Tres detalles del ciclo:
   proyectores insertan la factura sin preguntar antes si ya está, y un índice
   único de `order_events` por `Order` y tipo de evento rechaza la copia, aunque
   las dos lleguen a la vez a dos réplicas distintas. Ver
-  [Idempotencia](#idempotencia).
+  [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
 `Orders` cambió en dos cosas, aunque el patrón busca no tocar los sistemas: el
 evento `OrderConfirmed` suma campos opcionales con los datos de la `Order`, y
@@ -3301,7 +3131,7 @@ de la [CNCF](https://www.cncf.io/).
   B, la mitad en cada una. Unleash calcula un hash del id del `User`: el reparto
   es aleatorio entre los `Users`, pero el mismo `User` cae siempre en la misma
   variante, y todas las réplicas eligen la misma, sin guardar nada en memoria
-  -ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-.
+  -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 * **El cambio del reparto:** se hace en Unleash, con la consola o con su API,
   sin desplegar. `Users` vuelve a leer el flag cada 2 segundos.
 * **Si Unleash no responde:** `Users` sigue con la última configuración que
