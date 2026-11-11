@@ -485,10 +485,9 @@ distintos servicios no coincidan.
   outbox. Haría falta reconstruir `order_details` a partir de la fuente:
   recorrer `order_events` y pedir a Users y a Products los nombres actuales,
   como hacen los proyectores, en una tabla nueva que después reemplace a la
-  vista; o
-  una tarea periódica que compare los nombres de la vista con los de Users y
-  Products y corrija las diferencias. Para que no vuelva a pasar, Users y
-  Products tendrían que publicar con outbox. -->
+  vista; o una tarea periódica que compare los nombres de la vista con los de
+  Users y Products y corrija las diferencias. Para que no vuelva a pasar, Users
+  y Products tendrían que publicar con outbox. -->
 * La vista copia el nombre del cliente y lo actualiza cuando cambia. ¿Debería
   hacer lo mismo con el precio del producto, o el precio de una `Order` es el
   que tenía cuando se creó?
@@ -521,12 +520,12 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   de los eventos, en la clase `Events` y sus registros, en
   [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a
   recompilar y redesplegar los tres servicios.
-* **Los contratos de los eventos.** Los proyectores esperan que `product.updated`
-  traiga el identificador y el nombre del `Product`. Publisher/Subscriber
-  desacopla en el tiempo y en el conocimiento: `Products` no sabe quién recibe
-  sus eventos, ni necesita que esté funcionando. Pero no desacopla del contrato:
-  si `Products` cambia la forma del evento, los proyectores dejan de entenderlo, y
-  `Products` no se entera.
+* **Los contratos de los eventos.** Los proyectores esperan que
+  `product.updated` traiga el identificador y el nombre del `Product`.
+  Publisher/Subscriber desacopla en el tiempo y en el conocimiento: `Products`
+  no sabe quién recibe sus eventos, ni necesita que esté funcionando. Pero no
+  desacopla del contrato: si `Products` cambia la forma del evento, los
+  proyectores dejan de entenderlo, y `Products` no se entera.
 * **Los contratos HTTP.**. `Orders` espera que `GET /products/{id}` devuelva un
   [JSON](https://www.json.org/) con el nombre. Si `Products` lo renombra,
   `Orders` deja de mostrar el nombre del producto, y nada lo detecta hasta que
@@ -607,8 +606,9 @@ VLANs o subredes, y entre una zona y otra hay un firewall que decide quién se
 conecta con quién:
 
 * **Zona perimetral -DMZ-:** la única que se alcanza desde Internet. Ahí está el
-  gateway: un *reverse proxy* o un *load balancer*, que termina [TLS](https://datatracker.ietf.org/doc/html/rfc8446) y puede
-  filtrar solicitudes con un WAF.
+  gateway: un *reverse proxy* o un *load balancer*, que termina
+  [TLS](https://datatracker.ietf.org/doc/html/rfc8446) y puede filtrar
+  solicitudes con un WAF.
 * **Zona de aplicación:** aquí están los servicios, que son inaccesibles desde
   Internet: el firewall de esta zona deja entrar solo el tráfico que viene del
   gateway.
@@ -631,8 +631,8 @@ proveedor:
 * **Reglas de quién se conecta con quién.** Las reglas de la red dejan entrar a
   un servicio solo el tráfico que viene del gateway o de los servicios que lo
   llaman, y a cada base, solo el de su servicio. En Azure son los *Network
-  Security Groups*; en AWS, los *security groups*; en [Kubernetes](https://kubernetes.io/), las
-  `NetworkPolicies`.
+  Security Groups*; en AWS, los *security groups*; en
+  [Kubernetes](https://kubernetes.io/), las `NetworkPolicies`.
 * **Servicios administrados con entrada interna.** En Azure, [Container
   Apps](https://azure.microsoft.com/products/container-apps/) admite una entrada
   interna, que solo se alcanza desde la red virtual, y [App
@@ -660,8 +660,9 @@ En la demo, [docker-compose.yaml](docker-compose.yaml) publica en el host los
 puertos de los servicios y de las bases, para probarlos directamente y para las
 demos que los usan.
 [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) muestra el
-efecto de dejar de publicarlos. Dentro de la red de [Docker](https://www.docker.com/) no hay reglas:
-cualquier contenedor llega a cualquier otro.
+efecto de dejar de publicarlos. Dentro de la red de
+[Docker](https://www.docker.com/) no hay reglas: cualquier contenedor llega a
+cualquier otro.
 
 **La identidad: cada servicio verifica quién lo llama.**
 
@@ -672,17 +673,19 @@ estar adentro de la red no prueba nada:
 
 * **TLS mutuo entre el gateway y los servicios, y entre servicios.** Cada parte
   presenta un certificado, y un servicio acepta solo a los llamadores en cuyo
-  certificado confía. Una *service mesh*, como [Istio](https://istio.io/) o [Linkerd](https://linkerd.io/), lo hace sin
-  cambiar el código, con un *sidecar* en cada servicio.
+  certificado confía. Una *service mesh*, como [Istio](https://istio.io/) o
+  [Linkerd](https://linkerd.io/), lo hace sin cambiar el código, con un
+  *sidecar* en cada servicio.
 * **Cada servicio verifica el token, él o su *sidecar*.** El gateway le pasa el
   token al servicio, que verifica la firma con las claves públicas del
   proveedor de identidad, en lugar de confiar en encabezados que cualquiera
   podría mandar.
 * **Identidades administradas y un almacén de secretos.** Cada servicio tiene
   una identidad que le da la plataforma, como *Managed Identity* en Azure o un
-  rol de [IAM](https://aws.amazon.com/iam/) en AWS, y las contraseñas que todavía hagan falta están en un
-  almacén de secretos, como [Azure Key Vault](https://azure.microsoft.com/products/key-vault/) o [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/), y no en la
-  configuración.
+  rol de [IAM](https://aws.amazon.com/iam/) en AWS, y las contraseñas que
+  todavía hagan falta están en un almacén de secretos, como [Azure Key
+  Vault](https://azure.microsoft.com/products/key-vault/) o [AWS Secrets
+  Manager](https://aws.amazon.com/secrets-manager/), y no en la configuración.
 
 En la demo, solo `Products` tiene *sidecar*, que verifica la firma del token.
 `Orders` confía en los encabezados `X-User-Id`, `X-User-Name` y
