@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +37,8 @@ public class OrdersController : ControllerBase
     // indicar cada cuánto.
     // Federated Identity: si la solicitud viene con identidad, la Order es del
     // User del token. El cuerpo puede omitir userId; si trae otro, se rechaza.
+    // Idempotencia: el encabezado opcional Idempotency-Key evita crear dos veces
+    // la misma Order cuando el cliente reintenta -ver más abajo-.
     [HttpPost]
     public async Task<ActionResult<object>> CreateOrder([FromBody] Order order)
     {
@@ -54,22 +58,99 @@ public class OrdersController : ControllerBase
         if (_config.GetValue<int?>("Orders:MaxQuantity") is { } maxQuantity && order.Quantity > maxQuantity)
             return BadRequest(new { detail = $"La cantidad máxima por Order es {maxQuantity}" });
 
+        // Idempotencia: POST no es idempotente, y cada llamada crea una Order. Si
+        // el cliente no recibe el 202 -un timeout, un corte de red- no sabe si la
+        // Order se creó, y si reintenta se crea una segunda, con su propio
+        // order.created, su confirmación y otro pedido al ERP, con otro número:
+        // ni el ERP puede darse cuenta de que es la misma.
+        //
+        // Con el encabezado Idempotency-Key, el cliente elige una clave por
+        // Order y la repite en cada reintento:
+        // - Clave nueva: se crea la Order y se guarda la clave.
+        // - Clave conocida, con los mismos datos: no se crea nada; se responde
+        //   lo mismo que la primera vez, con Idempotent-Replayed: true.
+        // - Clave conocida, con otros datos: 422; el cliente usó la clave para
+        //   otra Order.
+        // Sin el encabezado, todo sigue como antes: cada llamada crea una Order.
+        // Las claves no vencen en la demo; en producción se borran después de un
+        // plazo, y un reintento posterior crearía otra Order.
+        var idempotencyKey = Request.Headers[IdempotencyKeyHeader].FirstOrDefault();
+        // La clave es del User del token, o del User 0 si la solicitud es anónima.
+        var keyOwner = caller?.UserId ?? 0;
+        string? requestHash = null;
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            if (idempotencyKey.Length > 255)
+                return BadRequest(new { detail = $"{IdempotencyKeyHeader} admite hasta 255 caracteres" });
+            requestHash = RequestHash(order);
+            var previous = await FindKeyAsync(idempotencyKey, keyOwner);
+            if (previous is not null)
+                return Replay(previous, requestHash);
+        }
+
         order.Status = OrderStatus.Pending;
 
-        await using (var transaction = await _db.Database.BeginTransactionAsync())
+        try
         {
+            await using var transaction = await _db.Database.BeginTransactionAsync();
             _db.Orders.Add(order);
             await _db.SaveChangesAsync();
             _db.OrderEvents.Add(OrderEvent.Create(order.Id, OrderEventTypes.OrderCreated,
                 new OrderCreatedData(order.UserId, order.ProductId, order.Quantity)));
             _db.OutboxMessages.Add(OutboxMessage.Create(Events.OrderCreated,
                 new OrderCreated(order.Id, order.UserId, order.ProductId, order.Quantity)));
+            // La clave se guarda en la misma transacción que la Order: no puede
+            // quedar una sin la otra.
+            if (requestHash is not null)
+                _db.IdempotencyKeys.Add(new IdempotencyKey
+                {
+                    Key = idempotencyKey!, UserId = keyOwner, RequestHash = requestHash, OrderId = order.Id
+                });
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
+        }
+        catch (DbUpdateException ex) when (requestHash is not null && OrdersDbContext.IsDuplicateKey(ex))
+        {
+            // Dos solicitudes con la misma clave a la vez: las dos pasaron la
+            // búsqueda de arriba antes de que la otra guardara la clave. La
+            // clave primaria de idempotency_keys deja guardar solo una; esta
+            // espera a que la otra confirme, choca con la clave y se deshace,
+            // Order incluida. Se responde como a un reintento.
+            _db.ChangeTracker.Clear();
+            return Replay((await FindKeyAsync(idempotencyKey!, keyOwner))!, requestHash);
         }
 
         Response.Headers.RetryAfter = "2";
         return Accepted($"/orders/{order.Id}/status", new { id = order.Id, status = order.Status, msg = "Order accepted" });
+    }
+
+    private const string IdempotencyKeyHeader = "Idempotency-Key";
+    private const string IdempotentReplayedHeader = "Idempotent-Replayed";
+
+    private Task<IdempotencyKey?> FindKeyAsync(string key, int userId) =>
+        _db.IdempotencyKeys.AsNoTracking().FirstOrDefaultAsync(k => k.Key == key && k.UserId == userId);
+
+    // SHA-256 de los datos de la Order ya leídos del cuerpo, y no del texto del
+    // cuerpo: dos reintentos que difieren solo en espacios o en el orden de los
+    // campos son la misma Order.
+    private static string RequestHash(Order order) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{order.UserId}|{order.ProductId}|{order.Quantity}")));
+
+    // La misma respuesta que la primera vez: el estado actual se consulta en
+    // Location. Idempotent-Replayed no es parte del estándar: avisa al cliente
+    // que no se creó nada.
+    private ActionResult<object> Replay(IdempotencyKey previous, string requestHash)
+    {
+        if (previous.RequestHash != requestHash)
+        {
+            _logger.LogWarning("[IDEMPOTENCY] La clave {Key} ya se usó para la Order {OrderId}, con otros datos", previous.Key, previous.OrderId);
+            return UnprocessableEntity(new { detail = $"La clave {previous.Key} ya se usó para otra Order" });
+        }
+
+        _logger.LogInformation("[IDEMPOTENCY] La clave {Key} ya creó la Order {OrderId}: no se crea otra", previous.Key, previous.OrderId);
+        Response.Headers[IdempotentReplayedHeader] = "true";
+        Response.Headers.RetryAfter = "2";
+        return Accepted($"/orders/{previous.OrderId}/status", new { id = previous.OrderId, status = OrderStatus.Pending, msg = "Order accepted" });
     }
 
     // GET /orders/{id}/status

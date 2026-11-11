@@ -61,6 +61,21 @@ CREATE TABLE IF NOT EXISTS order_details (
     INDEX ix_order_details_user_id (user_id)
 );
 
+-- Idempotencia: las claves del encabezado Idempotency-Key de POST /orders, con
+-- la orden que creó cada una. La clave es de un User -0 para las solicitudes
+-- anónimas-: la clave primaria impide crear dos órdenes con la misma clave,
+-- aunque las dos solicitudes lleguen a la vez. No se guarda en 'orders' porque
+-- esa tabla es una proyección: POST /orders/projections/rebuild la borra y la
+-- reconstruye a partir de 'order_events'. Las claves no vencen en la demo.
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    idempotency_key VARCHAR(255) NOT NULL,
+    user_id INT NOT NULL,
+    request_hash CHAR(64) NOT NULL,
+    order_id INT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (idempotency_key, user_id)
+);
+
 INSERT INTO orders (id, user_id, product_id, quantity, status) VALUES
   (1, 1, '60f7c2b5e1d3c2a1b8e4d123', 2, 'Confirmed'),
   (2, 2, '60f7c2b5e1d3c2a1b8e4d124', 1, 'Confirmed'),

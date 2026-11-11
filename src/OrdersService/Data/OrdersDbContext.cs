@@ -11,6 +11,7 @@ public class OrdersDbContext : DbContext
     public DbSet<OrderEvent> OrderEvents { get; set; }
     public DbSet<OutboxMessage> OutboxMessages { get; set; }
     public DbSet<OrderDetails> OrderDetails { get; set; }
+    public DbSet<IdempotencyKey> IdempotencyKeys { get; set; }
 
     // Código de error de MySQL para una clave primaria o un índice único
     // repetido: ER_DUP_ENTRY.

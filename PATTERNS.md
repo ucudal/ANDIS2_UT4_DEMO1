@@ -927,6 +927,46 @@ resultado. Está en los métodos `CreateOrder` y `GetOrderStatus` de la clase
 `OrdersController`, en
 [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
+`POST /orders/` crea una `Order` en cada llamada. Si el cliente no recibe el
+`202`, por un *timeout* o un corte de red, no sabe si la `Order` se creó, y si
+reintenta se crea una segunda. Esa `Order` tiene su propio `order.created`, su
+confirmación y su pedido al ERP, con otro número, así que ni el ERP puede
+darse cuenta de que es la misma. Para evitarlo, `POST /orders/` acepta el
+encabezado opcional `Idempotency-Key`, del [borrador de la
+IETF](https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/):
+el cliente elige una clave por `Order`, por ejemplo un
+[UUID](https://datatracker.ietf.org/doc/html/rfc9562), y la repite en cada
+reintento.
+
+* **Clave nueva:** se crea la `Order` y se guarda la clave en la tabla
+  `idempotency_keys`, en la misma transacción que la `Order`, su evento y el
+  mensaje del *outbox*.
+* **Clave conocida, con los mismos datos:** no se crea nada. Se responde lo
+  mismo que la primera vez: `202` con el mismo `id`, la misma `Location` y
+  `Retry-After`, más `Idempotent-Replayed: true`. Ese encabezado no está en el
+  borrador; es una convención para avisar al cliente que la respuesta es una
+  repetición.
+* **Clave conocida, con otros datos:** `422 Unprocessable Content`, como indica
+  el borrador: el cliente usó la clave para otra `Order`. Los datos se comparan
+  con un *hash* SHA-256 de `userId`, `productId` y `quantity`, y no del texto
+  del cuerpo, así que un reintento con otros espacios u otro orden de los campos
+  es la misma `Order`.
+* **Dos solicitudes a la vez con la misma clave:** la clave primaria de
+  `idempotency_keys` deja guardar solo una. La segunda espera a que la primera
+  confirme, choca con la clave, deshace su `Order` y responde como a un
+  reintento. El borrador sugiere `409 Conflict` cuando la primera todavía está
+  en proceso; acá la segunda espera y nunca la ve en proceso.
+
+La clave es de un `User`: con [Federated Identity](#federated-identity), la del
+token; si la solicitud es anónima, el `User` 0. No se guarda en la tabla
+`orders` porque esa tabla es una proyección que `POST
+/orders/projections/rebuild` borra y reconstruye -ver [Event
+Sourcing](#event-sourcing)-. Sin el encabezado, todo sigue como antes, para que
+los clientes y las demos existentes funcionen igual; cada reintento crea otra
+`Order`. Las claves no vencen en la demo. En producción se borran después de
+un plazo, por ejemplo 24 horas, para que la tabla no crezca sin límite, y un
+reintento posterior crea otra `Order`. Ver [Idempotencia](#idempotencia).
+
 **Cómo funciona:**
 
 ![Secuencia de Asynchronous Request-Reply](assets/14-asynchronous-request-reply.svg)
