@@ -16,7 +16,7 @@ public class OrderDetails
     public int OrderId { get; set; }
 
     [Column("user_id")]
-    public int UserId { get; set; }
+    public string UserId { get; set; } = string.Empty;
 
     [Column("customer_name")]
     public string? CustomerName { get; set; }
@@ -28,7 +28,7 @@ public class OrderDetails
     public DateTime? CustomerNameAt { get; set; }
 
     [Column("product_id")]
-    public string? ProductId { get; set; }
+    public int ProductId { get; set; }
 
     [Column("product_name")]
     public string? ProductName { get; set; }

@@ -13,12 +13,12 @@ Content-Type: application/json
 GET {{ProductsService_HostAddress}}/products/
 
 ### Get product by ID
-GET {{ProductsService_HostAddress}}/products/60f7c2b5e1d3c2a1b8e4d123
+GET {{ProductsService_HostAddress}}/products/1
 
 ###
 
 ### Update a product (invalidates the cache and publishes ProductUpdated)
-PUT {{ProductsService_HostAddress}}/products/60f7c2b5e1d3c2a1b8e4d123
+PUT {{ProductsService_HostAddress}}/products/1
 Content-Type: application/json
 
 {

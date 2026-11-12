@@ -58,7 +58,7 @@ printf '\n\033[1;34m-- Parte 1: un Deployment de Kubernetes --\033[0m\n'
 note "Aplicando k8s/rolling-upgrade: el Deployment users, con 3 pods de la versión v1..."
 kubectl apply -f k8s/rolling-upgrade/service.yaml -f k8s/rolling-upgrade/deployment.yaml > /dev/null
 kubectl -n andis rollout status deployment/users --timeout=180s > /dev/null
-until [ "$(get_user 1 -o /dev/null -w '%{http_code}')" = 200 ]; do sleep 1; done
+until [ "$(get_user "$ALICE" -o /dev/null -w '%{http_code}')" = 200 ]; do sleep 1; done
 
 step "Producción: 3 pods de la versión v1"
 pods
@@ -94,7 +94,7 @@ rollout_tree
 versions 10
 
 step "Se despliega la versión v3 con el error: kubectl argo rollouts set image"
-note "Una sonda pide el User 1 cada 0,1\": el análisis necesita tráfico."
+note "Una sonda pide el User de alice cada 0,1\": el análisis necesita tráfico."
 : > "$PROBES"
 touch "$RUNNING"
 deploy_probe "$PROBES" "$RUNNING" &

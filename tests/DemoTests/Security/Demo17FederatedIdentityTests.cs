@@ -73,7 +73,7 @@ public class Demo17FederatedIdentityTests : DemoTest
         Assert.That(await ViewStatusAsync(tampered, DemoData.User1), Is.EqualTo(HttpStatusCode.Unauthorized));
     }
 
-    internal static async Task<HttpStatusCode> ViewStatusAsync(string? token, int userId)
+    internal static async Task<HttpStatusCode> ViewStatusAsync(string? token, string userId)
     {
         var https = await Identity.HttpsAsync();
         using var response = await https.SendAsync(Identity.Request(HttpMethod.Get,

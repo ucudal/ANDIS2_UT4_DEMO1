@@ -4,7 +4,7 @@
 # Bajo carga y en Grafana: docker compose run --rm k6 run /scripts/cache-aside.js
 source "$(dirname "$0")/common.sh"
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d123
+PRODUCT=1
 
 # Al terminar, la caché vuelve a sus valores por defecto, Redis queda levantado
 # y el Product recupera su nombre.

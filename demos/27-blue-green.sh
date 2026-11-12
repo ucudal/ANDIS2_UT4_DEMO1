@@ -38,13 +38,13 @@ switch() {
 title "Blue/Green Deployment"
 
 step "Producción: la versión v1, en users-service, atiende la entrada de despliegue"
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 versions 10
 
 step "La versión v2 ya está desplegada al lado, en users-service-v2, sin tráfico"
 docker compose ps --format '{{.Service}}: {{.Status}}' users-service users-service-v2 | sed 's/^/  /'
 note "Se la prueba directamente, desde adentro de la red, antes de exponerla:"
-get_user_inside users-service-v2 1 -i | user_summary
+get_user_inside users-service-v2 "$ALICE" -i | user_summary
 note "La versión v2 trae un campo nuevo, DisplayName. Los clientes todavía no lo ven."
 
 step "Se conmuta: todo el tráfico pasa a la versión v2"
@@ -53,11 +53,11 @@ note "Las solicitudes pasan de una versión a la otra sin errores: nginx recarga
 note "configuración sin cortar las conexiones."
 
 step "Ahora responde la versión v2, en la misma dirección"
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 versions 10
 
 step "Vuelta atrás: la versión v1 sigue viva, así que volver es conmutar de nuevo"
 switch users-service:8000 "Blue/Green: vuelta atrás a la versión v1"
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 note "No hubo que desplegar nada para volver atrás. El costo: dos versiones"
 note "completas al mismo tiempo, y una base que las dos tienen que entender."

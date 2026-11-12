@@ -1,18 +1,18 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using ProductsService.Models;
+using UsersService.Models;
 
-namespace ProductsService;
+namespace Ucu.Andis.Users.Data;
 
 // Health check de MongoDB: envía un "ping" a la base de datos.
 public class MongoHealthCheck : IHealthCheck
 {
     private readonly IMongoDatabase _database;
 
-    public MongoHealthCheck(IMongoCollection<Product> productsCollection)
+    public MongoHealthCheck(IMongoCollection<User> users)
     {
-        _database = productsCollection.Database;
+        _database = users.Database;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)

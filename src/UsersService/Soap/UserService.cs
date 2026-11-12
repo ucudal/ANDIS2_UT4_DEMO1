@@ -1,33 +1,36 @@
 using System.ServiceModel;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using UsersService.Models;
 
 using Ucu.Andis.Common;
-using Ucu.Andis.Users.Data;
 
 namespace Ucu.Andis.Users.Soap;
 
 public class UserService : IUserService
 {
-    private readonly UsersDbContext _db;
+    private readonly IMongoCollection<User> _users;
     private readonly RabbitMq _rabbitMq;
     private readonly Release _release;
     private readonly Experiment _experiment;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(UsersDbContext db, RabbitMq rabbitMq, Release release, Experiment experiment,
+    public UserService(IMongoCollection<User> users, RabbitMq rabbitMq, Release release, Experiment experiment,
         ILogger<UserService> logger)
     {
-        _db = db;
+        _users = users;
         _rabbitMq = rabbitMq;
         _release = release;
         _experiment = experiment;
         _logger = logger;
     }
 
-    public async Task<User?> GetUser(int id)
+    public async Task<User?> GetUser(string id)
     {
-        var user = await _db.Users.FindAsync(id);
+        if (!ObjectId.TryParse(id, out _))
+            return null;
+
+        var user = await _users.Find(u => u.Id == id).FirstOrDefaultAsync();
         // A/B Testing: solo la versión 2 trae el experimento -ver Experiment.cs-.
         if (user is not null && _release.Version >= 2)
             await _experiment.ApplyAsync(user);
@@ -36,33 +39,33 @@ public class UserService : IUserService
 
     public async Task<User[]> ListUsers()
     {
-        return await _db.Users.ToArrayAsync();
+        return (await _users.Find(_ => true).ToListAsync()).ToArray();
     }
 
-    public async Task<int> CreateUser(string name, string email)
+    public async Task<string> CreateUser(string name, string email)
     {
         // El email es único en la base: si ya existe, se responde un Fault con
         // el motivo en lugar de un error sin explicación.
-        if (await _db.Users.AnyAsync(u => u.Email == email))
+        if (await _users.Find(u => u.Email == email).AnyAsync())
             throw new FaultException($"Ya existe un User con el email {email}");
 
+        // MongoDB le asigna el ObjectId al insertarlo.
         var user = new User { Name = name, Email = email };
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
-        return user.Id;
+        await _users.InsertOneAsync(user);
+        return user.Id!;
     }
 
-    public async Task<User> UpdateUser(int id, string name, string email)
+    public async Task<User> UpdateUser(string id, string name, string email)
     {
-        var user = await _db.Users.FindAsync(id)
-            ?? throw new FaultException($"No existe el User {id}");
+        if (!ObjectId.TryParse(id, out _) || !await _users.Find(u => u.Id == id).AnyAsync())
+            throw new FaultException($"No existe el User {id}");
 
-        if (await _db.Users.AnyAsync(u => u.Email == email && u.Id != id))
+        if (await _users.Find(u => u.Email == email && u.Id != id).AnyAsync())
             throw new FaultException($"Ya existe otro User con el email {email}");
 
-        user.Name = name;
-        user.Email = email;
-        await _db.SaveChangesAsync();
+        var user = await _users.FindOneAndUpdateAsync(u => u.Id == id,
+            Builders<User>.Update.Set(u => u.Name, name).Set(u => u.Email, email),
+            new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
         // Fecha del cambio: los proyectores la usan para no pisar un nombre más nuevo
         // con uno más viejo -ver Events.cs-.
         var changedAt = DateTime.UtcNow;
@@ -76,7 +79,7 @@ public class UserService : IUserService
         // evita en Orders -ver OutboxRelay.cs-.
         try
         {
-            await _rabbitMq.PublishEventAsync(Events.UserUpdated, new UserUpdated(user.Id, user.Name, changedAt));
+            await _rabbitMq.PublishEventAsync(Events.UserUpdated, new UserUpdated(user.Id!, user.Name, changedAt));
             _logger.LogInformation("[PUB/SUB] Publicado {RoutingKey} del User {UserId}", Events.UserUpdated, user.Id);
         }
         catch (Exception ex)

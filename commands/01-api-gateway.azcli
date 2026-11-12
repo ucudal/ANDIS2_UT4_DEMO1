@@ -15,8 +15,8 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p src/UsersService/pgdata
-mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
 mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
@@ -88,12 +88,12 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
           <GetUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>1</id>
+            <id>665f1c2ab4e8d9a0c1f2e301</id>
           </GetUser>
         </soap:Body>
       </soap:Envelope>' | xmllint --format -
 
-# Cambiar el nombre y el correo del User 1 a "alice" y "alice@example.com".
+# Cambiar el nombre y el correo de alice a "alice" y "alice@example.com".
 # Son los que ya tiene, para no alterar los datos de ejemplo: para ver el
 # efecto, cambiar los valores de <name> y <email>. Users publica el evento
 # user.updated, y la vista materializada de Orders actualiza el nombre del
@@ -104,7 +104,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
           <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>1</id>
+            <id>665f1c2ab4e8d9a0c1f2e301</id>
             <name>alice</name>
             <email>alice@example.com</email>
           </UpdateUser>
@@ -121,13 +121,13 @@ curl -s -X POST http://localhost/products/ \
 
 # Buscar un producto. La primera vez lo lee de MongoDB y lo guarda en Redis;
 # las siguientes, durante 60 segundos, lo lee de Redis -Cache-Aside-.
-curl -s http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 | jq
+curl -s http://localhost/products/1 | jq
 
-# Cambiar el nombre y el precio del Product 60f7c2b5e1d3c2a1b8e4d123 a
+# Cambiar el nombre y el precio del Product 1 a
 # "Camisa" y 1200.50. Son los que ya tiene, para no alterar los datos de
 # ejemplo: para ver el efecto, cambiar los valores de name y price. Products
 # borra el Product de Redis y publica el evento product.updated.
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+curl -s -X PUT http://localhost/products/1 \
   -H "Content-Type: application/json" \
   -d '{"name": "Camisa", "price": 1200.50}' | jq
 
@@ -146,7 +146,7 @@ curl -s http://localhost/orders/ | table
 # comandos siguientes.
 response=$(curl -s -i -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 2}')
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 2}')
 echo "$response"
 location=$(echo "$response" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
 echo "$location"
@@ -167,10 +167,10 @@ curl -s -L "http://localhost$location" | jq
 
 # Obtener las órdenes de un usuario y sus detalles, pidiendo los nombres a
 # Users y a Products
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Lo mismo, leído de la vista materializada -CQRS-
-curl -s http://localhost/orders/user/1/details/view | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | table
 
 # Obtener los eventos de una orden -Event Sourcing- y el estado que resulta de
 # reproducirlos. La respuesta tiene las dos partes: se muestra cada una como
@@ -217,5 +217,5 @@ docker volume prune -f
 docker builder prune -f
 
 rm -rf ./src/OrdersService/mysqldata
-rm -rf ./src/ProductsService/mongodbdata
-rm -rf ./src/UsersService/pgdata
+rm -rf ./src/ProductsService/pgdata
+rm -rf ./src/UsersService/mongodbdata

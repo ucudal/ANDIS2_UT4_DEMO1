@@ -8,6 +8,12 @@ GATEWAY=${GATEWAY:-http://localhost}
 ORDERS_DIRECT=${ORDERS_DIRECT:-http://localhost:8000}
 PRODUCTS_DIRECT=${PRODUCTS_DIRECT:-http://localhost:8001}
 
+# Los ids de los Users de ejemplo, alice y bob: son ObjectId de MongoDB -ver
+# src/UsersService/mongoinit/mongoinit.js-. Las Orders de alice son la base de
+# las demos de disponibilidad; las demos le crean Orders nuevas solo a bob.
+ALICE=665f1c2ab4e8d9a0c1f2e301
+BOB=665f1c2ab4e8d9a0c1f2e302
+
 title() { printf '\n\033[1;34m== %s ==\033[0m\n' "$*"; }
 step()  { printf '\n\033[1m> %s\033[0m\n' "$*"; }
 note()  { printf '\033[2m  %s\033[0m\n' "$*"; }
@@ -86,11 +92,11 @@ table() {
     fi | sed 's/^/  /'
 }
 
-# Detalle de las Orders del User 1 como tabla, con código HTTP y tiempo de
+# Detalle de las Orders de alice como tabla, con código HTTP y tiempo de
 # respuesta.
 details() {
     local out
-    out=$(curl -s -w '\n%{http_code} %{time_total}' "$GATEWAY/orders/user/1/details")
+    out=$(curl -s -w '\n%{http_code} %{time_total}' "$GATEWAY/orders/user/$ALICE/details")
     table <<< "${out%$'\n'*}"
     read -r code time <<< "${out##*$'\n'}"
     printf '  [HTTP %s, %s s]\n\n' "$code" "$time"
@@ -108,7 +114,7 @@ concurrent_details() {
     local dir
     dir=$(mktemp -d)
     (cd "$dir" && seq "$1" | xargs -P "$1" -I{} curl -s -o {}.body -w '{} %{http_code} %{time_total} %header{retry-after}\n' \
-        "$GATEWAY/orders/user/1/details" > times)
+        "$GATEWAY/orders/user/$ALICE/details" > times)
     local key=3
     [ "${2:-}" = lanzamiento ] && key=1
     sort -k"$key" -n "$dir/times" | while read -r i code t retry_after; do
@@ -130,7 +136,7 @@ concurrent_details() {
 # distorsionaría el resultado.
 warm_up() {
     for i in 1 2 3; do
-        seq 15 | xargs -P 15 -I{} curl -s -o /dev/null "$GATEWAY/orders/user/1/details"
+        seq 15 | xargs -P 15 -I{} curl -s -o /dev/null "$GATEWAY/orders/user/$ALICE/details"
     done
 }
 
@@ -140,7 +146,7 @@ warm_up() {
 # orders-service, sin pasar por el límite de POST del gateway, y devuelve su id.
 create_order() {
     curl -s -X POST "$ORDERS_DIRECT/orders/" -H 'Content-Type: application/json' \
-        -d "{\"userId\": $1, \"productId\": \"$2\", \"quantity\": ${3:-1}}" | jq -r .id
+        -d "{\"userId\": \"$1\", \"productId\": $2, \"quantity\": ${3:-1}}" | jq -r .id
 }
 
 # wait_processed <ids>: espera a que un worker confirme o rechace cada Order.
@@ -363,25 +369,25 @@ tally() {
     sort "$1" | uniq -c | awk '{ printf "  HTTP %s, versión %s: %s respuestas\n", $2, ($3 == "" ? "-" : "v" $3), $1 }'
 }
 
-# versions <n> [argumentos de curl]: n solicitudes de GetUser del User 1, y
+# versions <n> [argumentos de curl]: n solicitudes de GetUser de alice, y
 # cuántas respondió cada versión.
 versions() {
     local n=$1 file
     shift
     file=$(mktemp)
     for _ in $(seq "$n"); do
-        get_user 1 -m 2 -o /dev/null -w '%{http_code} %header{x-version}\n' "$@" >> "$file" || true
+        get_user "$ALICE" -m 2 -o /dev/null -w '%{http_code} %header{x-version}\n' "$@" >> "$file" || true
     done
     tally "$file"
     rm -f "$file"
 }
 
 # deploy_probe <salida> <bandera>: mientras exista el archivo bandera, pide el
-# User 1 cada 0,1 segundos y anota en salida el código HTTP y la versión de cada
+# User de alice cada 0,1 segundos y anota en salida el código HTTP y la versión de cada
 # respuesta. Se lanza en segundo plano, para ver qué pasa durante un cambio.
 deploy_probe() {
     while [ -f "$2" ]; do
-        get_user 1 -m 2 -o /dev/null -w '%{http_code} %header{x-version}\n' >> "$1" || true
+        get_user "$ALICE" -m 2 -o /dev/null -w '%{http_code} %header{x-version}\n' >> "$1" || true
         sleep 0.1
     done
 }
@@ -481,14 +487,14 @@ experiment_start() {
 # devuelve OpenFeature. Una variante con peso 0 no se incluye.
 #
 # El groupId mezcla el id del User antes de elegir la variante: así un User no
-# cae en la misma variante en todos los experimentos. Con users-experiment, el
-# User 1 cae en la B y el User 2 en la A.
+# cae en la misma variante en todos los experimentos. Con display-name,
+# alice cae en la B y bob en la A.
 experiment_strategy() {
     jq -nc --arg title "$1" --argjson constraints "$2" --argjson b "$(( $3 * 10 ))" '
         [{name: "A", weight: (1000 - $b)}, {name: "B", weight: $b}]
         | map(select(.weight > 0)) as $variants
         | {name: "flexibleRollout", title: $title, constraints: $constraints,
-           parameters: {rollout: "100", stickiness: "userId", groupId: "users-experiment"},
+           parameters: {rollout: "100", stickiness: "userId", groupId: "display-name"},
            variants: [$variants[] | . + {
                weightType: (if . == $variants[0] then "variable" else "fix" end),
                stickiness: "userId", payload: {type: "string", value: .name}}]}'

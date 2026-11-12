@@ -1,4 +1,4 @@
-// Backends for Frontends: la web y la app móvil consultan las Orders del User 1,
+// Backends for Frontends: la web y la app móvil consultan las Orders de alice,
 // cada una por su backend. Lo lanza demos/load-modifiability.sh, que a mitad de
 // camino redespliega el backend de la app, como si su equipo publicara un cambio.
 //
@@ -24,7 +24,7 @@ export const options = {
 
 export default function () {
     const client = __ITER % 2 === 0 ? 'web' : 'mobile';
-    const res = http.get(`${GATEWAY}/${client}/orders/user/1`, { tags: { name: client }, timeout: '2s' });
+    const res = http.get(`${GATEWAY}/${client}/orders/user/665f1c2ab4e8d9a0c1f2e301`, { tags: { name: client }, timeout: '2s' });
     requests.add(1, { client, status: String(res.status) });
     checkStatus(res, 200);
 }

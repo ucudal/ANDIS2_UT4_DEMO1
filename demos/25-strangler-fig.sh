@@ -6,7 +6,7 @@
 # Bajo carga y en Grafana: ./demos/load-modifiability.sh strangler
 source "$(dirname "$0")/common.sh"
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d123
+PRODUCT=1
 
 cleanup() {
     echo
@@ -21,7 +21,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-SOAP='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetUser xmlns="http://ucu.edu.uy/andis/users"><id>1</id></GetUser></soap:Body></soap:Envelope>'
+SOAP="<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetUser xmlns=\"http://ucu.edu.uy/andis/users\"><id>$ALICE</id></GetUser></soap:Body></soap:Envelope>"
 
 # served <etiqueta> <ruta> [argumentos de curl]: el código HTTP, quién atendió la
 # solicitud y un resumen de la respuesta.
@@ -39,7 +39,7 @@ routes() {
     served users /users/UserService.svc -X POST -H 'Content-Type: text/xml; charset=utf-8' \
         -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' -d "$SOAP"
     served products "/products/$PRODUCT"
-    served orders /orders/user/1/details
+    served orders /orders/user/$ALICE/details
 }
 
 title "Strangler Fig"
@@ -63,7 +63,7 @@ curl -s -o /dev/null -X PUT "$FACADE/products/$PRODUCT" -H 'Content-Type: applic
     -d '{"name": "Camisa nueva", "price": 1200.50}'
 echo "  Se cambia el nombre del Product por la fachada; lo recibe el microservicio."
 served products "/products/$PRODUCT"
-served orders /orders/user/1/details
+served orders /orders/user/$ALICE/details
 note "El JOIN del monolito sigue viendo el nombre viejo, en su propia base."
 note "Una migración real tiene que sincronizar los datos mientras dure la convivencia."
 curl -s -o /dev/null -X PUT "$FACADE/products/$PRODUCT" -H 'Content-Type: application/json' \

@@ -15,8 +15,8 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p src/UsersService/pgdata
-mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
 mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
@@ -61,7 +61,7 @@ table() {
 # conoce ninguno de los dos.
 
 # El Product de la demo
-product=60f7c2b5e1d3c2a1b8e4d125
+product=3
 
 # El modelo de Orders: user_id, product_id y el estado
 curl -s http://localhost/orders/ | jq -c --arg p $product '.[] | select(.product_id == $p)'
@@ -73,7 +73,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <GetUser xmlns="http://ucu.edu.uy/andis/users">
-      <id>1</id>
+      <id>665f1c2ab4e8d9a0c1f2e301</id>
     </GetUser>
   </soap:Body>
 </soap:Envelope>'
@@ -93,7 +93,7 @@ curl -s http://localhost/purchases/product/$product | table
 # Volver a apagar el flag
 curl -s -X DELETE http://localhost:8500/v1/kv/andis/Features/OrderDates
 
-# Crear una Order para el User 2 y esperar unos segundos a que se confirme
+# Crear una Order para bob y esperar unos segundos a que se confirme
 id=$(curl -s -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
   -d "{\"userId\": 2, \"productId\": \"$product\", \"quantity\": 1}" | jq .id)
 echo "$id"
@@ -137,7 +137,7 @@ curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
 # Accepted
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/orders/ \
   -H 'Content-Type: application/json' \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}'
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 10}'
 
 # Poner el límite en 3 unidades por Order, en el almacén. La clave
 # andis/Orders/MaxQuantity es Orders:MaxQuantity para la aplicación.
@@ -146,7 +146,7 @@ curl -s -X PUT http://localhost:8500/v1/kv/andis/Orders/MaxQuantity -d 3
 # Unos 2 segundos después, la misma Order de 10 unidades responde 400 Bad
 # Request. Nadie reinició Orders.
 curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}'
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 10}'
 
 # Cada proceso se enteró por su cuenta
 docker compose logs orders-service orders-worker products-service | grep 'EXTERNAL CONFIG'
@@ -154,15 +154,15 @@ docker compose logs orders-service orders-worker products-service | grep 'EXTERN
 # Un feature flag: si el detalle de las Orders de un User muestra el precio
 # unitario de cada Product. Sin un valor en el almacén, está apagado. Prenderlo
 # agrega esa columna
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 curl -s -X PUT http://localhost:8500/v1/kv/andis/Features/ProductPrices -d true
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Pausar Consul: los servicios siguen con los últimos valores. El límite de 3
 # unidades sigue vigente, y la Order de 10 unidades responde 400 Bad Request
 docker compose pause consul
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}'
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 10}'
 docker compose unpause consul
 
 # Borrar los valores: los servicios vuelven a sus valores por defecto
@@ -198,9 +198,9 @@ curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
 #
 #    http://admin:admin@localhost:8161/admin/
 
-# Crear una Order para el User 2
+# Crear una Order para bob
 id=$(curl -s -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 1}' | jq .id)
 echo "$id"
 
 # A los pocos segundos, su historial tiene la factura del ERP
@@ -212,7 +212,7 @@ docker compose logs --no-log-prefix messaging-bridge legacy-erp | grep -E '\[(ME
 # Detener el broker del ERP y crear otra Order
 docker compose stop legacy-broker
 id=$(curl -s -X POST http://localhost:8000/orders/ -H 'Content-Type: application/json' \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 1}' | jq .id)
 echo "$id"
 
 # El mensaje espera en la cola 'bridge.erp' de RabbitMQ. La Order se confirma
@@ -256,17 +256,17 @@ curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data
 soap='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <GetUser xmlns="http://ucu.edu.uy/andis/users">
-      <id>1</id>
+      <id>665f1c2ab4e8d9a0c1f2e301</id>
     </GetUser>
   </soap:Body>
 </soap:Envelope>'
-product=60f7c2b5e1d3c2a1b8e4d123
+product=1
 since=$(date +%s)
 
 # Al principio, el monolito atiende las tres rutas. El encabezado X-Served-By dice
 # quién respondió.
 curl -si http://localhost:8090/products/$product | grep -i x-served-by
-curl -si http://localhost:8090/orders/user/1/details | grep -i x-served-by
+curl -si http://localhost:8090/orders/user/665f1c2ab4e8d9a0c1f2e301/details | grep -i x-served-by
 curl -si -X POST http://localhost:8090/users/UserService.svc -d "$soap" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"' | grep -i x-served-by
@@ -294,7 +294,7 @@ curl -s http://localhost:8090/products/$product | jq .name
 # propia copia en SQLite: sigue mostrando Camisa. Una migración real tiene que
 # sincronizar los datos mientras dure la convivencia. Cómo hacerlo está en
 # PATTERNS.md.
-curl -s http://localhost:8090/orders/user/1/details | table
+curl -s http://localhost:8090/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Volver a poner el nombre original
 curl -s -X PUT http://localhost:8090/products/$product \
@@ -311,7 +311,7 @@ curl -si -X POST http://localhost:8090/users/UserService.svc -d "$soap" \
 # cambiar la misma línea.
 docker compose exec api-gateway sh -c \
   "sed -i 's|^set \\\$orders_route .*|set \\\$orders_route orders-service:8000;|' /etc/nginx/strangler-routes.conf && nginx -s reload"
-curl -si http://localhost:8090/orders/user/1/details | grep -i x-served-by
+curl -si http://localhost:8090/orders/user/665f1c2ab4e8d9a0c1f2e301/details | grep -i x-served-by
 
 # Cuántas solicitudes atendió cada uno, según la fachada
 docker compose logs --no-log-prefix --since $since api-gateway | grep '\[STRANGLER\]' \
@@ -319,7 +319,7 @@ docker compose logs --no-log-prefix --since $since api-gateway | grep '\[STRANGL
 
 # Ya nada llega al monolito: apagarlo. Las solicitudes siguen respondiendo.
 docker compose stop monolith
-curl -s http://localhost:8090/orders/user/1/details | table
+curl -s http://localhost:8090/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 curl -si http://localhost:8090/products/$product | grep -i x-served-by
 
 # Dejar todo como estaba: recrear el monolito y el gateway. La tabla de rutas
@@ -349,15 +349,15 @@ docker compose up -d --force-recreate --wait monolith api-gateway
 # gateway publica el de la web en /web/ y el de la app en /mobile/.
 
 # La web: cada Order con el precio de su Product, y el total
-curl -s http://localhost/web/orders/user/1 | jq
+curl -s http://localhost/web/orders/user/665f1c2ab4e8d9a0c1f2e301 | jq
 
 # La app móvil: solo el Product y el estado de cada Order
-curl -s http://localhost/mobile/orders/user/1 | jq
+curl -s http://localhost/mobile/orders/user/665f1c2ab4e8d9a0c1f2e301 | jq
 
 # La misma consulta, dos respuestas a la medida: cuántos bytes recibe cada
 # cliente
-curl -s -o /dev/null -w '%{size_download}\n' http://localhost/web/orders/user/1
-curl -s -o /dev/null -w '%{size_download}\n' http://localhost/mobile/orders/user/1
+curl -s -o /dev/null -w '%{size_download}\n' http://localhost/web/orders/user/665f1c2ab4e8d9a0c1f2e301
+curl -s -o /dev/null -w '%{size_download}\n' http://localhost/mobile/orders/user/665f1c2ab4e8d9a0c1f2e301
 
 # Cuándo arrancó bff-web, para comparar después
 docker inspect -f '{{.State.StartedAt}}' $(docker compose ps -q bff-web)
@@ -414,6 +414,6 @@ docker volume prune -f
 docker builder prune -f
 
 rm -rf ./src/OrdersService/mysqldata
-rm -rf ./src/ProductsService/mongodbdata
-rm -rf ./src/UsersService/pgdata
+rm -rf ./src/ProductsService/pgdata
+rm -rf ./src/UsersService/mongodbdata
 rm -f gateway.crt

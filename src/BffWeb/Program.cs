@@ -17,7 +17,7 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
-app.MapGet("/web/orders/user/{userId:int}", async (int userId, IHttpClientFactory clients, CancellationToken cancellationToken) =>
+app.MapGet("/web/orders/user/{userId}", async (string userId, IHttpClientFactory clients, CancellationToken cancellationToken) =>
 {
     // Orders no tiene una consulta por User con el id de cada Product: se piden
     // todas y se filtran.
@@ -26,9 +26,9 @@ app.MapGet("/web/orders/user/{userId:int}", async (int userId, IHttpClientFactor
         .ToList();
 
     // El nombre y el precio de cada Product, una sola vez por Product.
-    var products = new Dictionary<string, ProductRecord>();
+    var products = new Dictionary<int, ProductRecord>();
     foreach (var productId in orders.Select(o => o.ProductId).Distinct())
-        products[productId] = await clients.CreateClient("Products").GetFromJsonAsync<ProductRecord>(productId, cancellationToken)
+        products[productId] = await clients.CreateClient("Products").GetFromJsonAsync<ProductRecord>(productId.ToString(), cancellationToken)
             ?? new ProductRecord("desconocido", 0);
 
     var rows = orders.Select(o => new
@@ -48,8 +48,8 @@ app.Run();
 
 record OrderRecord(
     [property: JsonPropertyName("id")] int Id,
-    [property: JsonPropertyName("user_id")] int UserId,
-    [property: JsonPropertyName("product_id")] string ProductId,
+    [property: JsonPropertyName("user_id")] string UserId,
+    [property: JsonPropertyName("product_id")] int ProductId,
     [property: JsonPropertyName("quantity")] int Quantity,
     [property: JsonPropertyName("status")] string Status);
 

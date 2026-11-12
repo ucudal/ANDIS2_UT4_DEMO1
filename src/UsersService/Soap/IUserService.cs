@@ -12,9 +12,10 @@ public interface IUserService
     // No es un SOAP Fault a propósito: en SOAP 1.1 todo Fault viaja como HTTP
     // 500, y el Retry y el Circuit Breaker de Orders tratan el 500 como falla
     // transitoria. Pedir un id inexistente terminaría reintentándose y abriendo
-    // el circuito.
+    // el circuito. Un id que no es un ObjectId tampoco existe: también devuelve
+    // null.
     [OperationContract]
-    Task<User?> GetUser(int id);
+    Task<User?> GetUser(string id);
 
     [OperationContract]
     Task<User[]> ListUsers();
@@ -22,13 +23,13 @@ public interface IUserService
     // Devuelve el id del User creado. Si el email ya existe, responde un SOAP
     // Fault con el motivo, que reemplaza al 409 de la API REST.
     [OperationContract]
-    Task<int> CreateUser(string name, string email);
+    Task<string> CreateUser(string name, string email);
 
     // Cambia el nombre y el email de un User y publica el evento UserUpdated
     // -Publisher/Subscriber-. Responde un SOAP Fault si el User no existe o si
     // el email ya es de otro User.
     [OperationContract]
-    Task<User> UpdateUser(int id, string name, string email);
+    Task<User> UpdateUser(string id, string name, string email);
 }
 
 public static class UserServiceContract

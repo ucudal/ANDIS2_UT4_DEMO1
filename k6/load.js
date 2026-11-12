@@ -40,7 +40,7 @@ export const options = {
 
 export default function () {
     const r = Math.random();
-    // Siempre el User 1: los demás escenarios crean Orders para el User 2, y su
+    // Siempre alice: los demás escenarios crean Orders para bob, y su
     // detalle crece con cada prueba, lo que haría incomparables las corridas.
     if (r < 0.5)
         checkStatus(details(1, VIEW), 200);

@@ -17,7 +17,7 @@ send_order() {
     t=$(jq -n --argjson s "$started" '(now - $s) * 10 | floor / 10')
     code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$GATEWAY/orders/" \
         -H 'Content-Type: application/json' \
-        -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+        -d "{\"userId\": \"$BOB\", \"productId\": 1, \"quantity\": 1}")
     rows+="{\"segundo\": $t, \"Order\": $1, \"intento\": $2, \"HTTP\": $code}"$'\n'
 }
 

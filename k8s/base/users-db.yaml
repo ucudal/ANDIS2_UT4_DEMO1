@@ -1,7 +1,7 @@
 # La base de Users en el clúster: la misma imagen y los mismos datos iniciales
 # que en Docker Compose, pero una base propia, sin compartirla con Compose.
 #
-# Los datos iniciales salen de src/UsersService/pginit: demos/k8s-up.sh crea con
+# Los datos iniciales salen de src/UsersService/mongoinit: demos/k8s-up.sh crea con
 # ese directorio el ConfigMap users-db-init, sin copiar el archivo.
 #
 # Los datos viven en un emptyDir: se pierden si se borra el pod. Para una demo
@@ -23,25 +23,23 @@ spec:
         app: users-db
     spec:
       containers:
-        - name: postgres
-          image: postgres:18
+        - name: mongo
+          image: mongo:9
           imagePullPolicy: IfNotPresent
           env:
-            - name: POSTGRES_DB
-              value: usersdb
-            - name: POSTGRES_USER
-              value: usersusr
-            - name: POSTGRES_PASSWORD
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: root
+            - name: MONGO_INITDB_ROOT_PASSWORD
               value: Pa55w0rd
           ports:
-            - containerPort: 5432
+            - containerPort: 27017
           readinessProbe:
             exec:
-              command: ["pg_isready", "-h", "127.0.0.1", "-U", "usersusr", "-d", "usersdb"]
+              command: ["mongosh", "--quiet", "-u", "usersusr", "-p", "Pa55w0rd", "--authenticationDatabase", "usersdb", "usersdb", "--eval", "db.runCommand({ ping: 1 }).ok"]
             periodSeconds: 5
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql
+              mountPath: /data/db
             - name: init
               mountPath: /docker-entrypoint-initdb.d
       volumes:
@@ -60,4 +58,4 @@ spec:
   selector:
     app: users-db
   ports:
-    - port: 5432
+    - port: 27017

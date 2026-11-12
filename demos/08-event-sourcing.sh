@@ -7,7 +7,7 @@ title "Event Sourcing"
 
 step "Se crea una Order y se espera a que un worker la procese"
 id=$(curl -s -X POST "$ORDERS_DIRECT/orders/" -H 'Content-Type: application/json' \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 3}' | grep -o '"id":[0-9]*' | cut -d: -f2)
+    -d "{\"userId\": \"$BOB\", \"productId\": 2, \"quantity\": 3}" | grep -o '"id":[0-9]*' | cut -d: -f2)
 until curl -s "$ORDERS_DIRECT/orders/$id" | grep -qv '"status":"Pending"'; do sleep 1; done
 echo "  Orden $id creada y procesada"
 

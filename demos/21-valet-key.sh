@@ -5,7 +5,7 @@
 # forma sin el patrón, en la que la imagen pasa por el gateway y por Products.
 source "$(dirname "$0")/common.sh"
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d124
+PRODUCT=2
 IMAGE=$(mktemp)
 
 cleanup() {
@@ -64,7 +64,7 @@ step "La clave sirve solo para eso"
 echo "  Leer la imagen con la clave de escritura:"
 storage "$url"
 echo "  Escribir la imagen de otro Product con la misma clave:"
-storage -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary 'x' "${url/$PRODUCT/60f7c2b5e1d3c2a1b8e4d125}"
+storage -X PUT -H 'x-ms-blob-type: BlockBlob' --data-binary 'x' "${url/\/$PRODUCT\?//3?}"
 echo "  La misma URL sin la firma:"
 storage "${url%%\?*}"
 

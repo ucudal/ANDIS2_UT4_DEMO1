@@ -6,11 +6,11 @@
 # Bajo carga y en Grafana: docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
 source "$(dirname "$0")/common.sh"
 
-# query <ruta>: consulta el detalle de las Orders del User 1 y muestra la tabla,
+# query <ruta>: consulta el detalle de las Orders de alice y muestra la tabla,
 # el código HTTP y el tiempo de respuesta.
 query() {
     local out
-    out=$(curl -s -w '\n%{http_code} %{time_total}' "$GATEWAY/orders/user/1/$1")
+    out=$(curl -s -w '\n%{http_code} %{time_total}' "$GATEWAY/orders/user/$ALICE/$1")
     table <<< "${out%$'\n'*}"
     read -r code time <<< "${out##*$'\n'}"
     printf '  [HTTP %s, %s s]\n\n' "$code" "$time"
@@ -22,9 +22,9 @@ count() { curl -s "$GATEWAY/orders/user/$2/$1" | jq 'length'; }
 title "CQRS"
 
 step "La misma consulta por los dos lados"
-echo "  GET /orders/user/1/details: lee orders y llama a Users y a Products"
+echo "  GET /orders/user/$ALICE/details: lee orders y llama a Users y a Products"
 query details
-echo "  GET /orders/user/1/details/view: lee solo order_details"
+echo "  GET /orders/user/$ALICE/details/view: lee solo order_details"
 query details/view
 
 step "Products demora 300 ms en responder"
@@ -36,10 +36,10 @@ query details/view
 reset_chaos
 
 step "El costo: consistencia eventual. Se crea una Order y se consulta enseguida"
-before=$(count details/view 2)
-create_order 2 60f7c2b5e1d3c2a1b8e4d123 > /dev/null
-echo "  details:      $(count details 2) Orders del User 2"
-echo "  details/view: $(count details/view 2) Orders del User 2"
+before=$(count details/view "$BOB")
+create_order "$BOB" 1 > /dev/null
+echo "  details:      $(count details "$BOB") Orders de bob"
+echo "  details/view: $(count details/view "$BOB") Orders de bob"
 note "La vista todavía no la tiene: el evento tiene que pasar por el outbox y por los proyectores."
-until [ "$(count details/view 2)" -gt "$before" ]; do sleep 0.5; done
-echo "  Un momento después, details/view: $(count details/view 2) Orders del User 2"
+until [ "$(count details/view "$BOB")" -gt "$before" ]; do sleep 0.5; done
+echo "  Un momento después, details/view: $(count details/view "$BOB") Orders de bob"

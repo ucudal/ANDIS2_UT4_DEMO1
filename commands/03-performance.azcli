@@ -15,8 +15,8 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p src/UsersService/pgdata
-mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
 mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
@@ -136,7 +136,7 @@ curl -s -X PUT http://localhost/products/cache \
   -H "Content-Type: application/json" -d '{"enabled": false, "dbDelayMs": 200}' | jq
 
 for i in 1 2 3; do
-  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/1
 done
 
 # Prender la caché, con la base igual de lenta, y borrar la clave del Product
@@ -149,10 +149,10 @@ done
 curl -s -X PUT http://localhost/products/cache \
   -H "Content-Type: application/json" -d '{"enabled": true, "dbDelayMs": 200}' | jq
 
-docker compose exec redis redis-cli DEL product:60f7c2b5e1d3c2a1b8e4d123
+docker compose exec redis redis-cli DEL product:1
 
 for i in 1 2 3; do
-  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+  curl -s -o /dev/null -w '%{time_total} s\n' http://localhost/products/1
 done
 
 # Ver el Product guardado en Redis: la clave product:{id}, su valor -el Product
@@ -160,8 +160,8 @@ done
 # cuántos segundos le quedan antes de vencer, de los 60 con los que se guarda.
 
 docker compose exec redis redis-cli KEYS '*'
-docker compose exec redis redis-cli GET product:60f7c2b5e1d3c2a1b8e4d123
-docker compose exec redis redis-cli TTL product:60f7c2b5e1d3c2a1b8e4d123
+docker compose exec redis redis-cli GET product:1
+docker compose exec redis redis-cli TTL product:1
 
 # En los logs de Products: los dos cambios de configuración de la caché y,
 # después de prenderla, un miss y dos hits.
@@ -172,17 +172,17 @@ docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
 # guarda en MongoDB y borra su clave de Redis, para que nadie lea el nombre
 # viejo: la clave ya no existe -EXISTS devuelve 0-.
 
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+curl -s -X PUT http://localhost/products/1 \
   -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
 
-docker compose exec redis redis-cli EXISTS product:60f7c2b5e1d3c2a1b8e4d123
+docker compose exec redis redis-cli EXISTS product:1
 
 # Leer el Product 2 veces, mostrando el Product y el tiempo de respuesta: la
 # primera es un miss, demora algo más de 0.2 segundos y trae el nombre nuevo
 # desde MongoDB; la segunda es un hit y trae el mismo nombre desde Redis.
 
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+curl -s -w '\n%{time_total} s\n' http://localhost/products/1
+curl -s -w '\n%{time_total} s\n' http://localhost/products/1
 
 # En los logs, al final, después de las líneas anteriores: la invalidación de
 # la clave del Product y de la lista de Products, un miss y un hit.
@@ -196,8 +196,8 @@ docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
 
 docker compose stop redis
 
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
-curl -s -w '\n%{time_total} s\n' http://localhost/products/60f7c2b5e1d3c2a1b8e4d123
+curl -s -w '\n%{time_total} s\n' http://localhost/products/1
+curl -s -w '\n%{time_total} s\n' http://localhost/products/1
 
 # En los logs, al final: dos líneas "Redis no está conectado, se lee MongoDB",
 # una por lectura.
@@ -209,7 +209,7 @@ docker compose logs products-service --since 1m | grep '\[CACHE-ASIDE\]'
 
 docker compose start redis
 
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+curl -s -X PUT http://localhost/products/1 \
   -H "Content-Type: application/json" -d '{"name": "Camisa", "price": 1200.50}' | jq
 
 curl -s -X DELETE http://localhost/products/cache | jq
@@ -277,7 +277,7 @@ docker compose stop orders-worker
 for i in $(seq 30); do
   curl -s -o /dev/null -w '%{http_code} %{time_total} s\n' -X POST http://localhost:8000/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}'
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 1}'
 done
 
 # Esperar unos segundos y ver la cola: los 30 mensajes esperan, sin
@@ -313,7 +313,7 @@ done
 for i in $(seq 30); do
   curl -s -o /dev/null -w '%{http_code} %{time_total} s\n' -X POST http://localhost:8000/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}'
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 1}'
 done
 
 docker compose start orders-worker
@@ -376,7 +376,7 @@ start=$(date +%s)
 for i in $(seq 30); do
   curl -s -o /dev/null -X POST http://localhost:8000/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}'
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}'
 done
 while :; do
   pending=$(curl -s http://localhost/orders/ | jq '[.[] | select(.status == "Pending")] | length')
@@ -410,7 +410,7 @@ start=$(date +%s)
 for i in $(seq 30); do
   curl -s -o /dev/null -X POST http://localhost:8000/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}'
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}'
 done
 while :; do
   pending=$(curl -s http://localhost/orders/ | jq '[.[] | select(.status == "Pending")] | length')
@@ -469,7 +469,7 @@ curl -s -u guest:guest http://localhost:15672/api/exchanges/%2F/andis.events/bin
 
 curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq
 
 # Esperar unos 3 segundos y ver las últimas 4 líneas de los logs de los dos
 # suscriptores: orders-worker procesa la Order porque recibió order.created, y
@@ -485,10 +485,10 @@ docker compose logs -t orders-worker orders-projector \
   | grep --color=always -E '\[PUB/SUB\]|\[COMPETING CONSUMERS\]' \
   | sort -k3 | tail -4 | sed -E 's/ [0-9T:.-]+Z / /'
 
-# Cambiar el nombre del Product 60f7c2b5e1d3c2a1b8e4d125 de "Zapatos" a
+# Cambiar el nombre del Product 3 de "Zapatos" a
 # "Zapatillas".
 
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+curl -s -X PUT http://localhost/products/3 \
   -H "Content-Type: application/json" -d '{"name": "Zapatillas", "price": 3500.75}' | jq
 
 # Las últimas 2 líneas de los logs de Products y de orders-projector: Products
@@ -520,14 +520,14 @@ curl -s -u guest:guest http://localhost:15672/api/exchanges/%2F/andis.events/bin
   | jq '[.[] | {cola: .destination, clave: .routing_key}]' | table
 
 # Generar eventos de los tres publicadores: crear una Order, devolverle al
-# Product el nombre "Zapatos" y cambiar el nombre del User 2 de "bob" a
+# Product el nombre "Zapatos" y cambiar el nombre de bob de "bob" a
 # "roberto" -Users es SOAP-.
 
 curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq
 
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+curl -s -X PUT http://localhost/products/3 \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}' | jq
 
 curl -s -X POST http://localhost/users/UserService.svc \
@@ -536,7 +536,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
           <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>2</id>
+            <id>665f1c2ab4e8d9a0c1f2e302</id>
             <name>roberto</name>
             <email>bob@example.com</email>
           </UpdateUser>
@@ -556,7 +556,7 @@ curl -s -u guest:guest -X POST http://localhost:15672/api/queues/%2F/spy/get \
   -d '{"count": 20, "ackmode": "ack_requeue_false", "encoding": "auto"}' \
   | jq '[.[] | {clave: .routing_key, mensaje: .payload}]' | table
 
-# Borrar la cola spy -responde 204- y devolverle al User 2 el nombre "bob".
+# Borrar la cola spy -responde 204- y devolverle a bob el nombre "bob".
 
 curl -s -o /dev/null -w '%{http_code}\n' -u guest:guest -X DELETE http://localhost:15672/api/queues/%2F/spy
 
@@ -566,7 +566,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
           <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>2</id>
+            <id>665f1c2ab4e8d9a0c1f2e302</id>
             <name>bob</name>
             <email>bob@example.com</email>
           </UpdateUser>
@@ -574,8 +574,8 @@ curl -s -X POST http://localhost/users/UserService.svc \
       </soap:Envelope>' | xmllint --format -
 
 # El siguiente script muestra los enlaces, crea una Order y cambia el nombre
-# del Product 60f7c2b5e1d3c2a1b8e4d125 de "Zapatos" a "Zapatillas" y el del
-# User 2 de "bob" a "roberto", mostrando qué suscriptor recibe cada evento. Al
+# del Product 3 de "Zapatos" a "Zapatillas" y el del
+# bob de "bob" a "roberto", mostrando qué suscriptor recibe cada evento. Al
 # terminar, les devuelve sus nombres.
 
 ./demos/13-publisher-subscriber.sh
@@ -620,7 +620,7 @@ docker compose stop orders-worker
 
 response=$(curl -s -i -w '\n%{time_total} s' -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 1, "quantity": 1}')
 echo "$response"
 location=$(echo "$response" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
 echo "$location"
@@ -679,14 +679,14 @@ curl -s -L "http://localhost$location" | table
 # copiados.
 
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
-  -e "SELECT * FROM orders WHERE user_id = 1"
+  -e "SELECT * FROM orders WHERE user_id = '665f1c2ab4e8d9a0c1f2e301'"
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
-  -e "SELECT * FROM order_details WHERE user_id = 1"
+  -e "SELECT * FROM order_details WHERE user_id = '665f1c2ab4e8d9a0c1f2e301'"
 
 # Hacer la misma consulta por los dos lados: la respuesta es la misma.
 
-curl -s http://localhost/orders/user/1/details | table
-curl -s http://localhost/orders/user/1/details/view | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | table
 
 # Hacer que Users y Products demoren 200 ms en responder, como si estuvieran
 # cargados o lejos. Sin esa demora, en esta demo todo corre en la misma máquina
@@ -705,10 +705,10 @@ curl -s -X PUT http://localhost/products/chaos \
 # consulta a MySQL y no llama a nadie.
 
 for i in 1 2 3; do
-  curl -s -o /dev/null -w 'details:      %{time_total} s\n' http://localhost/orders/user/1/details
+  curl -s -o /dev/null -w 'details:      %{time_total} s\n' http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details
 done
 for i in 1 2 3; do
-  curl -s -o /dev/null -w 'details/view: %{time_total} s\n' http://localhost/orders/user/1/details/view
+  curl -s -o /dev/null -w 'details/view: %{time_total} s\n' http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view
 done
 
 # Hacer que Products falle siempre: la síncrona muestra "no disponible" en
@@ -720,8 +720,8 @@ curl -s -X PUT http://localhost/products/chaos \
   -H 'Content-Type: application/json' \
   -d '{"failureRate": 1, "delayMs": 0}' | jq
 
-curl -s http://localhost/orders/user/1/details | table
-curl -s http://localhost/orders/user/1/details/view | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | table
 
 # Reparar Users y Products.
 
@@ -734,20 +734,20 @@ curl -s -X DELETE http://localhost/products/chaos | jq
 
 docker compose stop orders-projector
 
-# Contar las Orders del User 2 por los dos lados, crear una Order y volver a
+# Contar las Orders de bob por los dos lados, crear una Order y volver a
 # contar: la síncrona ya la tiene, porque lee la tabla 'orders'; la vista no,
 # porque el evento order.created espera en la cola orders.details-view a que
 # vuelvan los proyectores.
 
-curl -s http://localhost/orders/user/2/details | jq length
-curl -s http://localhost/orders/user/2/details/view | jq length
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details | jq length
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | jq length
 
 curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 1, "quantity": 1}' | jq
 
-curl -s http://localhost/orders/user/2/details | jq length
-curl -s http://localhost/orders/user/2/details/view | jq length
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details | jq length
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | jq length
 
 # Levantar los proyectores, esperar unos segundos y volver a contar: la vista se
 # puso al día y las dos consultas devuelven la misma cantidad. Sin detener los
@@ -755,8 +755,8 @@ curl -s http://localhost/orders/user/2/details/view | jq length
 
 docker compose start orders-projector
 
-curl -s http://localhost/orders/user/2/details | jq length
-curl -s http://localhost/orders/user/2/details/view | jq length
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details | jq length
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | jq length
 
 # El siguiente script hace la misma consulta por los dos lados, sin fallas y con
 # Products demorando 300 ms, y después muestra la consistencia eventual.
@@ -793,18 +793,18 @@ docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
 # order.confirmed y order.rejected actualiza el estado; con user.updated y
 # product.updated, los nombres.
 #
-# Ver las filas del User 1 en 'order_details': cada una tiene el nombre del
+# Ver las filas de alice en 'order_details': cada una tiene el nombre del
 # cliente y el del producto, y updated_at, la última vez que los proyectores la
 # cambiaron.
 
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
-  -e "SELECT * FROM order_details WHERE user_id = 1"
+  -e "SELECT * FROM order_details WHERE user_id = '665f1c2ab4e8d9a0c1f2e301'"
 
-# Cambiar el nombre del Product 60f7c2b5e1d3c2a1b8e4d123 de "Camisa" a
+# Cambiar el nombre del Product 1 de "Camisa" a
 # "Camisa de lino". Products publica product.updated, y los proyectores actualizan
 # el nombre en todas las filas de 'order_details' que tienen ese Product.
 
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+curl -s -X PUT http://localhost/products/1 \
   -H "Content-Type: application/json" -d '{"name": "Camisa de lino", "price": 1200.50}' | jq
 
 # En el último log de los proyectores: en cuántas filas se actualizó el nombre.
@@ -815,9 +815,9 @@ docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\
 # nuevo; la Order 3, de otro Product, no cambió.
 
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
-  -e "SELECT * FROM order_details WHERE user_id = 1"
+  -e "SELECT * FROM order_details WHERE user_id = '665f1c2ab4e8d9a0c1f2e301'"
 
-# Cambiar el nombre del User 1 de "alice" a "alicia" -Users es SOAP-. Users
+# Cambiar el nombre de alice de "alice" a "alicia" -Users es SOAP-. Users
 # publica user.updated, y los proyectores actualizan el nombre del cliente en todas
 # sus filas.
 
@@ -827,7 +827,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
           <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>1</id>
+            <id>665f1c2ab4e8d9a0c1f2e301</id>
             <name>alicia</name>
             <email>alice@example.com</email>
           </UpdateUser>
@@ -839,16 +839,16 @@ docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\
 # La consulta que lee la vista ya trae los nombres nuevos, sin haberle
 # preguntado nada a Users ni a Products.
 
-curl -s http://localhost/orders/user/1/details/view | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | table
 
-# Crear una Order para el User 2 y guardar su id en una variable. Los proyectores
+# Crear una Order para bob y guardar su id en una variable. Los proyectores
 # reciben order.created y order.confirmed, cada uno en una réplica: una le pide a
 # Users y a Products los nombres una sola vez y agrega la fila, y la otra
 # actualiza solo el estado.
 
 id=$(curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' | jq .id)
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 1}' | jq .id)
 echo "$id"
 
 # Esperar unos 3 segundos y ver los dos últimos logs de los proyectores: la fila
@@ -859,10 +859,10 @@ docker compose logs orders-projector | grep --color=always '\[MATERIALIZED VIEW\
 docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr -pPa55w0rd ordersdb \
   -e "SELECT * FROM order_details WHERE order_id = $id"
 
-# Devolverle al Product el nombre "Camisa" y al User 1 el nombre "alice". Los
+# Devolverle al Product el nombre "Camisa" y a alice el nombre "alice". Los
 # proyectores vuelven a actualizar la vista.
 
-curl -s -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d123 \
+curl -s -X PUT http://localhost/products/1 \
   -H "Content-Type: application/json" -d '{"name": "Camisa", "price": 1200.50}' | jq
 
 curl -s -X POST http://localhost/users/UserService.svc \
@@ -871,7 +871,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
   -d '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
           <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-            <id>1</id>
+            <id>665f1c2ab4e8d9a0c1f2e301</id>
             <name>alice</name>
             <email>alice@example.com</email>
           </UpdateUser>
@@ -881,7 +881,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
 # Qué pasa con la vista cuando Users o Products fallan, y cuando los proyectores
 # están detenidos, se vio en la demo 15, CQRS. El siguiente script lo repite.
 #
-# El siguiente script cambia el nombre del Product 60f7c2b5e1d3c2a1b8e4d123 de
+# El siguiente script cambia el nombre del Product 1 de
 # "Camisa" a "Camisa de lino", hace fallar a Products y detiene los proyectores
 # mientras se crea una Order. Al terminar, le devuelve el nombre "Camisa".
 
@@ -931,5 +931,5 @@ docker volume prune -f
 docker builder prune -f
 
 rm -rf ./src/OrdersService/mysqldata
-rm -rf ./src/ProductsService/mongodbdata
-rm -rf ./src/UsersService/pgdata
+rm -rf ./src/ProductsService/pgdata
+rm -rf ./src/UsersService/mongodbdata

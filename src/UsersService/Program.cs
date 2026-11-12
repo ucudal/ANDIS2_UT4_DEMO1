@@ -2,20 +2,29 @@ using Ucu.Andis.Common;
 using Ucu.Andis.Users;
 using Ucu.Andis.Users.Data;
 using Ucu.Andis.Users.Soap;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 using OpenFeature;
 using OpenFeature.Providers.Unleash;
 using SoapCore;
 using Unleash;
+using UsersService.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<UsersDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("UsersDb")));
+// MongoClient es thread-safe y mantiene su propio pool de conexiones: se crea
+// una sola vez y se comparte, en lugar de crear uno por solicitud.
+builder.Services.AddSingleton<IMongoCollection<User>>(_ =>
+{
+    var url = MongoUrl.Create(builder.Configuration.GetConnectionString("UsersDb"));
+    var settings = MongoClientSettings.FromUrl(url);
+    // Falla rápido si la base no está disponible, en lugar de esperar 30 segundos.
+    settings.ServerSelectionTimeout = TimeSpan.FromSeconds(3);
+    return new MongoClient(settings).GetDatabase(url.DatabaseName).GetCollection<User>("users");
+});
 
 // Health Endpoint Monitoring: el servicio está sano si puede conectarse a su base.
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<UsersDbContext>("users-db");
+    .AddCheck<MongoHealthCheck>("users-db", timeout: TimeSpan.FromSeconds(5));
 
 // Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más las
 // respuestas por variante del experimento de la versión 2.

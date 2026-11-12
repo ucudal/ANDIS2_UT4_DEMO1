@@ -18,7 +18,7 @@ namespace Ucu.Andis.OrdersService;
 // Por la entrada HTTP, sin los patrones de seguridad, no llegan esos
 // encabezados: la solicitud es anónima y Orders se comporta como en las demos
 // anteriores.
-public record CallerIdentity(string Name, int? UserId, IReadOnlyList<string> Roles)
+public record CallerIdentity(string Name, string? UserId, IReadOnlyList<string> Roles)
 {
     public const string NameHeader = "X-User-Name";
     public const string UserIdHeader = "X-User-Id";
@@ -27,7 +27,7 @@ public record CallerIdentity(string Name, int? UserId, IReadOnlyList<string> Rol
     public bool IsAdmin => Roles.Contains("admin");
 
     // Puede ver las Orders de un User el propio User, o un admin.
-    public bool CanAccess(int userId) => IsAdmin || UserId == userId;
+    public bool CanAccess(string userId) => IsAdmin || UserId == userId;
 
     // null si la solicitud es anónima.
     public static CallerIdentity? From(HttpRequest request)
@@ -36,9 +36,9 @@ public record CallerIdentity(string Name, int? UserId, IReadOnlyList<string> Rol
         if (string.IsNullOrEmpty(name))
             return null;
 
-        int? userId = int.TryParse(request.Headers[UserIdHeader], out var id) ? id : null;
+        var userId = request.Headers[UserIdHeader].ToString();
         var roles = request.Headers[RolesHeader].ToString().Split(',', StringSplitOptions.RemoveEmptyEntries);
-        return new CallerIdentity(name, userId, roles);
+        return new CallerIdentity(name, string.IsNullOrEmpty(userId) ? null : userId, roles);
     }
 }
 

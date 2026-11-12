@@ -14,13 +14,13 @@ public class OrdersPurchaseSource : IPurchaseSource
         _users = users;
     }
 
-    public async Task<IReadOnlyList<Purchase>> ForProductAsync(string productId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Purchase>> ForProductAsync(int productId, CancellationToken cancellationToken)
     {
         var orders = await _orders.ForProductAsync(productId, cancellationToken);
 
         // Un comprador puede tener varias compras: se le pregunta a Users una sola
         // vez por cada uno.
-        var buyers = new Dictionary<int, string>();
+        var buyers = new Dictionary<string, string>();
         foreach (var userId in orders.Select(o => o.UserId).Distinct())
             buyers[userId] = await _users.NameAsync(userId, cancellationToken);
 

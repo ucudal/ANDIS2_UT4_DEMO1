@@ -34,8 +34,8 @@ servicio usa la tecnología de base de datos que mejor le sirve.
 
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
-| `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | [PostgreSQL](https://www.postgresql.org/), relacional | gateway, `orders-service`, `orders-worker`, `orders-projector` | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
-| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio; sus imágenes | [MongoDB](https://www.mongodb.com/), documentos; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated`; Azurite, para las imágenes |
+| `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | [MongoDB](https://www.mongodb.com/), documentos | gateway, `orders-service`, `orders-worker`, `orders-projector` | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
+| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio; sus imágenes | [PostgreSQL](https://www.postgresql.org/), relacional; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated`; Azurite, para las imágenes |
 | `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | [MySQL](https://www.mysql.com/), relacional | gateway | `users-service`, `products-service`, RabbitMQ |
 | `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `orders-projector` | Comparte la base de `orders-service`; es el único que escribe la vista del detalle | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
@@ -46,8 +46,8 @@ servicio usa la tecnología de base de datos que mejor le sirve.
 
 Una `Order` guarda el identificador del `User` y el del `Product`, pero no hay
 clave foránea que los relacione, porque están en bases distintas. El
-identificador del `User` es un entero de PostgreSQL; el del `Product`, un
-`ObjectId` de MongoDB que `Orders` guarda como texto. Nada impide crear una
+identificador del `User` es un `ObjectId` de MongoDB, que `Orders` guarda
+como texto; el del `Product`, un entero de PostgreSQL. Nada impide crear una
 `Order` con un identificador que no existe; eso se detecta más tarde, como se
 ve en la sección de consistencia.<!--TODO: agregar link a la sección de consistencia-->
 
@@ -140,11 +140,11 @@ sequenceDiagram
     participant U as users-service
     participant P as products-service
 
-    C->>GW: GET /orders/user/1/details
-    GW->>O: GET /orders/user/1/details
-    O->>ODB: Orders del User 1
+    C->>GW: GET /orders/user/{userId}/details
+    GW->>O: GET /orders/user/{userId}/details
+    O->>ODB: Orders del User
     ODB-->>O: 2 Orders
-    O->>U: POST /users/UserService.svc, GetUser 1
+    O->>U: POST /users/UserService.svc, GetUser
     U-->>O: nombre del cliente
     loop por cada Order
         O->>P: GET /products/{id}
@@ -302,9 +302,9 @@ sequenceDiagram
     MQ->>V: product.updated
     V->>ODB: actualiza el nombre en order_details
 
-    C->>GW: GET /orders/user/1/details/view
-    GW->>O: GET /orders/user/1/details/view
-    O->>ODB: order_details del User 1
+    C->>GW: GET /orders/user/{userId}/details/view
+    GW->>O: GET /orders/user/{userId}/details/view
+    O->>ODB: order_details del User
     ODB-->>O: Orders con nombres
     O-->>GW: 200, Orders con nombres
     GW-->>C: 200, Orders con nombres
@@ -393,7 +393,7 @@ cadena, y la aplicación usa las tres:
 * **Leer una copia:** la consulta desde la vista no depende de `Users` ni de
   `Products`, porque los nombres ya están copiados. Del mismo modo, una lectura
   de `Products` que sale de [Redis](https://redis.io/) no depende de
-  [MongoDB](https://www.mongodb.com/), mientras el dato esté en la caché.
+  [PostgreSQL](https://www.postgresql.org/), mientras el dato esté en la caché.
 
 **Para analizar:**
 
@@ -420,7 +420,7 @@ cadena, y la aplicación usa las tres:
   casi del 100%. La consulta de detalle completa queda con seis componentes de
   99,9%, unos 99,4%, y el punto único de falla de Products pasa a ser
   products-db, que sigue siendo una sola instancia. Se puede replicar porque es
-  stateless: los Products están en MongoDB y la caché en Redis, compartida por
+  stateless: los Products están en PostgreSQL y la caché en Redis, compartida por
   todas las réplicas. Con una caché en memoria, cada réplica tendría su copia y
   una invalidación llegaría a una sola. Los ajustes de chaos y de la caché sí
   quedan en cada réplica: un PUT cambiaría una sola. -->
@@ -611,8 +611,8 @@ se describe más abajo:
 | `orders-service` | 1 | [MySQL](https://www.mysql.com/): `orders`, `order_events`, `outbox_messages` e `idempotency_keys` |
 | `orders-worker` | 3 | MySQL y la cola `orders.process` |
 | `orders-projector` | 3 | MySQL, `order_details`, y la cola `orders.details-view` |
-| `users-service` y `users-service-v2` | 1 de cada versión | [PostgreSQL](https://www.postgresql.org/); la variante de cada `User`, en [Unleash](https://www.getunleash.io/) |
-| `products-service` | 1 | [MongoDB](https://www.mongodb.com/), la caché en [Redis](https://redis.io/) y las imágenes en [Azurite](https://github.com/Azure/Azurite) |
+| `users-service` y `users-service-v2` | 1 de cada versión | [MongoDB](https://www.mongodb.com/); la variante de cada `User`, en [Unleash](https://www.getunleash.io/) |
+| `products-service` | 1 | [PostgreSQL](https://www.postgresql.org/), la caché en [Redis](https://redis.io/) y las imágenes en [Azurite](https://github.com/Azure/Azurite) |
 | `bff-web` y `bff-mobile` | 1 | No tienen: llaman a los servicios en cada solicitud |
 | `api-gateway` | 1 | Las sesiones, en [Keycloak](https://www.keycloak.org/); el límite de `POST /orders/` por cliente, en su memoria |
 | `messaging-bridge` | 1 | RabbitMQ y [ActiveMQ](https://activemq.apache.org/); tiene una sola instancia para conservar el orden de los pedidos |
@@ -1051,7 +1051,7 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Un solo *sidecar*, sin TLS entre los servicios | Menos infraestructura | El tráfico dentro de la red viaja sin cifrar, y `Orders` y `Users` no tienen *sidecar* | — |
 | Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
-| `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | — |
+| `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; en `Users`, [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones con varios documentos | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | — |
 | Los cambios de nombre se ordenan por la hora de cada contenedor | Varios proyectores, sin numerar los cambios en `Users` ni en `Products` | Si los relojes no están sincronizados, un nombre viejo puede pisar uno nuevo, o uno nuevo puede descartarse | [Materialized View](PATTERNS.md#materialized-view) |
 | Un mensaje que falla siempre vuelve a la cola | Ningún mensaje se descarta por una falla pasajera | Un *poison message* se reintenta para siempre y ocupa a una réplica cada 5 segundos | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |

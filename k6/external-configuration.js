@@ -1,5 +1,5 @@
 // External Configuration Store: 2 POST /orders/ por segundo, con una cantidad de
-// 10 unidades, para el User 2, y 20 lecturas por segundo, directamente en
+// 10 unidades, para bob, y 20 lecturas por segundo, directamente en
 // orders-service. Lo lanza demos/load-modifiability.sh, que cambia el mismo límite
 // de dos formas: con una variable de entorno, que obliga a recrear el contenedor,
 // y con el almacén. Las lecturas muestran cuánto dura el corte: con pocas
@@ -43,7 +43,7 @@ function count(operation, res) {
 }
 
 export function writes() {
-    const body = JSON.stringify({ userId: 2, productId: '60f7c2b5e1d3c2a1b8e4d124', quantity: 10 });
+    const body = JSON.stringify({ userId: '665f1c2ab4e8d9a0c1f2e302', productId: 2, quantity: 10 });
     const res = http.post(`${ORDERS_DIRECT}/orders/`, body, {
         headers: { 'Content-Type': 'application/json' },
         timeout: '2s',

@@ -1,4 +1,4 @@
-// Messaging Bridge: 2 Orders por segundo para el User 2, directamente en
+// Messaging Bridge: 2 Orders por segundo para bob, directamente en
 // orders-service. Lo lanza demos/load-modifiability.sh, que detiene ActiveMQ
 // durante 30 segundos.
 //

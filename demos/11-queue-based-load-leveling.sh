@@ -14,7 +14,7 @@ dir=$(mktemp -d)
 started=$(jq -n now)
 (cd "$dir" && seq "$ORDERS" | xargs -P "$ORDERS" -I{} curl -s -o {}.body -w '%{http_code} %{time_total}\n' \
     -X POST "$ORDERS_DIRECT/orders/" -H 'Content-Type: application/json' \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 1}' > times)
+    -d "{\"userId\": \"$BOB\", \"productId\": 2, \"quantity\": 1}" > times)
 ids=$(cat "$dir"/*.body | jq -r .id)
 echo "  Respuestas: $(cut -d' ' -f1 "$dir/times" | sort | uniq -c | awk '{print $1 " con HTTP " $2}' | paste -sd, -)"
 echo "  POST más lento: $(cut -d' ' -f2 "$dir/times" | sort -n | tail -1)\""

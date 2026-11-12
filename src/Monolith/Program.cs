@@ -10,7 +10,8 @@ using SoapCore;
 // patrones: es lo que la aplicación habría sido antes de separarse en servicios.
 //
 // La base es un archivo SQLite dentro del contenedor, con los mismos datos
-// iniciales que los microservicios: al recrear el contenedor vuelve a ese estado.
+// iniciales que los microservicios, ids incluidos: al recrear el contenedor
+// vuelve a ese estado.
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<MonolithDb>(options => options.UseSqlite("Data Source=/tmp/monolith.db"));
 builder.Services.AddSoapCore();
@@ -23,14 +24,14 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<MonolithDb>();
     if (await db.Database.EnsureCreatedAsync())
     {
-        db.Users.AddRange(new User { Id = 1, Name = "alice", Email = "alice@example.com" },
-                          new User { Id = 2, Name = "bob", Email = "bob@example.com" });
-        db.Products.AddRange(new Product { Id = "60f7c2b5e1d3c2a1b8e4d123", Name = "Camisa", Price = 1200.50 },
-                             new Product { Id = "60f7c2b5e1d3c2a1b8e4d124", Name = "Pantalón", Price = 2300.00 },
-                             new Product { Id = "60f7c2b5e1d3c2a1b8e4d125", Name = "Zapatos", Price = 3500.75 });
-        db.Orders.AddRange(new Order { Id = 1, UserId = 1, ProductId = "60f7c2b5e1d3c2a1b8e4d123", Quantity = 2 },
-                           new Order { Id = 2, UserId = 2, ProductId = "60f7c2b5e1d3c2a1b8e4d124", Quantity = 1 },
-                           new Order { Id = 3, UserId = 1, ProductId = "60f7c2b5e1d3c2a1b8e4d125", Quantity = 5 });
+        db.Users.AddRange(new User { Id = "665f1c2ab4e8d9a0c1f2e301", Name = "alice", Email = "alice@example.com" },
+                          new User { Id = "665f1c2ab4e8d9a0c1f2e302", Name = "bob", Email = "bob@example.com" });
+        db.Products.AddRange(new Product { Id = 1, Name = "Camisa", Price = 1200.50 },
+                             new Product { Id = 2, Name = "Pantalón", Price = 2300.00 },
+                             new Product { Id = 3, Name = "Zapatos", Price = 3500.75 });
+        db.Orders.AddRange(new Order { Id = 1, UserId = "665f1c2ab4e8d9a0c1f2e301", ProductId = 1, Quantity = 2 },
+                           new Order { Id = 2, UserId = "665f1c2ab4e8d9a0c1f2e302", ProductId = 2, Quantity = 1 },
+                           new Order { Id = 3, UserId = "665f1c2ab4e8d9a0c1f2e301", ProductId = 3, Quantity = 5 });
         await db.SaveChangesAsync();
     }
 }
@@ -41,10 +42,10 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
 app.MapGet("/products/", async (MonolithDb db) => await db.Products.ToListAsync());
 
-app.MapGet("/products/{id}", async (string id, MonolithDb db) =>
+app.MapGet("/products/{id:int}", async (int id, MonolithDb db) =>
     await db.Products.FindAsync(id) is { } product ? Results.Ok(product) : Results.NotFound(new { detail = "Product not found" }));
 
-app.MapPut("/products/{id}", async (string id, Product changes, MonolithDb db) =>
+app.MapPut("/products/{id:int}", async (int id, Product changes, MonolithDb db) =>
 {
     if (await db.Products.FindAsync(id) is not { } product)
         return Results.NotFound(new { detail = "Product not found" });
@@ -70,7 +71,7 @@ app.MapPost("/orders/", async (Order order, MonolithDb db) =>
 // El detalle es un JOIN entre tres tablas de la misma base: es la comodidad que
 // se pierde al separar los datos, y por la que Orders tiene que llamar a Users y
 // a Products por HTTP.
-app.MapGet("/orders/user/{userId:int}/details", async (int userId, MonolithDb db) =>
+app.MapGet("/orders/user/{userId}/details", async (string userId, MonolithDb db) =>
 {
     var details = await (
         from o in db.Orders
@@ -96,14 +97,14 @@ public class MonolithDb : DbContext
 [DataContract(Namespace = "http://ucu.edu.uy/andis/users")]
 public class User
 {
-    [DataMember] public int Id { get; set; }
+    [DataMember] public string Id { get; set; } = string.Empty;
     [DataMember] public string Name { get; set; } = string.Empty;
     [DataMember] public string Email { get; set; } = string.Empty;
 }
 
 public class Product
 {
-    public string? Id { get; set; }
+    public int Id { get; set; }
     public string? Name { get; set; }
     public double Price { get; set; }
 }
@@ -111,8 +112,8 @@ public class Product
 public class Order
 {
     public int Id { get; set; }
-    public int UserId { get; set; }
-    public string? ProductId { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public int ProductId { get; set; }
     public int Quantity { get; set; }
     public string Status { get; set; } = "Confirmed";
 }
@@ -121,9 +122,9 @@ public class Order
 [ServiceContract(Namespace = "http://ucu.edu.uy/andis/users")]
 public interface IUserService
 {
-    [OperationContract] Task<User?> GetUser(int id);
+    [OperationContract] Task<User?> GetUser(string id);
     [OperationContract] Task<User[]> ListUsers();
-    [OperationContract] Task<User> UpdateUser(int id, string name, string email);
+    [OperationContract] Task<User> UpdateUser(string id, string name, string email);
 }
 
 public class UserService : IUserService
@@ -132,11 +133,11 @@ public class UserService : IUserService
 
     public UserService(MonolithDb db) => _db = db;
 
-    public async Task<User?> GetUser(int id) => await _db.Users.FindAsync(id);
+    public async Task<User?> GetUser(string id) => await _db.Users.FindAsync(id);
 
     public Task<User[]> ListUsers() => _db.Users.ToArrayAsync();
 
-    public async Task<User> UpdateUser(int id, string name, string email)
+    public async Task<User> UpdateUser(string id, string name, string email)
     {
         var user = await _db.Users.FindAsync(id) ?? throw new FaultException($"No existe el User {id}");
         user.Name = name;

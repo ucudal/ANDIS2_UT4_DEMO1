@@ -22,7 +22,7 @@ public class IdempotencyKey
     public string Key { get; set; } = string.Empty;
 
     [Column("user_id")]
-    public int UserId { get; set; }
+    public string UserId { get; set; } = string.Empty;
 
     // SHA-256 de los datos de la solicitud: distingue un reintento de un uso
     // equivocado de la misma clave con otra Order.

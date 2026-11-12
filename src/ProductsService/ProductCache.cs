@@ -12,24 +12,24 @@ namespace ProductsService;
 //   DELETE /products/cache  -vuelve a los valores por defecto-
 public class CacheSettings
 {
-    // Si es false, toda lectura va a MongoDB: sirve para comparar con y sin
+    // Si es false, toda lectura va a PostgreSQL: sirve para comparar con y sin
     // caché bajo la misma carga.
     public bool Enabled { get; set; } = true;
 
-    // Demora agregada a cada lectura de MongoDB, en milisegundos. MongoDB en la
-    // misma máquina responde en 1 o 2 ms y la diferencia con Redis no se nota;
-    // con una base más lenta, como suele ser una real, sí.
+    // Demora agregada a cada lectura de PostgreSQL, en milisegundos. PostgreSQL
+    // en la misma máquina responde en 1 o 2 ms y la diferencia con Redis no se
+    // nota; con una base más lenta, como suele ser una real, sí.
     public int DbDelayMs { get; set; }
 }
 
-// Cache-Aside: Products busca primero en Redis; si no está -miss-, lee MongoDB
-// y guarda el resultado en Redis por 60 segundos -o por lo que diga
-// Products:CacheTtlSeconds, en el almacén de configuración- para la próxima. Al cambiar un
-// Product, Products borra de Redis las claves afectadas: la próxima lectura es
-// un miss y trae el dato nuevo.
+// Cache-Aside: Products busca primero en Redis; si no está -miss-, lee
+// PostgreSQL y guarda el resultado en Redis por 60 segundos -o por lo que diga
+// Products:CacheTtlSeconds, en el almacén de configuración- para la próxima. Al
+// cambiar un Product, Products borra de Redis las claves afectadas: la próxima
+// lectura es un miss y trae el dato nuevo.
 //
-// La aplicación es la que maneja la caché; Redis no sabe nada de MongoDB. Si
-// Redis no responde, se lee MongoDB directamente: la caché acelera, pero
+// La aplicación es la que maneja la caché; Redis no sabe nada de PostgreSQL. Si
+// Redis no responde, se lee PostgreSQL directamente: la caché acelera, pero
 // Products funciona sin ella.
 public class ProductCache
 {
@@ -60,12 +60,12 @@ public class ProductCache
             return await LoadFromDbAsync(load);
         }
 
-        // Si ya se sabe que Redis no está, se va directo a MongoDB, sin esperar
+        // Si ya se sabe que Redis no está, se va directo a PostgreSQL, sin esperar
         // el timeout en cada lectura. El cliente se reconecta solo cuando vuelve.
         if (!_redis.IsConnected)
         {
             Count("error");
-            _logger.LogWarning("[CACHE-ASIDE] Redis no está conectado, se lee MongoDB");
+            _logger.LogWarning("[CACHE-ASIDE] Redis no está conectado, se lee PostgreSQL");
             return await LoadFromDbAsync(load);
         }
 
@@ -83,12 +83,12 @@ public class ProductCache
         catch (RedisException ex)
         {
             Count("error");
-            _logger.LogWarning("[CACHE-ASIDE] Redis no responde, se lee MongoDB: {Error}", ex.GetType().Name);
+            _logger.LogWarning("[CACHE-ASIDE] Redis no responde, se lee PostgreSQL: {Error}", ex.GetType().Name);
             return await LoadFromDbAsync(load);
         }
 
         Count("miss");
-        _logger.LogInformation("[CACHE-ASIDE] miss {Key}, se lee MongoDB", key);
+        _logger.LogInformation("[CACHE-ASIDE] miss {Key}, se lee PostgreSQL", key);
         var value = await LoadFromDbAsync(load);
 
         // Lo que no existe no se guarda: si se creara después, la caché seguiría
@@ -109,7 +109,7 @@ public class ProductCache
     }
 
     // Se borra en lugar de escribir el valor nuevo: así la caché nunca guarda un
-    // valor que MongoDB no tiene, aunque dos escrituras se crucen.
+    // valor que PostgreSQL no tiene, aunque dos escrituras se crucen.
     public async Task InvalidateAsync(params string[] keys)
     {
         try

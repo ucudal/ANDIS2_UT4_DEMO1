@@ -20,13 +20,13 @@ cleanup() {
 trap cleanup EXIT
 
 JSON='Content-Type: application/json'
-PRODUCT=60f7c2b5e1d3c2a1b8e4d124
+PRODUCT=2
 
-# order <cantidad>: intenta crear una Order para el User 2.
+# order <cantidad>: intenta crear una Order para bob.
 order() {
     local out
     out=$(curl -s -w '\n%{http_code}' -X POST "$ORDERS_DIRECT/orders/" -H "$JSON" \
-        -d "{\"userId\": 2, \"productId\": \"$PRODUCT\", \"quantity\": $1}")
+        -d "{\"userId\": \"$BOB\", \"productId\": \"$PRODUCT\", \"quantity\": $1}")
     printf '  Order de %-2s unidades: HTTP %s  %s\n' "$1" "${out##*$'\n'}" "$(head -c 90 <<< "${out%$'\n'*}")"
 }
 

@@ -8,7 +8,7 @@ namespace MessagingBridge;
 // otro patrón -Message Translator, en Enterprise Integration Patterns- se
 // agrega aparte: el reenvío no sabe nada de los formatos.
 //
-//   PEDIDO  | pedido: 10 | cliente: 8 | artículo: 24 | cantidad: 5
+//   PEDIDO  | pedido: 10 | cliente: 24 | artículo: 8 | cantidad: 5
 //   FACTURA | pedido: 10 | factura: 12 | fecha AAAAMMDD: 8
 public static class ErpFormat
 {
@@ -18,8 +18,8 @@ public static class ErpFormat
     public static string ToOrderRecord(OrderConfirmed order) =>
         OrderRecord
         + order.OrderId.ToString("D10")
-        + order.UserId.ToString("D8")
-        + (order.ProductId ?? "").PadRight(24)
+        + (order.UserId ?? "").PadRight(24)
+        + order.ProductId.ToString("D8")
         + order.Quantity.ToString("D5");
 
     // FormatException si el registro no es una factura válida.

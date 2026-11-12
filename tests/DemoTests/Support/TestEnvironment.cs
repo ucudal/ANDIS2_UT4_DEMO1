@@ -4,8 +4,9 @@
 namespace Ucu.Andis.DemoTests.Support;
 
 // Las demos comparten el estado de la aplicación -el chaos, los patrones, las
-// rutas del gateway-, así que los tests corren de a uno, en el orden de las
-// demos.
+// rutas del gateway-, así que los tests corren de a uno. NUnit los ordena por
+// nombre completo: primero los de disponibilidad, después los de facilidad de
+// despliegue, modificación, rendimiento y seguridad.
 //
 // Los tests no levantan los contenedores: hay que hacerlo antes, con
 // docker compose up -d --build --wait. Las demos de Kubernetes necesitan, en

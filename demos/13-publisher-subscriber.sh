@@ -4,12 +4,12 @@
 # todos los suscriptores, y el publicador no sabe quiénes son.
 source "$(dirname "$0")/common.sh"
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d125
+PRODUCT=3
 
 # Al terminar, el Product y el User recuperan su nombre.
 cleanup() {
     update_product "$PRODUCT" "Zapatos" 3500.75
-    update_user 2 "bob" "bob@example.com"
+    update_user "$BOB" "bob" "bob@example.com"
     reset_chaos
 }
 trap cleanup EXIT
@@ -31,7 +31,7 @@ curl -s -u guest:guest 'http://localhost:15672/api/exchanges/%2F/andis.events/bi
 
 step "Se crea una Order: el evento order.created llega al worker y a los proyectores"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-id=$(create_order 2 "$PRODUCT")
+id=$(create_order "$BOB" "$PRODUCT")
 echo "  Order $id creada"
 subscribers_log "$since"
 
@@ -42,6 +42,6 @@ subscribers_log "$since"
 
 step "Users cambia el nombre de un User y publica user.updated"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-update_user 2 "roberto" "bob@example.com"
+update_user "$BOB" "roberto" "bob@example.com"
 subscribers_log "$since"
 note "El worker no está suscripto a estos eventos: solo los reciben los proyectores."

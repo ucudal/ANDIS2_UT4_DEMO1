@@ -485,7 +485,7 @@ $RECYCLE.BIN/
 
 .DS_Store
 src/OrdersService/mysqldata/
-src/ProductsService/mongodbdata/
-src/UsersService/pgdata/
+src/ProductsService/pgdata/
+src/UsersService/mongodbdata/
 # Certificado del gateway, que se copia del contenedor en las demos de seguridad
 gateway.crt

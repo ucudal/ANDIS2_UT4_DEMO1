@@ -16,7 +16,7 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
-app.MapGet("/mobile/orders/user/{userId:int}", async (int userId, IHttpClientFactory clients, CancellationToken cancellationToken) =>
+app.MapGet("/mobile/orders/user/{userId}", async (string userId, IHttpClientFactory clients, CancellationToken cancellationToken) =>
 {
     using var response = await clients.CreateClient("Orders").GetAsync($"user/{userId}/details", cancellationToken);
 

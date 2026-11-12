@@ -20,12 +20,12 @@ public static class Events
 // eventos de Event Sourcing de Orders -ver OrderEvent.cs-: esos son internos de
 // Orders y pueden cambiar; estos son públicos y otros servicios dependen de
 // ellos.
-public record OrderCreated(int OrderId, int UserId, string? ProductId, int Quantity);
+public record OrderCreated(int OrderId, string UserId, int ProductId, int Quantity);
 
 // Messaging Bridge: la Order completa, y no solo su id, para que un suscriptor
 // externo -el puente hacia el ERP- no tenga que consultar a Orders. Los campos
 // nuevos son opcionales: un mensaje anterior sigue siendo válido.
-public record OrderConfirmed(int OrderId, int UserId = 0, string? ProductId = null, int Quantity = 0);
+public record OrderConfirmed(int OrderId, string? UserId = null, int ProductId = 0, int Quantity = 0);
 
 public record OrderRejected(int OrderId, string Reason);
 
@@ -38,6 +38,6 @@ public record OrderInvoiced(int OrderId, string InvoiceNumber, string IssuedOn);
 // mismo nombre pueden aplicarse en otro orden; la fecha permite descartar el
 // más viejo -ver OrderDetailsProjector.cs-. Es opcional, como los campos nuevos
 // de OrderConfirmed: un mensaje anterior sigue siendo válido.
-public record UserUpdated(int UserId, string Name, DateTime? OccurredAt = null);
+public record UserUpdated(string UserId, string Name, DateTime? OccurredAt = null);
 
-public record ProductUpdated(string ProductId, string? Name, DateTime? OccurredAt = null);
+public record ProductUpdated(int ProductId, string? Name, DateTime? OccurredAt = null);

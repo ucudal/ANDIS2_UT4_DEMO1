@@ -10,7 +10,7 @@ title "Asynchronous Request-Reply"
 step "Se crea una Order a través del gateway"
 headers=$(mktemp)
 body=$(curl -s -D "$headers" -X POST "$GATEWAY/orders/" -H 'Content-Type: application/json' \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+    -d "{\"userId\": \"$BOB\", \"productId\": 1, \"quantity\": 1}")
 grep -i -E '^HTTP|^location|^retry-after' "$headers" | tr -d '\r' | sed 's/^/  /'
 echo "  $body"
 location=$(grep -i '^location' "$headers" | cut -d' ' -f2 | tr -d '\r')
@@ -41,7 +41,7 @@ post_with_key() {
 
 headers=$(mktemp)
 key=$(uuidgen | tr '[:upper:]' '[:lower:]')
-body='{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}'
+body="{\"userId\": \"$BOB\", \"productId\": 1, \"quantity\": 1}"
 
 step "Se crea una Order con Idempotency-Key: $key"
 post_with_key "$key" "$body"
@@ -52,6 +52,6 @@ note "La misma Order, sin crear otra: Idempotent-Replayed avisa que es una repet
 note "Sin la clave, el reintento habría creado una segunda Order, con su propio pedido al ERP."
 
 step "La misma clave con otra cantidad"
-post_with_key "$key" '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 3}'
+post_with_key "$key" "{\"userId\": \"$BOB\", \"productId\": 1, \"quantity\": 3}"
 note "422: la clave ya se usó para otra Order."
 rm -f "$headers" "$headers.body"

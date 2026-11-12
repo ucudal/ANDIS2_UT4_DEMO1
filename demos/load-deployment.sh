@@ -135,7 +135,7 @@ k8s_rolling() {
     note "Aplicando el Deployment de k8s/rolling-upgrade, con 3 pods de la versión v1..."
     kubectl apply -f k8s/rolling-upgrade/service.yaml -f k8s/rolling-upgrade/deployment.yaml > /dev/null
     kubectl -n andis rollout status deployment/users --timeout=180s > /dev/null
-    until [ "$(get_user 1 -o /dev/null -w '%{http_code}')" = 200 ]; do sleep 1; done
+    until [ "$(get_user "$ALICE" -o /dev/null -w '%{http_code}')" = 200 ]; do sleep 1; done
     load rolling-upgrade.js
     sleep 20
     mark "Deployment: se reemplazan los pods por la versión v2"

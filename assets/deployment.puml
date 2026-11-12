@@ -49,8 +49,8 @@ node "Host con Docker" <<device>> {
       node "users-service\nASP.NET Core 10" <<container>> as us {
         artifact "UsersService.dll" as usa
       }
-      database "users-db\nPostgreSQL 18" <<container>> as udb {
-        artifact "pginit.sql" as udba
+      database "users-db\nMongoDB 9" <<container>> as udb {
+        artifact "mongoinit.js" as udba
       }
     }
 
@@ -61,8 +61,8 @@ node "Host con Docker" <<device>> {
       node "products-sidecar\nEnvoy 1.40" <<container>> as sc {
         artifact "envoy.yaml" as sca
       }
-      database "products-db\nMongoDB 9" <<container>> as pdb {
-        artifact "mongoinit.js" as pdba
+      database "products-db\nPostgreSQL 18" <<container>> as pdb {
+        artifact "pginit.sql" as pdba
       }
       database "redis\nRedis 8" <<container>> as rd
       database "azurite\nAzurite 3.37" <<container>> as az

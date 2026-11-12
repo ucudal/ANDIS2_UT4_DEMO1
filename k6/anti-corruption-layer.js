@@ -10,7 +10,7 @@ import http from 'k6/http';
 import { Trend } from 'k6/metrics';
 import { GATEWAY, checkStatus } from './lib.js';
 
-const PRODUCT = '60f7c2b5e1d3c2a1b8e4d125';
+const PRODUCT = '3';
 const duration = new Trend('acl_duration', true);
 
 export const options = {

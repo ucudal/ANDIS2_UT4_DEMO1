@@ -170,17 +170,18 @@ services:
         condition: service_healthy
 
   products-db:
-    image: mongo:9
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./src/ProductsService/mongodbdata:/data/db
-      - ./src/ProductsService/mongoinit:/docker-entrypoint-initdb.d
+    image: postgres:18
     environment:
-      MONGO_INITDB_ROOT_USERNAME: "root"
-      MONGO_INITDB_ROOT_PASSWORD: "Pa55w0rd"
+      POSTGRES_DB: "productsdb"
+      POSTGRES_USER: "productsusr"
+      POSTGRES_PASSWORD: "Pa55w0rd"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./src/ProductsService/pgdata:/var/lib/postgresql
+      - ./src/ProductsService/pginit:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "-u", "productsusr", "-p", "Pa55w0rd", "--authenticationDatabase", "productsdb", "productsdb", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "productsusr", "-d", "productsdb"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -192,11 +193,8 @@ services:
     image: products-service:latest
     environment:
       SERVICE_NAME: "products-service"
-      MONGO_HOST: "products-db"
-      MONGO_PORT: "27017"
-      MONGO_DB: "productsdb"
-      MONGO_USER: "productsusr"
-      MONGO_PASSWORD: "Pa55w0rd"
+      # Timeout=3: si la base no responde, falla en 3 segundos y no en 15.
+      CONNECTIONSTRINGS__PRODUCTSDB: "Host=products-db;Port=5432;Database=productsdb;Username=productsusr;Password=Pa55w0rd;Timeout=3"
       REDIS__HOST: "redis"
       RABBITMQ__HOST: "rabbitmq"
       CONSUL__URL: "http://consul:8500"
@@ -426,18 +424,17 @@ services:
         condition: service_healthy
 
   users-db:
-    image: postgres:18
-    environment:
-      POSTGRES_DB: "usersdb"
-      POSTGRES_USER: "usersusr"
-      POSTGRES_PASSWORD: "Pa55w0rd"
+    image: mongo:9
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - ./src/UsersService/pgdata:/var/lib/postgresql
-      - ./src/UsersService/pginit:/docker-entrypoint-initdb.d
+      - ./src/UsersService/mongodbdata:/data/db
+      - ./src/UsersService/mongoinit:/docker-entrypoint-initdb.d
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "Pa55w0rd"
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "usersusr", "-d", "usersdb"]
+      test: ["CMD", "mongosh", "--quiet", "-u", "usersusr", "-p", "Pa55w0rd", "--authenticationDatabase", "usersdb", "usersdb", "--eval", "db.runCommand({ ping: 1 }).ok"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -449,7 +446,7 @@ services:
     image: users-service:latest
     environment:
       SERVICE_NAME: "users-service"
-      CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+      CONNECTIONSTRINGS__USERSDB: "mongodb://usersusr:Pa55w0rd@users-db:27017/usersdb"
       RABBITMQ__HOST: "rabbitmq"
     ports:
       - "8002:8000"
@@ -477,7 +474,7 @@ services:
     image: users-service:latest
     environment:
       SERVICE_NAME: "users-service-v2"
-      CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+      CONNECTIONSTRINGS__USERSDB: "mongodb://usersusr:Pa55w0rd@users-db:27017/usersdb"
       RABBITMQ__HOST: "rabbitmq"
       RELEASE__VERSION: "2"
       # A/B Testing: la variante del experimento la decide Unleash, del perfil

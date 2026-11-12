@@ -6,7 +6,7 @@ using Apache.NMS.ActiveMQ;
 // RabbitMQ, ni JSON, ni la aplicación: no comparte código con ella. Es el
 // sistema que no se puede cambiar.
 //
-//   PEDIDO  | pedido: 10 | cliente: 8 | artículo: 24 | cantidad: 5
+//   PEDIDO  | pedido: 10 | cliente: 24 | artículo: 8 | cantidad: 5
 //   FACTURA | pedido: 10 | factura: 12 | fecha AAAAMMDD: 8
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Erp>();

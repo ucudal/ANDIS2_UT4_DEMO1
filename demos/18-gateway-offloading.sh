@@ -23,8 +23,8 @@ note "Renovar el certificado es cambiarlo en un solo lugar: el gateway."
 step "Autenticación: el gateway valida el token antes de reenviar la solicitud"
 sleep 1
 since=$(date +%s)
-call "$HTTPS_GATEWAY/orders/user/1/details/view"
-call -H "Authorization: Bearer $carol" "$HTTPS_GATEWAY/orders/user/1/details/view" -o /dev/null
+call "$HTTPS_GATEWAY/orders/user/$ALICE/details/view"
+call -H "Authorization: Bearer $carol" "$HTTPS_GATEWAY/orders/user/$ALICE/details/view" -o /dev/null
 sleep 1
 echo "  Logs del gateway:"
 docker compose logs --no-log-prefix --since "$since" api-gateway | grep '\[HTTPS\]' | sed 's/^/    /'

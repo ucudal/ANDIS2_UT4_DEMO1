@@ -15,8 +15,8 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p src/UsersService/pgdata
-mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
 mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
@@ -128,8 +128,8 @@ docker compose exec api-gateway curl -sS http://products-service:9901/stats/prom
 #
 # Los usuarios están en Keycloak, en el realm 'andis', todos con la contraseña
 # Pa55w0rd:
-# - alice: rol customer; es el User 1 de la aplicación.
-# - bob: rol customer; es el User 2.
+# - alice: rol customer; es un User de la aplicación.
+# - bob: rol customer; también es un User.
 # - carol: rol admin; administra el catálogo de Products y no es cliente.
 #
 # La consola de administración de Keycloak está en http://localhost:8080 -usr:
@@ -155,8 +155,8 @@ docker compose exec api-gateway curl -sS http://products-service:9901/stats/prom
 # la aplicación. La aplicación no guarda contraseñas: confía en la firma de
 # Keycloak y usa los claims para decidir qué puede hacer cada usuario.
 #
-# Como en las demás demos, las Orders se crean para el User 2, bob: las del
-# User 1, alice, son la base de las demos de disponibilidad.
+# Como en las demás demos, las Orders se crean para bob: las de alice son la
+# base de las demos de disponibilidad.
 #
 # Sin el patrón, por la entrada HTTP, nadie se identifica; al crear una Order
 # para 'bob', Orders obtiene en el userId del cuerpo de la solicitud; cualquiera
@@ -164,14 +164,14 @@ docker compose exec api-gateway curl -sS http://products-service:9901/stats/prom
 
 curl -sS -w '%{http_code}\n' -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 1, "quantity": 1}' | jq
 
 # La misma solicitud por la entrada HTTPS: el gateway responde 401 Unauthorized,
 # porque falta el token.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 1, "quantity": 1}' | jq
 
 # En esta demo se usa Device Authorization Grant -definido en el estándar RFC
 # 8628- que es un flujo de autenticación de OAuth 2.0 y OpenID Connect en
@@ -211,8 +211,8 @@ bob=$(echo "$response" | jq -r .access_token)
 # - iss: quién lo emitió, Keycloak, en el realm andis.
 # - exp: cuándo vence, en segundos desde 1970; dura 15 minutos.
 # - preferred_username: bob.
-# - user_id: 2, el User de bob en la aplicación. Lo agrega Keycloak a partir de
-#   un atributo del usuario.
+# - user_id: 665f1c2ab4e8d9a0c1f2e302, el User de bob en la aplicación. Lo
+#   agrega Keycloak a partir de un atributo del usuario.
 # - realm_access.roles: customer.
 
 echo "$bob" | claims
@@ -238,25 +238,25 @@ docker compose exec users-db psql -U usersusr -d usersdb -c "SELECT * FROM users
 id=$(curl -sS --cacert gateway.crt -X POST https://localhost/orders/ \
   -H "Authorization: Bearer $bob" \
   -H "Content-Type: application/json" \
-  -d '{"productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq .id)
+  -d '{"productId": 1, "quantity": 1}' | jq .id)
 echo "$id"
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $bob" https://localhost/orders/$id | jq
 
-# Crear una Order para el User 1 con el token de 'bob': Orders responde 403
+# Crear una Order para alice con el token de 'bob': Orders responde 403
 # Forbidden.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orders/ \
   -H "Authorization: Bearer $bob" \
   -H "Content-Type: application/json" \
-  -d '{"userId": 1, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e301", "productId": 1, "quantity": 1}' | jq
 
-# 'bob' consulta sus Orders y las del User 1: las suyas sí, las otras no.
+# 'bob' consulta sus Orders y las de alice: las suyas sí, las otras no.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $bob" \
-  https://localhost/orders/user/2/details/view | table
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | table
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $bob" \
-  https://localhost/orders/user/1/details/view | jq
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | jq
 
 # Para no pasar por el navegador en cada usuario, el resto de las demos usa la
 # función token, definida al principio de este archivo. Usa el grant type
@@ -264,7 +264,7 @@ curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $bob
 # Keycloak. Es más corto, pero la aplicación ve la contraseña; en una aplicación
 # real se usa el navegador, como con bob.
 #
-# 'alice' lista las Orders: ve solo las suyas, las del User 1. Por HTTP, sin
+# 'alice' lista las Orders: ve solo las suyas. Por HTTP, sin
 # identidad, la misma lista trae las de todos.
 
 alice=$(token alice)
@@ -278,24 +278,24 @@ curl -sS -w '%{http_code}\n' http://localhost/orders/ | table
 carol=$(token carol)
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $carol" \
-  https://localhost/orders/user/2/details/view | table
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | table
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -X POST https://localhost/orders/ \
   -H "Authorization: Bearer $carol" \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 1, "quantity": 1}' | jq
 
 # ¿Y si 'bob' cambia el user_id de su token por el de alice? Se arma un token
 # con el mismo encabezado y la misma firma, y los claims cambiados. 'bob' no
 # puede volver a firmarlo, porque no tiene la clave privada de Keycloak.
 
-forged=$(echo "$bob" | cut -d. -f1).$(echo "$bob" | claims | jq -c '.user_id = 1' \
+forged=$(echo "$bob" | cut -d. -f1).$(echo "$bob" | claims | jq -c '.user_id = "665f1c2ab4e8d9a0c1f2e301"' \
   | base64 | tr '+/' '-_' | tr -d '=\n').$(echo "$bob" | cut -d. -f3)
 echo "$forged" | claims | jq '{preferred_username, user_id}'
 
 # La firma ya no corresponde a los claims: el gateway responde 401.
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $forged" \
-  https://localhost/orders/user/1/details/view | jq
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | jq
 
 # Las decisiones que tomó Orders con los claims, en su log.
 
@@ -359,12 +359,12 @@ docker compose exec api-gateway ls -l /etc/nginx/tls
 # Orders no valida tokens: lee esos encabezados -ver
 # OrdersService/CallerIdentity.cs-.
 
-curl -sS -w '%{http_code}\n' --cacert gateway.crt https://localhost/orders/user/1/details/view | jq
+curl -sS -w '%{http_code}\n' --cacert gateway.crt https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | jq
 
 alice=$(token alice)
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" \
-  https://localhost/orders/user/1/details/view | table
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | table
 
 # En el log del gateway, una línea por solicitud HTTPS, con el código, el
 # usuario y la dirección del servicio que la atendió. La del 401 no tiene ni
@@ -484,7 +484,7 @@ head -c 100000 /dev/zero | tr '\0' 'a' | curl -sS -w '%{http_code}\n' --cacert g
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" \
   -H "X-User-Id: 2" -H "X-User-Name: bob" -H "X-User-Roles: customer" \
-  https://localhost/orders/user/2/details/view | jq
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | jq
 
 # Pero los servicios también están publicados en el host, en los puertos 8000,
 # 8001 y 8002, y por ahí no hay Gatekeeper. Sin token, cualquiera llega a la
@@ -495,7 +495,7 @@ curl -sS -w '%{http_code}\n' http://localhost:8000/orders/patterns | jq
 curl -sS -w '%{http_code}\n' -X POST http://localhost:8000/orders/ \
   -H "X-User-Id: 2" -H "X-User-Name: bob" -H "X-User-Roles: customer" \
   -H "Content-Type: application/json" \
-  -d '{"productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' | jq
+  -d '{"productId": 1, "quantity": 1}' | jq
 
 # En el log, Orders cree que la Order es "según el token de bob", aunque no hubo
 # ningún token: nadie reemplazó los encabezados.
@@ -516,7 +516,7 @@ curl -s -o /dev/null -w '%{http_code} %{errormsg}\n' http://localhost:8000/order
 docker compose ps --format '{{.Name}}\t{{.Ports}}'
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" \
-  https://localhost/orders/user/1/details/view | table
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view | table
 
 # Volver a publicar los puertos, como los necesitan las demás demos.
 
@@ -559,9 +559,9 @@ docker inspect -f '{{.HostConfig.NetworkMode}}' $(docker compose ps -q products-
 docker compose ps -q products-service
 
 # Sin sidecar, por HTTP, cualquiera cambia el nombre del Product
-# 60f7c2b5e1d3c2a1b8e4d125 de "Zapatos" a "Zapatillas", sin identificarse.
+# 3 de "Zapatos" a "Zapatillas", sin identificarse.
 
-curl -sS -w '%{http_code}\n' -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+curl -sS -w '%{http_code}\n' -X PUT http://localhost/products/3 \
   -H "Content-Type: application/json" -d '{"name": "Zapatillas", "price": 3500.75}' | jq
 
 # Con sidecar, por HTTPS: alice tiene el rol customer. Puede leer el Product,
@@ -571,8 +571,8 @@ curl -sS -w '%{http_code}\n' -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8
 alice=$(token alice)
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt -H "Authorization: Bearer $alice" \
-  https://localhost/products/60f7c2b5e1d3c2a1b8e4d125 | jq
-curl -sS -w '\n%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+  https://localhost/products/3 | jq
+curl -sS -w '\n%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/products/3 \
   -H "Authorization: Bearer $alice" \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
@@ -580,7 +580,7 @@ curl -sS -w '\n%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/pro
 
 carol=$(token carol)
 
-curl -sS -w '%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d125 \
+curl -sS -w '%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/products/3 \
   -H "Authorization: Bearer $carol" \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}' | jq
 
@@ -591,7 +591,7 @@ curl -sS -w '%{http_code}\n' --cacert gateway.crt -X PUT https://localhost/produ
 # que tiene, "Zapatos", para no alterar los datos.
 
 docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
-  -X PUT http://products-service:8000/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -X PUT http://products-service:8000/products/3 \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
 # Lo mismo a través del sidecar, products-service:9000: 403. El sidecar
@@ -600,7 +600,7 @@ docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
 # sería su única entrada.
 
 docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
-  -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -X PUT http://products-service:9000/products/3 \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
 # Envoy también verifica la firma del token, con las claves públicas de
@@ -611,7 +611,7 @@ forged=$(echo "$alice" | cut -d. -f1).$(echo "$alice" | claims | jq -c '.realm_a
   | base64 | tr '+/' '-_' | tr -d '=\n').$(echo "$alice" | cut -d. -f3)
 
 docker compose exec api-gateway curl -sS -w '\n%{http_code}\n' \
-  -X PUT http://products-service:9000/products/60f7c2b5e1d3c2a1b8e4d125 \
+  -X PUT http://products-service:9000/products/3 \
   -H "Authorization: Bearer $forged" \
   -H "Content-Type: application/json" -d '{"name": "Zapatos", "price": 3500.75}'
 
@@ -633,7 +633,7 @@ docker compose exec api-gateway curl -sS http://products-service:9901/stats/prom
   | grep -E '^envoy_http_(rbac|jwt_authn)_(allowed|denied)'
 
 # El siguiente script repite lo anterior. Al terminar, le devuelve al Product
-# 60f7c2b5e1d3c2a1b8e4d125 el nombre "Zapatos".
+# 3 el nombre "Zapatos".
 
 ./demos/20-sidecar.sh
 
@@ -671,7 +671,7 @@ head -c 5000000 /dev/urandom > "$image"
 # esta ruta.
 
 curl -sS -w '%{http_code}\n' \
-  -X PUT http://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
+  -X PUT http://localhost/products/2/image \
   -H "Content-Type: image/jpeg" --data-binary @"$image" | jq
 
 # Products recibió los 5 MB y los tuvo en memoria mientras los subía.
@@ -684,7 +684,7 @@ docker compose logs products-service | grep --color=always '\[VALET KEY\]' | tai
 carol=$(token carol)
 
 curl -sS -w '%{http_code}\n' --cacert gateway.crt \
-  -X PUT https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image \
+  -X PUT https://localhost/products/2/image \
   -H "Authorization: Bearer $carol" -H "Content-Type: image/jpeg" --data-binary @"$image" | jq
 
 # Con Valet Key: carol le pide a Products una URL para subir la imagen. Como es
@@ -693,7 +693,7 @@ curl -sS -w '%{http_code}\n' --cacert gateway.crt \
 
 response=$(curl -sS --cacert gateway.crt -X POST \
   -H "Authorization: Bearer $carol" \
-  https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image/upload-url)
+  https://localhost/products/2/image/upload-url)
 echo "$response" | jq
 url=$(echo "$response" | jq -r .uploadUrl)
 
@@ -723,7 +723,7 @@ curl -sS -w '<!-- HTTP %{http_code} -->' "$url" | xmllint --format -
 # Escribir la imagen de otro Product con la misma clave: 403 Forbidden,
 # AuthorizationFailure, porque la firma era para otro blob.
 
-curl -sS -w '<!-- HTTP %{http_code} -->' -X PUT "${url/60f7c2b5e1d3c2a1b8e4d124/60f7c2b5e1d3c2a1b8e4d125}" \
+curl -sS -w '<!-- HTTP %{http_code} -->' -X PUT "${url/\/2\?/\/3?}" \
   -H "x-ms-blob-type: BlockBlob" --data-binary 'x' | xmllint --format -
 
 # La misma dirección sin la firma: 403 Forbidden. El almacenamiento no es
@@ -737,7 +737,7 @@ curl -sS -w '<!-- HTTP %{http_code} -->' "${url%%\?*}" | xmllint --format -
 
 short=$(curl -sS --cacert gateway.crt -X POST \
   -H "Authorization: Bearer $carol" \
-  "https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image/upload-url?seconds=10" | jq -r .uploadUrl)
+  "https://localhost/products/2/image/upload-url?seconds=10" | jq -r .uploadUrl)
 
 curl -sS -o /dev/null -w '%{http_code}\n' -X PUT "$short" \
   -H "x-ms-blob-type: BlockBlob" -H "Content-Type: image/jpeg" --data-binary @"$image"
@@ -751,10 +751,10 @@ curl -sS -w '<!-- HTTP %{http_code} -->' -X PUT "$short" -H "x-ms-blob-type: Blo
 # de lectura, sp=r. Con -L, curl sigue la redirección y la baja de Azurite.
 
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' --cacert gateway.crt \
-  -H "Authorization: Bearer $carol" https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image
+  -H "Authorization: Bearer $carol" https://localhost/products/2/image
 
 curl -sS -L -o /dev/null -w '%{http_code}, %{size_download} bytes\n' --cacert gateway.crt \
-  -H "Authorization: Bearer $carol" https://localhost/products/60f7c2b5e1d3c2a1b8e4d124/image
+  -H "Authorization: Bearer $carol" https://localhost/products/2/image
 
 # Lo que hizo Products, en su log: sin Valet Key, recibió los 5 MB; con Valet
 # Key, solo firmó claves. Sus métricas cuentan los bytes que recibió y las
@@ -805,6 +805,6 @@ docker volume prune -f
 docker builder prune -f
 
 rm -rf ./src/OrdersService/mysqldata
-rm -rf ./src/ProductsService/mongodbdata
-rm -rf ./src/UsersService/pgdata
+rm -rf ./src/ProductsService/pgdata
+rm -rf ./src/UsersService/mongodbdata
 rm -f gateway.crt

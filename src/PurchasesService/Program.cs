@@ -20,7 +20,7 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
-app.MapGet("/purchases/product/{productId}", async (string productId, IPurchaseSource purchases, CancellationToken cancellationToken) =>
+app.MapGet("/purchases/product/{productId}", async (int productId, IPurchaseSource purchases, CancellationToken cancellationToken) =>
     Results.Ok(await purchases.ForProductAsync(productId, cancellationToken)));
 
 app.Run();

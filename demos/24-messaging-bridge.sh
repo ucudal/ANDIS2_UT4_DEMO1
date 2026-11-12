@@ -13,7 +13,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d124
+PRODUCT=2
 
 # invoice <id>: espera hasta 20 segundos a que la Order tenga su factura.
 invoice() {
@@ -39,7 +39,7 @@ sleep 1
 since=$(date +%s)
 
 step "Una Order confirmada llega al ERP, y su factura vuelve"
-id=$(create_order 2 "$PRODUCT")
+id=$(create_order "$BOB" "$PRODUCT")
 wait_processed "$id"
 invoice "$id"
 history "$id"
@@ -54,7 +54,7 @@ note "El ERP solo conoce ActiveMQ y sus registros: no sabe que existe RabbitMQ."
 step "Se detiene el broker del ERP y se crea otra Order"
 annotate "ActiveMQ detenido"
 docker compose stop legacy-broker > /dev/null 2>&1
-id=$(create_order 2 "$PRODUCT")
+id=$(create_order "$BOB" "$PRODUCT")
 wait_processed "$id"
 sleep 2
 history "$id"

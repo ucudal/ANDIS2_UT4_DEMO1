@@ -42,7 +42,7 @@ public static class Dependencies
     // HttpClient, para que la llamada pase por el pipeline de resiliencia. Un
     // cliente WCF generado con dotnet-svcutil usaría su propio canal HTTP y
     // dejaría afuera el Bulkhead, el Retry y el Circuit Breaker.
-    public static Task<CallResult<UserDto>> GetUserAsync(HttpClient client, int userId, CancellationToken cancellationToken = default) =>
+    public static Task<CallResult<UserDto>> GetUserAsync(HttpClient client, string userId, CancellationToken cancellationToken = default) =>
         CallAsync(async () =>
         {
             var envelope = new XDocument(
@@ -75,7 +75,7 @@ public static class Dependencies
 
             var user = new UserDto
             {
-                Id = (int)result.Element(Users + "Id")!,
+                Id = (string?)result.Element(Users + "Id"),
                 Name = (string?)result.Element(Users + "Name")
             };
             return new CallResult<UserDto>(user, false, null);

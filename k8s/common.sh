@@ -24,7 +24,7 @@ rollouts() { kubectl argo rollouts -n andis "$@"; }
 strategy_apply() {
     kubectl apply -f "k8s/$1" > /dev/null
     rollouts status users --timeout 180s > /dev/null
-    until [ "$(get_user 1 -o /dev/null -w '%{http_code}')" = 200 ]; do sleep 1; done
+    until [ "$(get_user "$ALICE" -o /dev/null -w '%{http_code}')" = 200 ]; do sleep 1; done
 }
 
 # strategy_delete <carpeta>: borra los manifiestos de una estrategia, sin
@@ -46,7 +46,7 @@ wait_phase() {
     until [ "$(kubectl -n andis get rollout users -o jsonpath='{.status.phase}')" = "$1" ]; do sleep 1; done
 }
 
-# while_probing <comando>: ejecuta un comando mientras una sonda pide el User 1
+# while_probing <comando>: ejecuta un comando mientras una sonda pide el User de alice
 # cada 0,1 segundos, y muestra qué respondió cada versión durante el cambio.
 while_probing() {
     local probes running

@@ -29,8 +29,8 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p src/UsersService/pgdata
-mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
 mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
@@ -54,18 +54,18 @@ docker compose --profile observability up -d --wait
 # Variables
 # ---------------------------------------------------------------------------
 
-# Guardar en variables la solicitud SOAP GetUser del User 1, y del User 2
+# Guardar en variables la solicitud SOAP GetUser de alice, y de bob
 soap1='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <GetUser xmlns="http://ucu.edu.uy/andis/users">
-      <id>1</id>
+      <id>665f1c2ab4e8d9a0c1f2e301</id>
     </GetUser>
   </soap:Body>
 </soap:Envelope>'
 soap2='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <GetUser xmlns="http://ucu.edu.uy/andis/users">
-      <id>2</id>
+      <id>665f1c2ab4e8d9a0c1f2e302</id>
     </GetUser>
   </soap:Body>
 </soap:Envelope>'
@@ -113,7 +113,7 @@ map $host $users_target {
 }
 EOF
 
-# La demo completa, con una sonda que pide el User 1 cada 0.1 segundos mientras
+# La demo completa, con una sonda que pide el User de alice cada 0.1 segundos mientras
 # se conmuta: ninguna respuesta con error
 
 ./demos/27-blue-green.sh
@@ -211,7 +211,7 @@ map $host $users_target {
 }
 EOF
 
-# La demo completa, con una sonda que pide el User 1 cada 0.1 segundos durante
+# La demo completa, con una sonda que pide el User de alice cada 0.1 segundos durante
 # todo el reemplazo: ninguna respuesta con error
 
 ./demos/28-rolling-upgrade.sh
@@ -335,15 +335,15 @@ done
 # Como el proveedor de Unleash para OpenFeature no devuelve el nombre de la
 # variante sino su payload, cada variante lleva su nombre como payload. Por
 # último, la variante se elige con un hash del id del User y del groupId: el
-# mismo User cae siempre en la misma variante. Con 'users-experiment' como
-# groupId, el User 1 cae en la B y el User 2 en la A.
+# mismo User cae siempre en la misma variante. Con 'display-name' como
+# groupId, alice cae en la B y bob en la A.
 curl -sS -X POST $strategies \
   -H 'Authorization: *:*.andis-admin-token' \
   -H 'Content-Type: application/json' \
   -d '{
   "name": "flexibleRollout", "title": "Segmento beta",
   "constraints": [{"contextName": "segment", "operator": "IN", "values": ["beta"]}],
-  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "display-name"},
   "variants": [
     {"name": "B", "weight": 1000, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}' | jq
 
@@ -353,7 +353,7 @@ curl -sS -X POST $strategies \
 # queda con el resto hasta 1000.
 curl -sS -X POST $strategies -H 'Authorization: *:*.andis-admin-token' -H 'Content-Type: application/json' -d '{
   "name": "flexibleRollout", "title": "Todos los Users", "constraints": [],
-  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "display-name"},
   "variants": [
     {"name": "A", "weight": 500, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "A"}},
     {"name": "B", "weight": 500, "weightType": "fix", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}' | jq
@@ -369,13 +369,13 @@ map $host $users_target {
 }
 EOF
 
-# El User 1, que es 'alice', cae en la variante B: el encabezado X-Variant y el
+# alice cae en la variante B: el encabezado X-Variant y el
 # campo DisplayName
 curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap1" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
 
-# El User 2, que es 'bob', cae en la A, y siempre en la A
+# bob cae en la A, y siempre en la A
 curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
   -H 'Content-Type: text/xml; charset=utf-8' \
   -H 'SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"'
@@ -391,7 +391,7 @@ curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
 id=$(curl -sS $strategies -H 'Authorization: *:*.andis-admin-token' | jq -r '.[] | select(.title == "Todos los Users") | .id')
 curl -sS -X PUT $strategies/$id -H 'Authorization: *:*.andis-admin-token' -H 'Content-Type: application/json' -d '{
   "name": "flexibleRollout", "title": "Todos los Users", "constraints": [],
-  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "display-name"},
   "variants": [
     {"name": "B", "weight": 1000, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}' | jq
 
@@ -412,7 +412,7 @@ curl -si -X POST http://localhost:8091/users/UserService.svc -d "$soap2" \
 docker compose --profile feature-flags up -d --wait unleash
 curl -sS -X PUT $strategies/$id -H 'Authorization: *:*.andis-admin-token' -H 'Content-Type: application/json' -d '{
   "name": "flexibleRollout", "title": "Todos los Users", "constraints": [],
-  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "users-experiment"},
+  "parameters": {"rollout": "100", "stickiness": "userId", "groupId": "display-name"},
   "variants": [
     {"name": "A", "weight": 500, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "A"}},
     {"name": "B", "weight": 500, "weightType": "fix", "stickiness": "userId", "payload": {"type": "string", "value": "B"}}]}'
@@ -531,7 +531,7 @@ curl -s -o /dev/null -w '%{http_code} versión %header{x-version}\n' \
 # Service y las rutas
 kubectl delete -f k8s/blue-green
 
-# La demo completa, con una sonda que pide el User 1 cada 0.1 segundos durante
+# La demo completa, con una sonda que pide el User de alice cada 0.1 segundos durante
 # la conmutación y la vuelta atrás: ninguna respuesta con error
 
 ./demos/31-argo-blue-green.sh
@@ -615,7 +615,7 @@ kubectl apply -f k8s/rolling-upgrade/rollout.yaml
 kubectl argo rollouts status users -n andis
 
 # El análisis necesita tráfico: mide los errores de las solicitudes que
-# atendieron los pods nuevos. Pedir el User 1 cada 0.1 segundos, en segundo
+# atendieron los pods nuevos. Pedir el User de alice cada 0.1 segundos, en segundo
 # plano
 while true; do
   curl -s -o /dev/null -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
@@ -672,7 +672,7 @@ kubectl get httproute users -n andis \
   -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.name} {.weight}%{"\n"}{end}'
 
 # El análisis necesita tráfico: mide los errores de las solicitudes que
-# atendieron los pods nuevos. Pedir el User 1 cada 0.1 segundos, en segundo
+# atendieron los pods nuevos. Pedir el User de alice cada 0.1 segundos, en segundo
 # plano
 while true; do
   curl -s -o /dev/null -X POST http://localhost:8092/users/UserService.svc -d "$soap1" \
@@ -763,6 +763,6 @@ docker volume prune -f
 docker builder prune -f
 
 rm -rf ./src/OrdersService/mysqldata
-rm -rf ./src/ProductsService/mongodbdata
-rm -rf ./src/UsersService/pgdata
+rm -rf ./src/ProductsService/pgdata
+rm -rf ./src/UsersService/mongodbdata
 rm -f gateway.crt

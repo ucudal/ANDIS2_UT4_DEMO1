@@ -16,7 +16,7 @@ burst() {
     started=$(jq -n now)
     ids=$(seq "$ORDERS" | xargs -P "$ORDERS" -I{} curl -s -X POST "$ORDERS_DIRECT/orders/" \
         -H 'Content-Type: application/json' \
-        -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq -r .id)
+        -d "{\"userId\": \"$BOB\", \"productId\": 3, \"quantity\": 1}" | jq -r .id)
     wait_processed "$ids"
     jq -n --argjson s "$started" 'now - $s | round'
 }

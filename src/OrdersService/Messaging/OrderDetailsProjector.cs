@@ -143,7 +143,7 @@ public class OrderDetailsProjector : BackgroundService
             case Events.OrderConfirmed:
                 var confirmed = JsonSerializer.Deserialize<OrderConfirmed>(body.Span)!;
                 await SetStatusAsync(db, confirmed.OrderId, OrderStatus.Confirmed,
-                    confirmed.UserId, confirmed.ProductId, confirmed.Quantity, cancellationToken);
+                    confirmed.UserId ?? string.Empty, confirmed.ProductId, confirmed.Quantity, cancellationToken);
                 return true;
 
             case Events.OrderRejected:
@@ -151,7 +151,7 @@ public class OrderDetailsProjector : BackgroundService
                 // existe, se crea con valores por defecto y order.created los
                 // completa cuando llegue.
                 var rejected = JsonSerializer.Deserialize<OrderRejected>(body.Span)!;
-                await SetStatusAsync(db, rejected.OrderId, OrderStatus.Rejected, 0, null, 0, cancellationToken);
+                await SetStatusAsync(db, rejected.OrderId, OrderStatus.Rejected, string.Empty, null, 0, cancellationToken);
                 return true;
 
             // Messaging Bridge: la factura del ERP queda en el historial de la
@@ -288,7 +288,7 @@ public class OrderDetailsProjector : BackgroundService
     // eventos de cada Order: aplicados en cualquier orden, el resultado es el
     // mismo. Si la fila ya tiene un estado final, no se cambia.
     private async Task SetStatusAsync(OrdersDbContext db, int orderId, string status,
-        int userId, string? productId, int quantity, CancellationToken cancellationToken)
+        string userId, int? productId, int quantity, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
         // MySQL cuenta 1 fila si insertó, y 2 o 0 si la fila ya existía.

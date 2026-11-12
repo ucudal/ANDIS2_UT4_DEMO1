@@ -11,5 +11,5 @@ public record Purchase(int Number, string Buyer, int Units, bool Confirmed);
 // anticorrupción la implementa.
 public interface IPurchaseSource
 {
-    Task<IReadOnlyList<Purchase>> ForProductAsync(string productId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Purchase>> ForProductAsync(int productId, CancellationToken cancellationToken);
 }

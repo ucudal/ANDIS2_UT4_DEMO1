@@ -58,8 +58,8 @@ este repositorio:
 
 | Servicio | Responsabilidad | Base de datos |
 | -------- | --------------- | ------------- |
-| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) | [PostgreSQL](https://www.postgresql.org/) |
-| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs) | [MongoDB](https://www.mongodb.com/) |
+| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) | [MongoDB](https://www.mongodb.com/) |
+| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs) | [PostgreSQL](https://www.postgresql.org/) |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) | [MySQL](https://www.mysql.com/) |
 | `api-gateway` | Punto de entrada único -nginx- que enruta `/users/`, `/products/` y `/orders/` | — |
 
@@ -505,8 +505,8 @@ detecta cuando un usuario se queja.
 dependencias y devuelve un [JSON](https://www.json.org/) con el resultado de
 cada chequeo -200 si está sano, 503 en caso contrario-:
 
-* `users-service`: conexión a [PostgreSQL](https://www.postgresql.org/).
-* `products-service`: *ping* a [MongoDB](https://www.mongodb.com/).
+* `users-service`: *ping* a [MongoDB](https://www.mongodb.com/).
+* `products-service`: conexión a [PostgreSQL](https://www.postgresql.org/).
 * `orders-service`: conexión a [MySQL](https://www.mysql.com/) y a
   [RabbitMQ](https://www.rabbitmq.com/). Si RabbitMQ no está, queda `Degraded` y
   responde 200, porque gracias al [Transactional Outbox](#transactional-outbox)
@@ -541,8 +541,9 @@ Cada chequeo es una implementación de `IHealthCheck`, registrada con
 * La clase `RabbitMqHealthCheck`, en
   [Common/RabbitMq.cs](src/Common/RabbitMq.cs), y la clase `MongoHealthCheck`,
   en
-  [ProductsService/MongoHealthCheck.cs](src/ProductsService/MongoHealthCheck.cs),
-  implementan el método `CheckHealthAsync`.
+  [UsersService/Data/MongoHealthCheck.cs](src/UsersService/Data/MongoHealthCheck.cs),
+  implementan el método `CheckHealthAsync`. `Products` y `Orders` chequean su
+  base con `AddDbContextCheck`, de [EF Core](https://learn.microsoft.com/ef/core/).
 * El método `WriteJson` de la clase `HealthResponse`, en
   [Common/HealthResponse.cs](src/Common/HealthResponse.cs), escribe el JSON de
   `/health`.
@@ -550,8 +551,8 @@ Cada chequeo es una implementación de `IHealthCheck`, registrada con
   [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
 
 **Cómo verlo:** la demo [06 de Health Endpoint Monitoring](demos/06-health.sh)
-detiene la base de datos de `Products`. `/health/products` pasa a 503 con
-`"MongoDB no responde"`, `Orders` sigue sano, y a los pocos segundos Docker
+detiene la base de datos de `Products`. `/health/products` pasa a 503, con el
+chequeo `products-db` en `Unhealthy`; `Orders` sigue sano, y a los pocos segundos Docker
 marca `products-service` como `unhealthy`. Al levantar la base, todo vuelve a la
 normalidad. Para verlo en vivo, corre [el monitor de
 estado](demos/monitor-health.sh) en otra terminal. En Grafana, el panel "Salud
@@ -757,7 +758,7 @@ la vista materializada escriben cada fila con un *upsert* -ver [Materialized
 View](#materialized-view)-. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
 `Users` y `Products` publican sus eventos directamente, sin *outbox*: si
-RabbitMQ no está, el cambio se guarda y el evento se pierde. `Products` usa
+RabbitMQ no está, el cambio se guarda y el evento se pierde. `Users` usa
 MongoDB sin réplicas, que no admite transacciones con varios documentos. Quedó
 así a propósito, para comparar; ver [Decisiones abiertas a
 discusión](ARCHITECTURE.md#decisiones-abiertas-a-discusión) en ARCHITECTURE.md.
@@ -827,10 +828,10 @@ fila "Rendimiento: caché, CQRS y outbox".
 | `orders-projector` -3 réplicas- | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
 | Exchange `andis.events` | Eventos `order.created`, `order.confirmed`, `order.rejected`, `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación [SOAP](https://www.w3.org/TR/soap/) `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
-| Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [MongoDB](https://www.mongodb.com/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
+| Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [PostgreSQL](https://www.postgresql.org/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
 
 ```bash
-# Caché apagada y cada lectura de MongoDB demora 200 ms
+# Caché apagada y cada lectura de PostgreSQL demora 200 ms
 curl -X PUT http://localhost/products/cache -H "Content-Type: application/json" \
   -d '{"enabled": false, "dbDelayMs": 200}'
 
@@ -853,11 +854,11 @@ Como en las demos de disponibilidad, cada patrón tiene un script en
 la base se vuelve el cuello de botella de un pico de lecturas.
 
 **Implementación:** `Products` busca primero en [Redis](https://redis.io/). Si
-el dato no está -*miss*-, lo lee de [MongoDB](https://www.mongodb.com/) y lo
+el dato no está -*miss*-, lo lee de [PostgreSQL](https://www.postgresql.org/) y lo
 guarda en Redis por 60 segundos; la próxima lectura sale de Redis -*hit*-. Al
 crear o cambiar un `Product`, `Products` borra de Redis las claves afectadas, y
 la próxima lectura trae el dato nuevo. Es la aplicación la que maneja la caché:
-Redis no sabe nada de MongoDB. Si Redis no responde, `Products` lee MongoDB
+Redis no sabe nada de PostgreSQL. Si Redis no responde, `Products` lee PostgreSQL
 directamente; la caché acelera, pero no es una dependencia, y por eso no entra
 en `/health`. Está en los métodos `GetOrLoadAsync` e `InvalidateAsync` de la
 clase `ProductCache`, en
@@ -866,7 +867,7 @@ los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
 [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
 
 Se borra la clave en lugar de escribir el valor nuevo: así la caché nunca guarda
-un valor que MongoDB no tiene. La caché está en Redis y no en la memoria de
+un valor que PostgreSQL no tiene. La caché está en Redis y no en la memoria de
 `Products`, así que la comparten todas las réplicas y una invalidación vale para
 todas -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 El TTL acota cuánto puede durar un dato desactualizado si una invalidación
@@ -877,20 +878,20 @@ falla.
 ![Secuencia de una lectura y una invalidación con
 Cache-Aside](assets/10-cache-aside.svg)
 
-Si Redis no responde, `Products` lee directamente de MongoDB.
+Si Redis no responde, `Products` lee directamente de PostgreSQL.
 
 **Código:**
 
 ![Clases de la caché de Products](assets/10-cache-aside-clases.svg)
 
-`ProductCache` no conoce a MongoDB: su método `GetOrLoadAsync` recibe la lectura
+`ProductCache` no conoce a PostgreSQL: su método `GetOrLoadAsync` recibe la lectura
 como una función, `load`.
 
 **Cómo verlo:** la demo [10 de Cache-Aside](demos/10-cache-aside.sh) simula una
 base que demora 200 ms y lee el mismo `Product` varias veces: la primera lectura
 demora 200 ms y las siguientes, 2 o 3 ms. Después cambia su nombre: la lectura
 siguiente es un *miss* y trae el nombre nuevo. Con Redis detenido, `Products`
-sigue respondiendo, a la velocidad de MongoDB. Bajo carga,
+sigue respondiendo, a la velocidad de PostgreSQL. Bajo carga,
 [k6/cache-aside.js](k6/cache-aside.js) lee 50 veces por segundo con la caché
 apagada y después prendida: la p95 baja de unos 100 ms a unos 3 ms.
 
@@ -1324,7 +1325,7 @@ echo "https://www.jwt.io/#token=$alice&publicKey=$(curl -sS http://localhost:808
 
 # Las Orders de alice, con el token
 curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
-  https://localhost/orders/user/1/details/view
+  https://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view
 ```
 
 ### Patrones de seguridad
@@ -2119,7 +2120,7 @@ Por eso está aparte, en la clase `ErpFormat`, en
 reenvían no conocen los formatos.
 
 ```text
-PEDIDO  00000000040000000260f7c2b5e1d3c2a1b8e4d12400001
+PEDIDO  0000000004665f1c2ab4e8d9a0c1f2e3020000000200001
 FACTURA 0000000004F0000000004 20261105
 ```
 
@@ -2261,7 +2262,7 @@ eso responden igual a las consultas. Tampoco es igual todo el comportamiento: el
 monolito confirma la `Order` al crearla, y `Orders` lo hace después.
 
 **Cómo resolver la divergencia de datos:** en la demo, el nombre de un `Product`
-cambia en [MongoDB](https://www.mongodb.com/), y el JOIN del monolito sigue
+cambia en [PostgreSQL](https://www.postgresql.org/), y el JOIN del monolito sigue
 leyendo su copia en SQLite. La regla de fondo es que cada dato tenga un solo
 dueño en cada momento: quien lo escribe. Las demás copias son de lectura y se
 actualizan desde ese dueño. Las formas de lograrlo, de más simple a más invasiva

@@ -2,7 +2,7 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Pide el User 1 cada 0,1 segundos mientras dura un cambio, y anota cada
+// Pide el User de alice cada 0,1 segundos mientras dura un cambio, y anota cada
 // respuesta, como deploy_probe en demos/common.sh. Sirve para verificar que un
 // despliegue no corta el servicio.
 public sealed class Probe : IAsyncDisposable

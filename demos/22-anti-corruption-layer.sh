@@ -12,13 +12,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d125
-SOAP='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetUser xmlns="http://ucu.edu.uy/andis/users"><id>1</id></GetUser></soap:Body></soap:Envelope>'
+PRODUCT=3
+SOAP="<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetUser xmlns=\"http://ucu.edu.uy/andis/users\"><id>$ALICE</id></GetUser></soap:Body></soap:Envelope>"
 
 title "Anti-corruption Layer"
 
 step "El modelo de Orders: user_id, product_id y el estado en inglés"
-curl -s "$GATEWAY/orders/" | table "[.[] | select(.product_id == \"$PRODUCT\")]"
+curl -s "$GATEWAY/orders/" | table "[.[] | select(.product_id == $PRODUCT)]"
 
 step "El modelo de Users: SOAP"
 curl -s -X POST "$GATEWAY/users/UserService.svc" -H 'Content-Type: text/xml; charset=utf-8' \
@@ -33,14 +33,14 @@ note "capa los tradujo. Una Order rechazada no es una compra, así que no aparec
 step "Orders cambia su modelo: agrega la fecha de creación de cada Order"
 before=$(curl -s "$GATEWAY/purchases/product/$PRODUCT")
 config_set Features/OrderDates true
-curl -s "$GATEWAY/orders/" | table "[.[] | select(.product_id == \"$PRODUCT\")]"
+curl -s "$GATEWAY/orders/" | table "[.[] | select(.product_id == $PRODUCT)]"
 after=$(curl -s "$GATEWAY/purchases/product/$PRODUCT")
 [ "$before" = "$after" ] && echo "  La respuesta de Purchases es idéntica a la de antes del cambio."
 note "La capa lee solo los campos que usa: un campo nuevo en Orders no la cambia."
 config_delete Features/OrderDates
 
-step "Una Order nueva del User 2 aparece como compra"
-id=$(create_order 2 "$PRODUCT")
+step "Una Order nueva de bob aparece como compra"
+id=$(create_order "$BOB" "$PRODUCT")
 echo "  Se crea la Order $id"
 wait_processed "$id"
 curl -s "$GATEWAY/purchases/product/$PRODUCT" | table "[.[] | select(.number == $id)]"

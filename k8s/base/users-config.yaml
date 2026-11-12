@@ -9,4 +9,4 @@ metadata:
   name: users-config
   namespace: andis
 data:
-  CONNECTIONSTRINGS__USERSDB: "Host=users-db;Port=5432;Database=usersdb;Username=usersusr;Password=Pa55w0rd"
+  CONNECTIONSTRINGS__USERSDB: "mongodb://usersusr:Pa55w0rd@users-db:27017/usersdb"

@@ -15,8 +15,8 @@ docker desktop start
 
 # Crear las carpetas que serán montadas como volúmenes para contener las bases
 # de datos
-mkdir -p src/UsersService/pgdata
-mkdir -p src/ProductsService/mongodbdata
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
 mkdir -p src/OrdersService/mysqldata
 
 # Levantar todos los contenedores
@@ -121,7 +121,7 @@ curl -s -X DELETE http://localhost/orders/patterns | jq
 # por cada Order. Sin fallas, la respuesta trae una entrada por Order con el
 # nombre del cliente y el nombre del producto:
 
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Configurar Products para que falle 100% de las veces, ejecutar nuevamente la
 # consulta /orders/users/{id}/detals, y comparar el resultado con el anterior:
@@ -130,7 +130,7 @@ curl -s -X PUT http://localhost/products/chaos \
   -H 'Content-Type: application/json' \
   -d "{\"failureRate\": 1, \"delayMs\": 0}"
 
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Reparar Products, configurar Users para que falle 100% de las veces, ejecutar
 # nuevamente la consulta /orders/user/{id}/detals, y comparar con el resultado
@@ -142,7 +142,7 @@ curl -s -X PUT http://localhost/users/chaos \
   -H 'Content-Type: application/json' \
   -d "{\"failureRate\": 1, \"delayMs\": 0}" | jq
 
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Restaurar Users
 
@@ -165,7 +165,7 @@ curl -s -X PUT http://localhost/users/chaos \
   -H 'Content-Type: application/json' \
   -d "{\"failureRate\": 0.3, \"delayMs\": 0}" | jq
 
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Prender el patrón Retry solamente y nuevamente ejecutar varias veces la
 # consulta a orders/user/{id}/details. Ahora el nombre del usuario y de los
@@ -176,7 +176,7 @@ curl -s -X PUT http://localhost/orders/patterns \
   -H "Content-Type: application/json" \
   -d '{"retry": true, "circuitBreaker": false, "bulkhead": false, "throttling": false}' | jq
 
-curl -s http://localhost/orders/user/1/details | table
+curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details | table
 
 # Prender el resto de los patrones y reparar Products y Users.
 
@@ -224,7 +224,7 @@ docker compose logs orders-service | grep '\[RETRY\]'
 # --- 02 Circuit Breaker ---
 # --------------------------
 # Al igual que en la demo de Retry, se consulta el detalle de las Orders del
-# User 1, que Orders completa pidiéndole a Products el nombre del producto de
+# alice, que Orders completa pidiéndole a Products el nombre del producto de
 # cada Order. Pero ahora Products falla siempre: reintentar no sirve, y seguir
 # llamándolo solo demora las respuestas y lo sobrecarga justo cuando intenta
 # recuperarse. Orders tiene un circuito por dependencia: si fallan al menos la
@@ -317,7 +317,7 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 # --- 03 Bulkhead ---
 # -------------------
 # Al igual que en la demo de Retry, se consulta el detalle de las Orders del
-# User 1, que Orders completa pidiéndole a Users el nombre del cliente y a
+# alice, que Orders completa pidiéndole a Users el nombre del cliente y a
 # Products el nombre del producto de cada Order. Si Products se pone lento, las
 # llamadas pendientes se acumulan y consumen los recursos -conexiones, memoria,
 # hilos- que también necesitan las llamadas a Users. Para evitarlo, Orders
@@ -344,7 +344,7 @@ docker compose run --rm k6 run /scripts/circuit-breaker.js
 ./demos/03-bulkhead.sh
 
 # Resultado en consola: en cada tanda, una fila por consulta, ordenadas por
-# tiempo de respuesta, y un resumen. El User 1 tiene 2 Orders, así que cada
+# tiempo de respuesta, y un resumen. alice tiene 2 Orders, así que cada
 # consulta hace 2 llamadas a Products, de a una y de 1.5 segundos cada una.
 #
 # Con el Bulkhead apagado, las 15 consultas traen todos los nombres y demoran
@@ -413,7 +413,7 @@ docker compose run --rm k6 run /scripts/bulkhead.js
 # --- 04 Throttling ---
 # ---------------------
 # Al igual que en la demo de Retry, se consulta el detalle de las Orders del
-# User 1. Pero ahora el problema no está en las dependencias sino en Orders: un
+# alice. Pero ahora el problema no está en las dependencias sino en Orders: un
 # pico de consultas podría saturarlo y degradarlo para todos sus clientes.
 # Orders atiende como máximo 20 consultas de detalle a la vez. Las que exceden
 # ese límite no esperan: reciben de inmediato un 503 con el encabezado
@@ -639,7 +639,7 @@ docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers 
 
 id=$(curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq .id)
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq .id)
 echo "$id"
 
 # Esperar unos segundos y consultar la Order: sigue Pending, porque no hay
@@ -674,7 +674,7 @@ docker logs --since 1m $worker 2>&1 | grep '\[COMPETING CONSUMERS\]'
 for i in $(seq 6); do
   curl -s -X POST http://localhost:8000/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq -c
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq -c
 done
 
 # Consultar la cola varias veces seguidas: los mensajes bajan de a uno cada 2
@@ -700,7 +700,7 @@ docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers 
 for i in $(seq 6); do
   curl -s -X POST http://localhost:8000/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' | jq -c
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq -c
 done
 
 # Ahora las tres réplicas compiten por los mensajes de la misma cola: cada una
@@ -765,7 +765,7 @@ docker compose up -d orders-worker
 
 id=$(curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
-  -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 3}' | jq .id)
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 2, "quantity": 3}' | jq .id)
 echo "$id"
 
 # Esperar unos 3 segundos a que un worker la procese y consultar la Order.
@@ -883,7 +883,7 @@ ids=()
 for i in $(seq 3); do
   response=$(curl -s -w '\n%{http_code}' -X POST http://localhost/orders/ \
     -H "Content-Type: application/json" \
-    -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 1, "quantity": 1}')
   id=$(echo "$response" | head -1 | jq .id)
   ids+=($id)
   echo "Order $id -> HTTP $(echo "$response" | tail -1)"
@@ -980,5 +980,5 @@ docker volume prune -f
 docker builder prune -f
 
 rm -rf ./src/OrdersService/mysqldata
-rm -rf ./src/ProductsService/mongodbdata
-rm -rf ./src/UsersService/pgdata
+rm -rf ./src/ProductsService/pgdata
+rm -rf ./src/UsersService/mongodbdata

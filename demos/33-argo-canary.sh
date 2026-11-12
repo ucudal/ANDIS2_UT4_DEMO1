@@ -32,7 +32,7 @@ weights() {
         -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.name} {.weight} %   {end}'
 }
 
-# follow <imagen>: despliega una imagen mientras una sonda pide el User 1, y
+# follow <imagen>: despliega una imagen mientras una sonda pide el User de alice, y
 # muestra cada cambio de los pesos hasta que el Rollout termina: Healthy si
 # llegó al 100%, Degraded si abortó.
 follow() {
@@ -77,7 +77,7 @@ printf '  %s\n' "$(weights)"
 versions 10
 
 step "Se despliega la versión v2: 10%, análisis, 50%, análisis, 100%"
-note "Una sonda pide el User 1 cada 0,1\". Cada análisis espera 30\""
+note "Una sonda pide el User de alice cada 0,1\". Cada análisis espera 30\""
 note "y mide 3 veces, cada 10\": el despliegue tarda un minuto y medio."
 follow v2
 measured

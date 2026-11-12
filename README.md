@@ -36,9 +36,9 @@ directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azu
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
 | `api-gateway` | Punto de entrada único; enruta `/users/`, `/products/` y `/orders/` a cada servicio; aplica Throttling por cliente a `POST /orders/`. En la entrada HTTPS, además, termina [TLS](https://datatracker.ietf.org/doc/html/rfc8446), valida los tokens y las solicitudes, y comprime las respuestas | [nginx](https://nginx.org/) 1.25 | 80 HTTP, 443 HTTPS, 8090 fachada, 8091 despliegue |
-| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por [SOAP](https://www.w3.org/TR/soap/), con el contrato publicado como [WSDL](https://www.w3.org/TR/wsdl/) | [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) 10 + [SoapCore](https://github.com/DigDes/SoapCore) + [EF Core](https://learn.microsoft.com/ef/core/) | 8002 |
+| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) por [SOAP](https://www.w3.org/TR/soap/), con el contrato publicado como [WSDL](https://www.w3.org/TR/wsdl/) | [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) 10 + [SoapCore](https://github.com/DigDes/SoapCore) + [MongoDB Driver](https://www.mongodb.com/docs/drivers/csharp/) | 8002 |
 | `users-service-v2` | La versión `v2` de `Users`, con un experimento de A/B Testing; solo la usan las demos de facilidad de despliegue | La misma imagen que `users-service`, con otra versión configurada | — |
-| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + [MongoDB Driver](https://www.mongodb.com/docs/drivers/csharp/) + [StackExchange.Redis](https://stackexchange.github.io/StackExchange.Redis/) | 8001 |
+| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs), con caché en Redis | ASP.NET Core 10 + [EF Core](https://learn.microsoft.com/ef/core/) + [StackExchange.Redis](https://stackexchange.github.io/StackExchange.Redis/) | 8001 |
 | `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por HTTP, o lo lee de la vista materializada; publica los eventos de las `Orders` a través del *outbox* | ASP.NET Core 10 + EF Core | 8000 |
 | `orders-worker` ×3 | Consume la cola y confirma o rechaza cada `Order`; es la misma imagen que `orders-service` con el *worker* habilitado | ASP.NET Core 10 + [RabbitMQ.Client](https://www.rabbitmq.com/client-libraries/dotnet) | — |
 | `orders-projector` ×3 | Mantiene la vista materializada del detalle de las `Orders` a partir de los eventos; es la misma imagen que `orders-service` con el proyector habilitado | ASP.NET Core 10 + RabbitMQ.Client | — |
@@ -57,8 +57,8 @@ directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azu
 | `purchases-service` | [`Purchases`](src/PurchasesService/Purchase.cs): las compras de cada `Product`, con su propio modelo; su capa anticorrupción traduce desde `Orders` y `Users` | ASP.NET Core 10 | — |
 | `bff-web` | Backend de la web: las `Orders` de un `User` con precios y total | ASP.NET Core 10 | — |
 | `bff-mobile` | Backend de la app móvil: el `Product` y el estado de cada `Order` | ASP.NET Core 10 | — |
-| `users-db` | Datos de `Users` | [PostgreSQL](https://www.postgresql.org/) 18 | 5432 |
-| `products-db` | Datos de `Products` | [MongoDB](https://www.mongodb.com/) 9 | 27017 |
+| `users-db` | Datos de `Users` | [MongoDB](https://www.mongodb.com/) 9 | 27017 |
+| `products-db` | Datos de `Products` | [PostgreSQL](https://www.postgresql.org/) 18 | 5432 |
 | `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | [MySQL](https://www.mysql.com/) 26 | 3306 |
 
 Endpoints disponibles a través del gateway, en `http://localhost`. Por la
@@ -159,7 +159,7 @@ down*, así que se puede usar por separado. En resumen:
 
 ```bash
 docker compose up -d --build --wait
-curl http://localhost/orders/user/1/details
+curl http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e301/details
 ```
 
 El comando [`docker compose
@@ -183,14 +183,14 @@ Database Client o desde cualquier otro cliente, con estos datos:
 | Servicio | Motor | Host | Puerto | Base | Usuario | Contraseña |
 | -------- | ----- | ---- | ------ | ---- | ------- | ---------- |
 | `Orders` | [MySQL](https://www.mysql.com/) | `localhost` | `3306` | `ordersdb` | `ordersusr` | `Pa55w0rd` |
-| `Users` | [PostgreSQL](https://www.postgresql.org/) | `localhost` | `5432` | `usersdb` | `usersusr` | `Pa55w0rd` |
-| `Products` | [MongoDB](https://www.mongodb.com/) | `localhost` | `27017` | `productsdb` | `productsusr` | `Pa55w0rd` |
+| `Users` | [MongoDB](https://www.mongodb.com/) | `localhost` | `27017` | `usersdb` | `usersusr` | `Pa55w0rd` |
+| `Products` | [PostgreSQL](https://www.postgresql.org/) | `localhost` | `5432` | `productsdb` | `productsusr` | `Pa55w0rd` |
 | Caché de `Products` | [Redis](https://redis.io/) | `localhost` | `6379` | — | — | — |
 
-En MongoDB el usuario `productsusr` se autentica contra la base `productsdb`,
-así que en el campo de base de autenticación -`authSource`- va `productsdb` y
-no `admin`. La cadena de conexión completa es
-`mongodb://productsusr:Pa55w0rd@localhost:27017/productsdb?authSource=productsdb`.
+En MongoDB el usuario `usersusr` se autentica contra la base `usersdb`, así
+que en el campo de base de autenticación -`authSource`- va `usersdb` y no
+`admin`. La cadena de conexión completa es
+`mongodb://usersusr:Pa55w0rd@localhost:27017/usersdb?authSource=usersdb`.
 Para ver todas las bases de MongoDB está el usuario `root`, con la misma
 contraseña y `admin` como base de autenticación.
 
@@ -311,8 +311,7 @@ docker compose up -d --build --wait
 dotnet test tests/DemoTests --filter "TestCategory!=Gatekeeper&TestCategory!=Kubernetes"
 ```
 
-Los tests corren de a uno, en el orden de las demos, porque comparten el estado
-de la aplicación. Cada uno deja los servicios como estaban: sin fallas simuladas,
+Los tests corren de a uno, porque comparten el estado de la aplicación. Cada uno deja los servicios como estaban: sin fallas simuladas,
 con todos los patrones prendidos y con los nombres de ejemplo de los `Users` y
 los `Products`. Las `Orders` que crean son del `User` 2, así que las del `User` 1
 no cambian. Algunos tienen una categoría, para elegir cuáles correr:

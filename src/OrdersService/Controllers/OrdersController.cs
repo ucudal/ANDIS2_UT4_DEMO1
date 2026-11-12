@@ -47,9 +47,9 @@ public class OrdersController : ControllerBase
         {
             if (caller.UserId is null)
                 return this.Forbidden(_logger, $"{caller.Name} no es cliente: no puede crear Orders");
-            if (order.UserId != 0 && order.UserId != caller.UserId)
+            if (!string.IsNullOrEmpty(order.UserId) && order.UserId != caller.UserId)
                 return this.Forbidden(_logger, $"{caller.Name} no puede crear Orders para el User {order.UserId}");
-            order.UserId = caller.UserId.Value;
+            order.UserId = caller.UserId;
             _logger.LogInformation("[FEDERATED IDENTITY] Order para el User {UserId}, según el token de {Name}", order.UserId, caller.Name);
         }
 
@@ -75,8 +75,9 @@ public class OrdersController : ControllerBase
         // Las claves no vencen en la demo; en producción se borran después de un
         // plazo, y un reintento posterior crearía otra Order.
         var idempotencyKey = Request.Headers[IdempotencyKeyHeader].FirstOrDefault();
-        // La clave es del User del token, o del User 0 si la solicitud es anónima.
-        var keyOwner = caller?.UserId ?? 0;
+        // La clave es del User del token, o de nadie -texto vacío- si la
+        // solicitud es anónima.
+        var keyOwner = caller?.UserId ?? string.Empty;
         string? requestHash = null;
         if (!string.IsNullOrWhiteSpace(idempotencyKey))
         {
@@ -96,9 +97,9 @@ public class OrdersController : ControllerBase
             _db.Orders.Add(order);
             await _db.SaveChangesAsync();
             _db.OrderEvents.Add(OrderEvent.Create(order.Id, OrderEventTypes.OrderCreated,
-                new OrderCreatedData(order.UserId, order.ProductId, order.Quantity)));
+                new OrderCreatedData(order.UserId ?? string.Empty, order.ProductId, order.Quantity)));
             _db.OutboxMessages.Add(OutboxMessage.Create(Events.OrderCreated,
-                new OrderCreated(order.Id, order.UserId, order.ProductId, order.Quantity)));
+                new OrderCreated(order.Id, order.UserId ?? string.Empty, order.ProductId, order.Quantity)));
             // La clave se guarda en la misma transacción que la Order: no puede
             // quedar una sin la otra.
             if (requestHash is not null)
@@ -127,7 +128,7 @@ public class OrdersController : ControllerBase
     private const string IdempotencyKeyHeader = "Idempotency-Key";
     private const string IdempotentReplayedHeader = "Idempotent-Replayed";
 
-    private Task<IdempotencyKey?> FindKeyAsync(string key, int userId) =>
+    private Task<IdempotencyKey?> FindKeyAsync(string key, string userId) =>
         _db.IdempotencyKeys.AsNoTracking().FirstOrDefaultAsync(k => k.Key == key && k.UserId == userId);
 
     // SHA-256 de los datos de la Order ya leídos del cuerpo, y no del texto del
@@ -184,7 +185,8 @@ public class OrdersController : ControllerBase
     public async Task<ActionResult<List<object>>> ListOrders()
     {
         var caller = CallerIdentity.From(Request);
-        var onlyUserId = caller is { IsAdmin: false } ? caller.UserId ?? -1 : (int?)null;
+        // Un cliente sin id de User no ve ninguna: no coincide con ninguna Order.
+        var onlyUserId = caller is { IsAdmin: false } ? caller.UserId ?? string.Empty : null;
 
         var orders = _db.Orders.Where(o => onlyUserId == null || o.UserId == onlyUserId);
 
@@ -290,8 +292,11 @@ public class OrdersController : ControllerBase
     // limita porque es la más cara: lee la base y llama a Users y a Products.
     [HttpGet("user/{userId}/details")]
     [EnableRateLimiting("throttling")]
-    public async Task<ActionResult<List<object>>> GetOrdersForUser(int userId)
+    public async Task<ActionResult<List<object>>> GetOrdersForUser(string userId)
     {
+        if (!UserIds.IsValid(userId))
+            return BadRequest(new { detail = UserIds.InvalidDetail });
+
         // Federated Identity: un cliente ve solo sus Orders -ver CallerIdentity.cs-.
         if (CallerIdentity.From(Request) is { } caller && !caller.CanAccess(userId))
             return this.Forbidden(_logger, $"{caller.Name} no puede ver las Orders del User {userId}");

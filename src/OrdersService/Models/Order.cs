@@ -8,11 +8,12 @@ public class Order
     [Column("id")]
     public int Id { get; set; }
 
+    // El ObjectId del User en Users, como texto de 24 caracteres.
     [Column("user_id")]
-    public int UserId { get; set; }
+    public string? UserId { get; set; }
 
     [Column("product_id")]
-    public string? ProductId { get; set; }
+    public int ProductId { get; set; }
 
     [Column("quantity")]
     public int Quantity { get; set; }

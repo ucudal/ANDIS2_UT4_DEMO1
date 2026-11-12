@@ -32,8 +32,11 @@ public class OrdersQueriesController : ControllerBase
     // creada puede no estar todavía, y un nombre recién cambiado puede ser el
     // anterior.
     [HttpGet("user/{userId}/details/view")]
-    public async Task<ActionResult<List<object>>> GetOrdersForUser(int userId)
+    public async Task<ActionResult<List<object>>> GetOrdersForUser(string userId)
     {
+        if (!UserIds.IsValid(userId))
+            return BadRequest(new { detail = UserIds.InvalidDetail });
+
         // Federated Identity: un cliente ve solo sus Orders -ver CallerIdentity.cs-.
         if (CallerIdentity.From(Request) is { } caller && !caller.CanAccess(userId))
             return this.Forbidden(_logger, $"{caller.Name} no puede ver las Orders del User {userId}");

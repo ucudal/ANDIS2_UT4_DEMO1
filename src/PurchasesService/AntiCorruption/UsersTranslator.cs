@@ -15,7 +15,7 @@ public class UsersTranslator
     public UsersTranslator(HttpClient client) => _client = client;
 
     // El nombre del User, o un texto que lo explica si Users no lo sabe o no responde.
-    public async Task<string> NameAsync(int userId, CancellationToken cancellationToken)
+    public async Task<string> NameAsync(string userId, CancellationToken cancellationToken)
     {
         var envelope = new XDocument(
             new XElement(Soap + "Envelope",

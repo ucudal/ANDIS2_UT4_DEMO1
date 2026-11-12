@@ -6,7 +6,7 @@
 # directamente a Products.
 source "$(dirname "$0")/common.sh"
 
-PRODUCT=60f7c2b5e1d3c2a1b8e4d125
+PRODUCT=3
 
 # Al terminar, el Product recupera su nombre.
 cleanup() {

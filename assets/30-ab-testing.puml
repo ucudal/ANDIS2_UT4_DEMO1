@@ -1,8 +1,8 @@
 @startuml
 !include PlantUML.style
-rectangle "User 1" as U1
-rectangle "User 2" as U2
-rectangle "User 2\nX-Segment: beta" as U3
+rectangle "alice" as U1
+rectangle "bob" as U2
+rectangle "bob\nX-Segment: beta" as U3
 rectangle "users-service-v2\nExperiment" as V2
 rectangle "Unleash\nflag users-display-name" as UL
 rectangle "Variante A\nDisplayName: nombre" as A
@@ -12,7 +12,7 @@ U1 --> V2
 U2 --> V2
 U3 --> V2
 V2 ..> UL : OpenFeature,\ncada 2"
-V2 --> A : User 2,\npor porcentaje
-V2 --> B : User 1, por porcentaje,\no segmento beta
+V2 --> A : bob,\npor porcentaje
+V2 --> B : alice, por porcentaje,\no segmento beta
 V2 ..> M
 @enduml

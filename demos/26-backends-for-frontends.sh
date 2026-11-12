@@ -18,7 +18,7 @@ trap cleanup EXIT
 # mientras exista el archivo RUNNING.
 probe() {
     while [ -f "$RUNNING" ]; do
-        echo "$1 $(curl -s -m 2 -o /dev/null -w '%{http_code}' "$GATEWAY/$1/orders/user/1")" >> "$PROBES"
+        echo "$1 $(curl -s -m 2 -o /dev/null -w '%{http_code}' "$GATEWAY/$1/orders/user/$ALICE")" >> "$PROBES"
         sleep 0.2
     done
 }
@@ -28,15 +28,15 @@ started() { docker inspect -f '{{.State.StartedAt}}' "$(docker compose ps -q "$1
 title "Backends for Frontends"
 
 step "La web: cada Order con el precio de su Product, y el total"
-curl -s "$GATEWAY/web/orders/user/1" | table '.orders'
-echo "  total: $(curl -s "$GATEWAY/web/orders/user/1" | jq .total)"
+curl -s "$GATEWAY/web/orders/user/$ALICE" | table '.orders'
+echo "  total: $(curl -s "$GATEWAY/web/orders/user/$ALICE" | jq .total)"
 
 step "La app móvil: solo el Product y el estado de cada Order"
-curl -s "$GATEWAY/mobile/orders/user/1" | table '.orders'
+curl -s "$GATEWAY/mobile/orders/user/$ALICE" | table '.orders'
 
 step "La misma consulta, dos respuestas a la medida"
 for client in web mobile; do
-    printf '  %-6s %s bytes\n' "$client" "$(curl -s -o /dev/null -w '%{size_download}' "$GATEWAY/$client/orders/user/1")"
+    printf '  %-6s %s bytes\n' "$client" "$(curl -s -o /dev/null -w '%{size_download}' "$GATEWAY/$client/orders/user/$ALICE")"
 done
 note "Ninguno de los dos clientes tiene que pedir de más ni armar la respuesta."
 

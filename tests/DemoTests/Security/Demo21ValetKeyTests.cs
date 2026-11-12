@@ -19,7 +19,7 @@ public class Demo21ValetKeyTests : DemoTest
         Assert.That(await UploadAsync(url), Is.EqualTo(HttpStatusCode.Created));
         using var read = await Api.Http.GetAsync(url);
         Assert.That(read.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden), "la clave de escritura no sirve para leer");
-        Assert.That(await UploadAsync(url.Replace(Product.Id, DemoData.Shoes.Id)), Is.EqualTo(HttpStatusCode.Forbidden),
+        Assert.That(await UploadAsync(url.Replace($"/{Product.Id}?", $"/{DemoData.Shoes.Id}?")), Is.EqualTo(HttpStatusCode.Forbidden),
             "la clave no sirve para otro Product");
         using var unsigned = await Api.Http.GetAsync(url.Split('?')[0]);
         Assert.That(unsigned.StatusCode, Is.Not.EqualTo(HttpStatusCode.OK), "sin la firma no hay acceso");

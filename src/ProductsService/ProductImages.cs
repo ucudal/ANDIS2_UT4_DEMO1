@@ -59,7 +59,7 @@ public class ProductImages
 
     // Sin Valet Key: Products recibe todos los bytes de la imagen y los sube
     // él mismo. Los guarda en memoria mientras tanto.
-    public async Task<long> UploadAsync(string productId, Stream content, string contentType, CancellationToken cancellationToken)
+    public async Task<long> UploadAsync(int productId, Stream content, string contentType, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);
 
@@ -67,7 +67,7 @@ public class ProductImages
         await content.CopyToAsync(buffer, cancellationToken);
         buffer.Position = 0;
 
-        await _container.GetBlobClient(productId).UploadAsync(buffer,
+        await _container.GetBlobClient(productId.ToString()).UploadAsync(buffer,
             new Azure.Storage.Blobs.Models.BlobUploadOptions
             {
                 HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType }
@@ -82,28 +82,28 @@ public class ProductImages
     // Con Valet Key: una URL para crear o reemplazar la imagen del Product, y
     // nada más. No sirve para leerla, ni para otro blob, ni después de vencer.
     // El cliente puede pedir que venza antes de los 2 minutos, nunca después.
-    public async Task<(Uri Url, DateTimeOffset ExpiresOn)> GetUploadKeyAsync(string productId, TimeSpan lifetime, CancellationToken cancellationToken)
+    public async Task<(Uri Url, DateTimeOffset ExpiresOn)> GetUploadKeyAsync(int productId, TimeSpan lifetime, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);
         return IssueKey(productId, BlobSasPermissions.Create | BlobSasPermissions.Write, "write", lifetime);
     }
 
     // Con Valet Key: una URL para leer la imagen del Product, o null si no tiene.
-    public async Task<(Uri Url, DateTimeOffset ExpiresOn)?> GetDownloadKeyAsync(string productId, CancellationToken cancellationToken)
+    public async Task<(Uri Url, DateTimeOffset ExpiresOn)?> GetDownloadKeyAsync(int productId, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);
-        if (!await _container.GetBlobClient(productId).ExistsAsync(cancellationToken))
+        if (!await _container.GetBlobClient(productId.ToString()).ExistsAsync(cancellationToken))
             return null;
         return IssueKey(productId, BlobSasPermissions.Read, "read", MaxKeyLifetime);
     }
 
-    private (Uri Url, DateTimeOffset ExpiresOn) IssueKey(string productId, BlobSasPermissions permissions, string permission, TimeSpan lifetime)
+    private (Uri Url, DateTimeOffset ExpiresOn) IssueKey(int productId, BlobSasPermissions permissions, string permission, TimeSpan lifetime)
     {
         if (lifetime <= TimeSpan.Zero || lifetime > MaxKeyLifetime)
             lifetime = MaxKeyLifetime;
         var expiresOn = DateTimeOffset.UtcNow.Add(lifetime);
         // La firma se calcula con la clave de la cuenta, sin llamar a Azurite.
-        var sas = _container.GetBlobClient(productId).GenerateSasUri(permissions, expiresOn);
+        var sas = _container.GetBlobClient(productId.ToString()).GenerateSasUri(permissions, expiresOn);
         var url = new Uri(sas.ToString().Replace(_internalEndpoint, _publicEndpoint));
 
         IssuedKeys.Add(1, new KeyValuePair<string, object?>("permission", permission));

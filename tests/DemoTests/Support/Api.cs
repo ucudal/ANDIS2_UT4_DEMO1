@@ -58,7 +58,7 @@ public static class Api
 
     public record DetailsResponse(HttpStatusCode Status, JsonArray Rows, TimeSpan Elapsed);
 
-    public static async Task<DetailsResponse> DetailsAsync(int userId, string path = "details", string baseUrl = DemoData.Gateway)
+    public static async Task<DetailsResponse> DetailsAsync(string userId, string path = "details", string baseUrl = DemoData.Gateway)
     {
         var watch = Stopwatch.StartNew();
         using var response = await Http.GetAsync($"{baseUrl}/orders/user/{userId}/{path}");
@@ -70,14 +70,14 @@ public static class Api
 
     // Crea una Order directamente en orders-service, sin pasar por el límite de
     // POST del gateway, y devuelve su id.
-    public static async Task<int> CreateOrderAsync(int userId, string productId, int quantity = 1)
+    public static async Task<int> CreateOrderAsync(string userId, int productId, int quantity = 1)
     {
         using var response = await PostOrderAsync(DemoData.OrdersDirect, userId, productId, quantity);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Accepted), "POST /orders/");
         return (await response.Content.ReadFromJsonAsync<JsonObject>())!["id"]!.GetValue<int>();
     }
 
-    public static Task<HttpResponseMessage> PostOrderAsync(string baseUrl, int userId, string productId, int quantity = 1) =>
+    public static Task<HttpResponseMessage> PostOrderAsync(string baseUrl, string userId, int productId, int quantity = 1) =>
         Http.PostAsJsonAsync($"{baseUrl}/orders/", new { userId, productId, quantity });
 
     public static async Task<JsonObject> GetOrderAsync(int id) =>
@@ -109,13 +109,22 @@ public static class Api
 
     // Products
 
-    public static async Task UpdateProductAsync(string id, string name, decimal price)
+    public static async Task UpdateProductAsync(int id, string name, decimal price)
     {
         using var response = await Http.PutAsJsonAsync($"{DemoData.Gateway}/products/{id}", new { name, price });
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response);
     }
 
-    public static async Task<JsonObject> GetProductAsync(string id) =>
+    // Como EnsureSuccessStatusCode, pero el error incluye el cuerpo de la
+    // respuesta, para saber qué respondió el servicio.
+    public static async Task EnsureSuccessAsync(HttpResponseMessage response)
+    {
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"{(int)response.StatusCode} {response.RequestMessage?.Method} {response.RequestMessage?.RequestUri}: {await response.Content.ReadAsStringAsync()}");
+    }
+
+    public static async Task<JsonObject> GetProductAsync(int id) =>
         (await Http.GetFromJsonAsync<JsonObject>($"{DemoData.Gateway}/products/{id}"))!;
 
     // Cuántas consultas de un Product recibió Products desde que arrancó, según
@@ -145,7 +154,7 @@ public static class Api
         return request;
     }
 
-    public static async Task UpdateUserAsync(int id, string name, string email)
+    public static async Task UpdateUserAsync(string id, string name, string email)
     {
         using var request = SoapRequest($"{DemoData.Gateway}/users/UserService.svc", "UpdateUser",
             $"<id>{id}</id><name>{name}</name><email>{email}</email>");
@@ -158,7 +167,7 @@ public static class Api
     // GetUser del User id en baseUrl. Lo usan las demos de facilidad de
     // despliegue: X-Version dice qué versión respondió y X-Variant, qué variante
     // del experimento.
-    public static async Task<UserResponse> GetUserAsync(string baseUrl, int id, string? segment = null)
+    public static async Task<UserResponse> GetUserAsync(string baseUrl, string id, string? segment = null)
     {
         using var request = SoapRequest($"{baseUrl}/users/UserService.svc", "GetUser", $"<id>{id}</id>");
         if (segment is not null)
@@ -181,7 +190,7 @@ public static class Api
         }
     }
 
-    // n solicitudes de GetUser del User 1, como versions en demos/common.sh.
+    // n solicitudes de GetUser de alice, como versions en demos/common.sh.
     public static async Task<List<UserResponse>> VersionsAsync(string baseUrl, int n)
     {
         var responses = new List<UserResponse>();

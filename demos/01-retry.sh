@@ -6,7 +6,7 @@ source "$(dirname "$0")/common.sh"
 
 title "Retry"
 
-step "Sin fallas: curl $GATEWAY/orders/user/1/details"
+step "Sin fallas: curl $GATEWAY/orders/user/$ALICE/details"
 details
 
 step "Products falla en el 30% de las solicitudes -responde 503-"

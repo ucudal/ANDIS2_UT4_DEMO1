@@ -31,7 +31,7 @@ note "Levantando Unleash, con el flag $EXPERIMENT_FLAG: la mitad de los Users en
 experiment_start
 
 step "Con la versión v1 no hay experimento"
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 
 step "Se despliega la versión v2, con Blue/Green"
 deploy_target users-service-v2:8000
@@ -41,31 +41,31 @@ note "Qué variante ve cada User lo decide Unleash: $UNLEASH, usuario admin, con
 before=$(experiment_counts)
 
 step "Por porcentaje: la mitad de los Users en cada variante, según su id"
-for id in 1 2; do get_user "$id" -i | user_summary; done
+for id in "$ALICE" "$BOB"; do get_user "$id" -i | user_summary; done
 
 step "Fija: el mismo User recibe siempre la misma variante"
-for _ in 1 2 3; do get_user 2 -i | user_summary; done
+for _ in 1 2 3; do get_user "$BOB" -i | user_summary; done
 note "Si cambiara en cada consulta, no se podría medir el efecto de cada variante."
 
-step "Por segmento: con X-Segment: beta, el User 2 recibe la variante B"
-get_user 2 -i -H 'X-Segment: beta' | user_summary
+step "Por segmento: con X-Segment: beta, bob recibe la variante B"
+get_user "$BOB" -i -H 'X-Segment: beta' | user_summary
 note "Por ejemplo, para mostrarle lo nuevo solo a quien se anotó para probarlo."
 
 step "Se cambia el reparto en Unleash, sin desplegar: todos los Users a la variante B"
 experiment_split 100
 sleep 3
-for id in 1 2; do get_user "$id" -i | user_summary; done
+for id in "$ALICE" "$BOB"; do get_user "$id" -i | user_summary; done
 note "Users vuelve a leer el flag cada 2\": no se reinició ni se desplegó nada."
 
 step "Si Unleash se cae, Users sigue con la última configuración que leyó"
 docker compose stop unleash > /dev/null 2>&1
-for id in 1 2; do get_user "$id" -i | user_summary; done
+for id in "$ALICE" "$BOB"; do get_user "$id" -i | user_summary; done
 note "Unleash no está en el camino de cada solicitud: si no responde, no la detiene."
 
 step "Unleash vuelve, y el reparto vuelve a la mitad"
 experiment_start
 sleep 3
-for id in 1 2; do get_user "$id" -i | user_summary; done
+for id in "$ALICE" "$BOB"; do get_user "$id" -i | user_summary; done
 
 step "Cuántas veces se mostró cada variante, según las métricas de Users"
 note "Antes de esta demo:"

@@ -11,9 +11,9 @@ import { Counter, Trend } from 'k6/metrics';
 import { GATEWAY, checkStatus } from './lib.js';
 
 const FACADE = __ENV.FACADE || GATEWAY.replace(/:\d+$/, '') + ':8090';
-const PRODUCT = '60f7c2b5e1d3c2a1b8e4d123';
+const PRODUCT = '1';
 const SOAP = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>'
-    + '<GetUser xmlns="http://ucu.edu.uy/andis/users"><id>1</id></GetUser></soap:Body></soap:Envelope>';
+    + '<GetUser xmlns="http://ucu.edu.uy/andis/users"><id>665f1c2ab4e8d9a0c1f2e301</id></GetUser></soap:Body></soap:Envelope>';
 
 // Quién atendió cada solicitud lo sabe la fachada, que lo informa en el
 // encabezado X-Served-By: k6 lo usa como etiqueta.
@@ -54,7 +54,7 @@ export default function () {
             call('products', http.get(`${FACADE}/products/${PRODUCT}`, { tags: { name: 'facade products' } }));
             break;
         default: {
-            const res = http.get(`${FACADE}/orders/user/1/details`, { tags: { name: 'facade details' } });
+            const res = http.get(`${FACADE}/orders/user/665f1c2ab4e8d9a0c1f2e301/details`, { tags: { name: 'facade details' } });
             detailsDuration.add(res.timings.duration, { backend: call('orders', res) });
         }
     }

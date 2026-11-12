@@ -12,7 +12,7 @@ title "Competing Consumers"
 create_orders() {
     for i in $(seq "$1"); do
         curl -s -X POST "$ORDERS_DIRECT/orders/" -H 'Content-Type: application/json' \
-            -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d125", "quantity": 1}' \
+            -d "{\"userId\": \"$BOB\", \"productId\": 3, \"quantity\": 1}" \
             | grep -o '"id":[0-9]*' | cut -d: -f2
     done
 }

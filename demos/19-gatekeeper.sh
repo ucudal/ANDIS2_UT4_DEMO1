@@ -59,7 +59,7 @@ note "Por HTTP, Orders recibe los 100 KB y recién ahí descubre que no son una 
 
 step "alice manda encabezados de identidad falsos, diciendo ser bob"
 call -H "Authorization: Bearer $alice" -H 'X-User-Id: 2' -H 'X-User-Name: bob' \
-    "$HTTPS_GATEWAY/orders/user/2/details/view"
+    "$HTTPS_GATEWAY/orders/user/$BOB/details/view"
 note "El gateway reemplaza esos encabezados con los claims del token: para Orders, sigue siendo alice."
 
 step "Pero los servicios también están publicados en el host, y ahí no hay Gatekeeper"
@@ -67,7 +67,7 @@ sleep 1
 since=$(date +%s)
 call "http://localhost:8000/orders/chaos"
 call -X POST -H "$JSON" -H 'X-User-Id: 2' -H 'X-User-Name: bob' -H 'X-User-Roles: customer' \
-    -d '{"productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}' "http://localhost:8000/orders/"
+    -d '{"productId": 1, "quantity": 1}' "http://localhost:8000/orders/"
 sleep 1
 docker compose logs --no-log-prefix --since "$since" orders-service | grep '\[FEDERATED IDENTITY\]' | sed 's/^ */  /'
 note "Sin token: Orders cree que es bob porque nadie reemplazó los encabezados."
@@ -77,5 +77,5 @@ step "Se dejan de publicar los puertos de los servicios y de las bases"
 docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --wait 2>&1 \
     | grep -E 'Recreated' | sed 's/^ */  /'
 call "http://localhost:8000/orders/chaos"
-call -H "Authorization: Bearer $alice" "$HTTPS_GATEWAY/orders/user/1/details/view" -o /dev/null
+call -H "Authorization: Bearer $alice" "$HTTPS_GATEWAY/orders/user/$ALICE/details/view" -o /dev/null
 note "La única entrada es el gateway; los servicios siguen hablando entre sí por la red de Docker."

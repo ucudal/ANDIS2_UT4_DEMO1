@@ -31,5 +31,5 @@ RabbitMqHealthCheck --> RabbitMq
 
 note bottom of HealthResponse : escribe el JSON de /health
 note bottom of HealthMetricsPublisher : publica la métrica service_health
-note top of IHealthCheck : las bases de Users y Orders usan\nAddDbContextCheck, que ya trae ASP.NET Core
+note top of IHealthCheck : las bases de Products y Orders usan\nAddDbContextCheck, que ya trae ASP.NET Core
 @enduml

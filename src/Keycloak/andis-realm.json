@@ -35,7 +35,7 @@
           "config": {
             "user.attribute": "user_id",
             "claim.name": "user_id",
-            "jsonType.label": "int",
+            "jsonType.label": "String",
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "true"
@@ -52,7 +52,7 @@
       "emailVerified": true,
       "firstName": "Alice",
       "lastName": "Example",
-      "attributes": { "user_id": ["1"] },
+      "attributes": { "user_id": ["665f1c2ab4e8d9a0c1f2e301"] },
       "credentials": [{ "type": "password", "value": "Pa55w0rd", "temporary": false }],
       "realmRoles": ["customer"]
     },
@@ -63,7 +63,7 @@
       "emailVerified": true,
       "firstName": "Bob",
       "lastName": "Example",
-      "attributes": { "user_id": ["2"] },
+      "attributes": { "user_id": ["665f1c2ab4e8d9a0c1f2e302"] },
       "credentials": [{ "type": "password", "value": "Pa55w0rd", "temporary": false }],
       "realmRoles": ["customer"]
     },

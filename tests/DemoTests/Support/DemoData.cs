@@ -18,20 +18,20 @@ public static class DemoData
 
     // alice. Sus Orders sostienen las demos 01 a 04: los tests no le crean
     // Orders nuevas.
-    public const int User1 = 1;
+    public const string User1 = "665f1c2ab4e8d9a0c1f2e301";
 
     // bob. Los tests le crean las Orders que necesitan.
-    public const int User2 = 2;
+    public const string User2 = "665f1c2ab4e8d9a0c1f2e302";
 
     public const string User2Name = "bob";
     public const string User2Email = "bob@example.com";
 
-    public record Product(string Id, string Name, decimal Price);
+    public record Product(int Id, string Name, decimal Price);
 
-    public static readonly Product Shirt = new("60f7c2b5e1d3c2a1b8e4d123", "Camisa", 1200.50m);
-    public static readonly Product Trousers = new("60f7c2b5e1d3c2a1b8e4d124", "Pantalón", 2300.00m);
-    public static readonly Product Shoes = new("60f7c2b5e1d3c2a1b8e4d125", "Zapatos", 3500.75m);
+    public static readonly Product Shirt = new(1, "Camisa", 1200.50m);
+    public static readonly Product Trousers = new(2, "Pantalón", 2300.00m);
+    public static readonly Product Shoes = new(3, "Zapatos", 3500.75m);
 
     // Un User que no existe, para las Orders que se rechazan.
-    public const int MissingUser = 999999;
+    public const string MissingUser = "000000000000000000000000";
 }

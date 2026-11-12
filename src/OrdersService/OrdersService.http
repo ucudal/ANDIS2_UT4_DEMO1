@@ -5,8 +5,8 @@ POST {{OrdersService_HostAddress}}/orders/
 Content-Type: application/json
 
 {
-  "userId": 2,
-  "productId": "60f7c2b5e1d3c2a1b8e4d124",
+  "userId": "665f1c2ab4e8d9a0c1f2e302",
+  "productId": 2,
   "quantity": 2
 }
 
@@ -20,10 +20,10 @@ GET {{OrdersService_HostAddress}}/orders/1
 GET {{OrdersService_HostAddress}}/orders/1/status
 
 ### Get all orders for a user (with details)
-GET {{OrdersService_HostAddress}}/orders/user/1/details
+GET {{OrdersService_HostAddress}}/orders/user/665f1c2ab4e8d9a0c1f2e301/details
 
 ### Get all orders for a user from the materialized view (CQRS)
-GET {{OrdersService_HostAddress}}/orders/user/1/details/view
+GET {{OrdersService_HostAddress}}/orders/user/665f1c2ab4e8d9a0c1f2e301/details/view
 
 ### Get the events of an order (Event Sourcing)
 GET {{OrdersService_HostAddress}}/orders/1/events

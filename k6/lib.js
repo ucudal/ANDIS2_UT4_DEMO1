@@ -41,7 +41,7 @@ export function resetChaos() {
     console.log('chaos desactivado');
 }
 
-// Detalle de las Orders del User 1. El tag name agrupa las métricas por
+// Detalle de las Orders de alice. El tag name agrupa las métricas por
 // endpoint en lugar de por URL. Con view = true se lee la vista materializada
 // -CQRS- en lugar de armar el detalle llamando a Users y a Products.
 export function details(userId = 1, view = false) {
@@ -55,7 +55,7 @@ export function details(userId = 1, view = false) {
 // POST /orders/ responde 202 Accepted: la Order queda Pending hasta que la
 // procesa un worker -Asynchronous Request-Reply-.
 export function createOrder(baseUrl = GATEWAY) {
-    const body = JSON.stringify({ userId: 2, productId: '60f7c2b5e1d3c2a1b8e4d123', quantity: 1 });
+    const body = JSON.stringify({ userId: '665f1c2ab4e8d9a0c1f2e302', productId: 1, quantity: 1 });
     return http.post(`${baseUrl}/orders/`, body,
         { headers: { 'Content-Type': 'application/json' }, tags: { name: 'create order' } });
 }
@@ -97,7 +97,7 @@ export function getUser(id, headers = {}, tags = {}) {
     return res;
 }
 
-// Una carga constante de GetUser del User 1 por la entrada de despliegue, para
+// Una carga constante de GetUser de alice por la entrada de despliegue, para
 // los escenarios de Blue/Green, Rolling Upgrade y Canary.
 export function deployOptions(rate, duration) {
     return {

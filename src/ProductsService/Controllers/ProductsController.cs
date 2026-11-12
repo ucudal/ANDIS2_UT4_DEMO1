@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 using ProductsService;
+using ProductsService.Data;
 using ProductsService.Models;
 using Ucu.Andis.Common;
 
@@ -11,48 +12,50 @@ public class ProductsController : ControllerBase
     // Cache-Aside: claves de Redis. La lista completa y cada Product se guardan
     // por separado, y un cambio invalida las dos.
     private const string AllProductsKey = "products:all";
-    private static string ProductKey(string id) => $"product:{id}";
+    private static string ProductKey(int id) => $"product:{id}";
 
-    private readonly IMongoCollection<Product> _productsCollection;
+    private readonly ProductsDbContext _db;
     private readonly ProductCache _cache;
     private readonly ProductImages _images;
     private readonly RabbitMq _rabbitMq;
     private readonly ILogger<ProductsController> _logger;
 
-    public ProductsController(IMongoCollection<Product> productsCollection, ProductCache cache, ProductImages images,
+    public ProductsController(ProductsDbContext db, ProductCache cache, ProductImages images,
         RabbitMq rabbitMq, ILogger<ProductsController> logger)
     {
-        _productsCollection = productsCollection;
+        _db = db;
         _cache = cache;
         _images = images;
         _rabbitMq = rabbitMq;
         _logger = logger;
     }
 
+    // El id lo asigna la base: si el cuerpo trae uno, se ignora.
     [HttpPost]
     public async Task<ActionResult<object>> CreateProduct([FromBody] Product product)
     {
-        await _productsCollection.InsertOneAsync(product);
+        var created = new Product { Name = product.Name, Price = product.Price };
+        _db.Products.Add(created);
+        await _db.SaveChangesAsync();
         await _cache.InvalidateAsync(AllProductsKey);
-        return Ok(new { id = product.Id, msg = "Product created" });
+        return Ok(new { id = created.Id, msg = "Product created" });
     }
 
     [HttpGet]
     public async Task<ActionResult<List<Product>>> ListProducts()
     {
         var products = await _cache.GetOrLoadAsync(AllProductsKey,
-            async () => await _productsCollection.Find(_ => true).ToListAsync());
+            async () => await _db.Products.AsNoTracking().OrderBy(p => p.Id).ToListAsync());
         return Ok(products);
     }
 
+    // Un id que no es un número responde 400: lo rechaza ASP.NET Core al no
+    // poder convertirlo, antes de llegar acá.
     [HttpGet("{productId}")]
-    public async Task<ActionResult<Product>> GetProduct(string productId)
+    public async Task<ActionResult<Product>> GetProduct(int productId)
     {
-        if (!MongoDB.Bson.ObjectId.TryParse(productId, out _))
-            return BadRequest(new { detail = "Invalid product id format" });
-
         var product = await _cache.GetOrLoadAsync(ProductKey(productId),
-            async () => await _productsCollection.Find(p => p.Id == productId).FirstOrDefaultAsync());
+            async () => await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId));
         if (product == null)
             return NotFound(new { detail = "Product not found" });
 
@@ -64,19 +67,17 @@ public class ProductsController : ControllerBase
     // ProductUpdated para que la vista materializada de Orders actualice el
     // nombre.
     [HttpPut("{productId}")]
-    public async Task<ActionResult<object>> UpdateProduct(string productId, [FromBody] Product product)
+    public async Task<ActionResult<object>> UpdateProduct(int productId, [FromBody] Product product)
     {
-        if (!MongoDB.Bson.ObjectId.TryParse(productId, out _))
-            return BadRequest(new { detail = "Invalid product id format" });
-
-        var update = Builders<Product>.Update
-            .Set(p => p.Name, product.Name)
-            .Set(p => p.Price, product.Price);
-        var result = await _productsCollection.UpdateOneAsync(p => p.Id == productId, update);
+        var updated = await _db.Products
+            .Where(p => p.Id == productId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Name, product.Name)
+                .SetProperty(p => p.Price, product.Price));
         // Fecha del cambio: los proyectores la usan para no pisar un nombre más nuevo
         // con uno más viejo -ver Events.cs-.
         var changedAt = DateTime.UtcNow;
-        if (result.MatchedCount == 0)
+        if (updated == 0)
             return NotFound(new { detail = "Product not found" });
 
         await _cache.InvalidateAsync(ProductKey(productId), AllProductsKey);
@@ -100,7 +101,7 @@ public class ProductsController : ControllerBase
     // almacenamiento con su propia clave. Todos los bytes pasan por el gateway y
     // por Products -ver ProductImages.cs-.
     [HttpPut("{productId}/image")]
-    public async Task<ActionResult<object>> UploadImage(string productId, CancellationToken cancellationToken)
+    public async Task<ActionResult<object>> UploadImage(int productId, CancellationToken cancellationToken)
     {
         if (!await ProductExistsAsync(productId))
             return NotFound(new { detail = "Product not found" });
@@ -114,7 +115,7 @@ public class ProductsController : ControllerBase
     // el encabezado x-ms-blob-type: BlockBlob. Vence a los 2 minutos, o antes
     // si el cliente lo pide con ?seconds=N.
     [HttpPost("{productId}/image/upload-url")]
-    public async Task<ActionResult<object>> GetImageUploadUrl(string productId, [FromQuery] int? seconds, CancellationToken cancellationToken)
+    public async Task<ActionResult<object>> GetImageUploadUrl(int productId, [FromQuery] int? seconds, CancellationToken cancellationToken)
     {
         if (!await ProductExistsAsync(productId))
             return NotFound(new { detail = "Product not found" });
@@ -127,11 +128,8 @@ public class ProductsController : ControllerBase
     // Valet Key: redirige a una URL firmada para leer la imagen. El cliente la
     // baja directamente del almacenamiento.
     [HttpGet("{productId}/image")]
-    public async Task<ActionResult> GetImage(string productId, CancellationToken cancellationToken)
+    public async Task<ActionResult> GetImage(int productId, CancellationToken cancellationToken)
     {
-        if (!MongoDB.Bson.ObjectId.TryParse(productId, out _))
-            return BadRequest(new { detail = "Invalid product id format" });
-
         var key = await _images.GetDownloadKeyAsync(productId, cancellationToken);
         if (key is null)
             return NotFound(new { detail = "Product has no image" });
@@ -139,9 +137,8 @@ public class ProductsController : ControllerBase
         return Redirect(key.Value.Url.ToString());
     }
 
-    private async Task<bool> ProductExistsAsync(string productId) =>
-        MongoDB.Bson.ObjectId.TryParse(productId, out _)
-        && await _productsCollection.Find(p => p.Id == productId).AnyAsync();
+    private Task<bool> ProductExistsAsync(int productId) =>
+        _db.Products.AnyAsync(p => p.Id == productId);
 
     // Ajustes de la caché para las demos -ver CacheSettings en ProductCache.cs-.
     [HttpGet("cache")]

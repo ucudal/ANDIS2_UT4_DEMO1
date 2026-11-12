@@ -36,7 +36,7 @@ SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/GetUser"
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <GetUser xmlns="http://ucu.edu.uy/andis/users">
-      <id>1</id>
+      <id>665f1c2ab4e8d9a0c1f2e301</id>
     </GetUser>
   </soap:Body>
 </soap:Envelope>
@@ -51,7 +51,7 @@ SOAPAction: "http://ucu.edu.uy/andis/users/IUserService/UpdateUser"
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <UpdateUser xmlns="http://ucu.edu.uy/andis/users">
-      <id>1</id>
+      <id>665f1c2ab4e8d9a0c1f2e301</id>
       <name>alicia</name>
       <email>alice@example.com</email>
     </UpdateUser>

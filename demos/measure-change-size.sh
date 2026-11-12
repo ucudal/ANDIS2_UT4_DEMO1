@@ -131,7 +131,7 @@ elapsed() { awk -v a="$1" -v b="$(now_ms)" 'BEGIN { printf "%.1f s", (b - a) / 1
 
 post_code() {
     curl -s -m 2 -o /dev/null -w '%{http_code}' -X POST "$ORDERS_DIRECT/orders/" -H 'Content-Type: application/json' \
-        -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d124", "quantity": 10}' || true
+        -d "{\"userId\": \"$BOB\", \"productId\": 2, \"quantity\": 10}" || true
 }
 wait_limit() {
     until [ "$(post_code)" = 400 ]; do sleep 0.2; done

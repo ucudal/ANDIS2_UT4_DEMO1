@@ -36,7 +36,7 @@ kubectl config use-context "kind-$CLUSTER" > /dev/null
 
 # Una imagen por versión de Users, como en producción. El nodo no las baja de un
 # registro: kind las copia desde Docker -imagePullPolicy: Never en los Rollout-.
-# postgres:18 no se copia, porque kind no puede copiar imágenes de varias
+# mongo:9 no se copia, porque kind no puede copiar imágenes de varias
 # plataformas: el nodo la baja de Docker Hub.
 step "Las imágenes de Users: v1, v2 y v3-bad, la versión con un error"
 docker build -q -f src/UsersService/Dockerfile -t users-service:v1 src > /dev/null
@@ -76,7 +76,7 @@ kubectl -n argo-rollouts rollout status deployment/argo-rollouts --timeout=180s
 
 step "La base de Users, su configuración, el Gateway y Prometheus"
 kubectl apply -f k8s/base/namespace.yaml > /dev/null
-kubectl -n andis create configmap users-db-init --from-file=src/UsersService/pginit \
+kubectl -n andis create configmap users-db-init --from-file=src/UsersService/mongoinit \
     --dry-run=client -o yaml | kubectl apply -f - > /dev/null
 kubectl apply -f k8s/base > /dev/null
 kubectl -n andis rollout status statefulset/users-db --timeout=180s

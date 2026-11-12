@@ -17,7 +17,7 @@ import http from 'k6/http';
 import exec from 'k6/execution';
 import { GATEWAY, checkStatus } from './lib.js';
 
-const PRODUCTS = ['60f7c2b5e1d3c2a1b8e4d123', '60f7c2b5e1d3c2a1b8e4d124', '60f7c2b5e1d3c2a1b8e4d125'];
+const PRODUCTS = ['1', '2', '3'];
 
 export const options = {
     scenarios: {

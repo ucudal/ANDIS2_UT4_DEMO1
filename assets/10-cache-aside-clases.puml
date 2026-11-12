@@ -19,13 +19,13 @@ class CacheSettings {
   +Enabled : bool
   +DbDelayMs : int
 }
-interface IMongoCollection <<interface>>
+class ProductsDbContext
 interface IConnectionMultiplexer <<interface>>
 
 ProductsController --> ProductCache : lee e invalida
-ProductsController --> IMongoCollection : guarda los cambios
+ProductsController --> ProductsDbContext : guarda los cambios
 ProductCache --> IConnectionMultiplexer : Redis
 ProductCache --> CacheSettings
 
-note bottom of ProductCache : load es la lectura de MongoDB:\nsolo se ejecuta en un miss
+note bottom of ProductCache : load es la lectura de PostgreSQL:\nsolo se ejecuta en un miss
 @enduml

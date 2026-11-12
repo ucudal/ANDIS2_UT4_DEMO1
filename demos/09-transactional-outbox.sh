@@ -20,7 +20,7 @@ step "Se crean 5 Orders"
 ids=""
 for i in $(seq 5); do
     response=$(curl -s -w '\n%{http_code}' -X POST "$ORDERS_DIRECT/orders/" -H 'Content-Type: application/json' \
-        -d '{"userId": 2, "productId": "60f7c2b5e1d3c2a1b8e4d123", "quantity": 1}')
+        -d "{\"userId\": \"$BOB\", \"productId\": 1, \"quantity\": 1}")
     id=$(head -1 <<< "$response" | jq -r .id)
     ids="$ids $id"
     echo "  Order $id -> HTTP $(tail -1 <<< "$response")"

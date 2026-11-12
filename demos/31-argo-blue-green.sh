@@ -23,7 +23,7 @@ strategy_apply blue-green
 
 step "Producción: la versión v1 atiende el Gateway, en el puerto 8092"
 rollout_tree
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 versions 10
 
 step "Se despliega la versión v2: kubectl argo rollouts set image"
@@ -37,7 +37,7 @@ step "Los clientes siguen en la versión v1"
 versions 10
 
 step "La versión v2 se prueba por el Service users-preview, en $PREVIEW"
-DEPLOY=$PREVIEW get_user 1 -i | user_summary
+DEPLOY=$PREVIEW get_user "$ALICE" -i | user_summary
 note "La versión v2 trae un campo nuevo, DisplayName. Los clientes todavía no lo ven."
 
 step "Se conmuta: kubectl argo rollouts promote"
@@ -47,12 +47,12 @@ note "Argo apuntó users-active a los pods de la versión v2, sin errores. Los d
 note "v1 siguen vivos un minuto -delay-, por si hay que volver atrás."
 
 step "Ahora responde la versión v2, en la misma dirección"
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 versions 10
 
 step "Vuelta atrás: kubectl argo rollouts undo"
 while_probing rollouts undo users
 rollout_tree
-get_user 1 -i | user_summary
+get_user "$ALICE" -i | user_summary
 note "Como los pods de la versión v1 seguían vivos, volver fue conmutar de nuevo,"
 note "sin esperar a que arranquen. Es la demo 27, pero con un comando por paso."

@@ -40,7 +40,7 @@ public static class OrderEventTypes
     public const string OrderInvoiced = "OrderInvoiced";
 }
 
-public record OrderCreatedData(int UserId, string? ProductId, int Quantity);
+public record OrderCreatedData(string UserId, int ProductId, int Quantity);
 
 public record OrderConfirmedData(string ProcessedBy);
 

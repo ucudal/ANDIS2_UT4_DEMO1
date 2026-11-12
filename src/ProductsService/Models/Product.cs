@@ -1,18 +1,17 @@
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ProductsService.Models
 {
+    [Table("products")]
     public class Product
     {
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string? Id { get; set; }
+        [Column("id")]
+        public int Id { get; set; }
 
-        [BsonElement("name")]
+        [Column("name")]
         public string? Name { get; set; }
 
-        [BsonElement("price")]
+        [Column("price")]
         public double Price { get; set; }
     }
 }

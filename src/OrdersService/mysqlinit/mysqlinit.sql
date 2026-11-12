@@ -5,8 +5,8 @@ SET NAMES utf8mb4;
 -- order_events con POST /orders/projections/rebuild.
 CREATE TABLE IF NOT EXISTS orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    product_id VARCHAR(64) NOT NULL,
+    user_id CHAR(24) NOT NULL,
+    product_id INT NOT NULL,
     quantity INT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'Pending'
 );
@@ -49,10 +49,10 @@ CREATE TABLE IF NOT EXISTS outbox_messages (
 -- nuevo.
 CREATE TABLE IF NOT EXISTS order_details (
     order_id INT PRIMARY KEY,
-    user_id INT NOT NULL,
+    user_id CHAR(24) NOT NULL,
     customer_name VARCHAR(100) NULL,
     customer_name_at DATETIME(6) NULL,
-    product_id VARCHAR(64) NULL,
+    product_id INT NULL,
     product_name VARCHAR(100) NULL,
     product_name_at DATETIME(6) NULL,
     quantity INT NOT NULL,
@@ -62,14 +62,14 @@ CREATE TABLE IF NOT EXISTS order_details (
 );
 
 -- Idempotencia: las claves del encabezado Idempotency-Key de POST /orders, con
--- la orden que creó cada una. La clave es de un User -0 para las solicitudes
--- anónimas-: la clave primaria impide crear dos órdenes con la misma clave,
+-- la orden que creó cada una. La clave es de un User -vacío para las
+-- solicitudes anónimas-: la clave primaria impide crear dos órdenes con la misma clave,
 -- aunque las dos solicitudes lleguen a la vez. No se guarda en 'orders' porque
 -- esa tabla es una proyección: POST /orders/projections/rebuild la borra y la
 -- reconstruye a partir de 'order_events'. Las claves no vencen en la demo.
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     idempotency_key VARCHAR(255) NOT NULL,
-    user_id INT NOT NULL,
+    user_id VARCHAR(24) NOT NULL,
     request_hash CHAR(64) NOT NULL,
     order_id INT NOT NULL,
     created_at DATETIME(6) NOT NULL,
@@ -77,21 +77,21 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 );
 
 INSERT INTO orders (id, user_id, product_id, quantity, status) VALUES
-  (1, 1, '60f7c2b5e1d3c2a1b8e4d123', 2, 'Confirmed'),
-  (2, 2, '60f7c2b5e1d3c2a1b8e4d124', 1, 'Confirmed'),
-  (3, 1, '60f7c2b5e1d3c2a1b8e4d125', 5, 'Confirmed');
+  (1, '665f1c2ab4e8d9a0c1f2e301', 1, 2, 'Confirmed'),
+  (2, '665f1c2ab4e8d9a0c1f2e302', 2, 1, 'Confirmed'),
+  (3, '665f1c2ab4e8d9a0c1f2e301', 3, 5, 'Confirmed');
 
 INSERT INTO order_events (order_id, type, data, occurred_at) VALUES
-  (1, 'OrderCreated',   '{"UserId": 1, "ProductId": "60f7c2b5e1d3c2a1b8e4d123", "Quantity": 2}', NOW(6)),
+  (1, 'OrderCreated',   '{"UserId": "665f1c2ab4e8d9a0c1f2e301", "ProductId": 1, "Quantity": 2}', NOW(6)),
   (1, 'OrderConfirmed', '{"ProcessedBy": "datos-iniciales"}', NOW(6)),
-  (2, 'OrderCreated',   '{"UserId": 2, "ProductId": "60f7c2b5e1d3c2a1b8e4d124", "Quantity": 1}', NOW(6)),
+  (2, 'OrderCreated',   '{"UserId": "665f1c2ab4e8d9a0c1f2e302", "ProductId": 2, "Quantity": 1}', NOW(6)),
   (2, 'OrderConfirmed', '{"ProcessedBy": "datos-iniciales"}', NOW(6)),
-  (3, 'OrderCreated',   '{"UserId": 1, "ProductId": "60f7c2b5e1d3c2a1b8e4d125", "Quantity": 5}', NOW(6)),
+  (3, 'OrderCreated',   '{"UserId": "665f1c2ab4e8d9a0c1f2e301", "ProductId": 3, "Quantity": 5}', NOW(6)),
   (3, 'OrderConfirmed', '{"ProcessedBy": "datos-iniciales"}', NOW(6));
 
--- La vista de las órdenes iniciales, con los nombres de pginit.sql y
--- mongoinit.js: esas órdenes no pasaron por RabbitMQ.
+-- La vista de las órdenes iniciales, con los nombres de mongoinit.js de Users
+-- y pginit.sql de Products: esas órdenes no pasaron por RabbitMQ.
 INSERT INTO order_details (order_id, user_id, customer_name, product_id, product_name, quantity, status, updated_at) VALUES
-  (1, 1, 'alice', '60f7c2b5e1d3c2a1b8e4d123', 'Camisa',   2, 'Confirmed', NOW(6)),
-  (2, 2, 'bob',   '60f7c2b5e1d3c2a1b8e4d124', 'Pantalón', 1, 'Confirmed', NOW(6)),
-  (3, 1, 'alice', '60f7c2b5e1d3c2a1b8e4d125', 'Zapatos',  5, 'Confirmed', NOW(6));
+  (1, '665f1c2ab4e8d9a0c1f2e301', 'alice', 1, 'Camisa',   2, 'Confirmed', NOW(6)),
+  (2, '665f1c2ab4e8d9a0c1f2e302', 'bob',   2, 'Pantalón', 1, 'Confirmed', NOW(6)),
+  (3, '665f1c2ab4e8d9a0c1f2e301', 'alice', 3, 'Zapatos',  5, 'Confirmed', NOW(6));
