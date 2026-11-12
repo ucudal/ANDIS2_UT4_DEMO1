@@ -3,11 +3,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 25: la fachada manda cada ruta al monolito o a un microservicio. Migrar
+// Demo 26: la fachada manda cada ruta al monolito o a un microservicio. Migrar
 // una ruta es cambiar una línea; el cliente hace las mismas solicitudes y
 // recibe las mismas respuestas.
 [Category(TestEnvironment.Disruptive)]
-public class Demo25StranglerFigTests : DemoTest
+public class Demo26StranglerFigTests : DemoTest
 {
     [TearDown]
     public async Task BackToTheMonolithAsync()

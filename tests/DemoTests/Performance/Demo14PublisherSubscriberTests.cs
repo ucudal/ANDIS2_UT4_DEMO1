@@ -3,9 +3,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 13: cada suscriptor tiene su propia cola en el exchange andis.events y
+// Demo 14: cada suscriptor tiene su propia cola en el exchange andis.events y
 // recibe solo los eventos a los que se suscribió.
-public class Demo13PublisherSubscriberTests : DemoTest
+public class Demo14PublisherSubscriberTests : DemoTest
 {
     [TearDown]
     public async Task RestoreAsync()

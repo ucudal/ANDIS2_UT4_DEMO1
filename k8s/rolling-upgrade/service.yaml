@@ -1,6 +1,6 @@
 # Un solo Service para todos los pods de Users, de cualquier versión: durante
 # el reemplazo reparte entre los viejos y los nuevos, como el alias users-pool
-# de la demo 28. Lo usan el Deployment y el Rollout de la demo 32, uno por vez.
+# de la demo 29. Lo usan el Deployment y el Rollout de la demo 33, uno por vez.
 apiVersion: v1
 kind: Service
 metadata:

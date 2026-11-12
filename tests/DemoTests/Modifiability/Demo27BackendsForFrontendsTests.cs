@@ -4,9 +4,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 26: la web y la app móvil tienen cada una su backend, con la respuesta a
+// Demo 27: la web y la app móvil tienen cada una su backend, con la respuesta a
 // su medida, y redesplegar uno no afecta al otro.
-public class Demo26BackendsForFrontendsTests : DemoTest
+public class Demo27BackendsForFrontendsTests : DemoTest
 {
     [Test]
     public async Task EachClientGetsItsOwnResponse()

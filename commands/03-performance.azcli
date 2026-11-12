@@ -1,4 +1,4 @@
-# Parte 3: demos de los patrones de rendimiento, de la 10 a la 16
+# Parte 3: demos de los patrones de rendimiento, de la 11 a la 17
 #
 # Las demos de disponibilidad están en 02-availability.azcli, y las de
 # seguridad, en 04-security.azcli.
@@ -65,7 +65,7 @@ docker compose --profile observability up -d --wait
 #
 # Al final del título de cada panel, entre corchetes, están las demos que lo
 # usan, por el número de su script en 'demos/': [Demo 1] es 01-retry.sh, y
-# [Demos 1-3, 16] son 01, 02, 03 y 16. En los textos de este archivo los
+# [Demos 1-3, 17] son 01, 02, 03 y 17. En los textos de este archivo los
 # paneles se nombran sin ese agregado.
 #
 # Prometheus y el estado de cada target:
@@ -218,7 +218,7 @@ curl -s -X DELETE http://localhost/products/cache | jq
 # varias veces, le cambia el nombre de "Camisa" a "Camisa de lino" y detiene
 # Redis. Al terminar, le devuelve el nombre "Camisa".
 
-./demos/10-cache-aside.sh
+./demos/11-cache-aside.sh
 
 # Resultado en consola: la primera lectura demora unos 200 ms -miss- y las
 # siguientes, 2 o 3 ms -hit-. Después de cambiar el nombre, la lectura siguiente
@@ -334,7 +334,7 @@ done
 # el Throttling por cliente del gateway rechazaría el pico antes de llegar a la
 # cola. Tarda unos 25 segundos.
 
-./demos/11-queue-based-load-leveling.sh
+./demos/12-queue-based-load-leveling.sh
 
 # Resultado en consola: las 30 responden 202 en pocos milisegundos; la cola baja
 # de a 3 mensajes cada 2 segundos, uno por réplica, hasta vaciarse.
@@ -432,7 +432,7 @@ docker compose up -d --scale orders-worker=3 --wait orders-worker
 # El siguiente script procesa 30 Orders con 3 réplicas, escala a 6 y procesa
 # otras 30. Al terminar vuelve a 3 réplicas. Tarda cerca de un minuto.
 
-./demos/12-competing-consumers-scaling.sh
+./demos/13-competing-consumers-scaling.sh
 
 # Resultado en consola: con 3 réplicas, unos 21 segundos; con 6, unos 12. Bajo
 # carga, con 6 réplicas:
@@ -578,7 +578,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
 # bob de "bob" a "roberto", mostrando qué suscriptor recibe cada evento. Al
 # terminar, les devuelve sus nombres.
 
-./demos/13-publisher-subscriber.sh
+./demos/14-publisher-subscriber.sh
 
 # Resultado en consola: order.created llega al worker y a los proyectores;
 # product.updated y user.updated, solo a los proyectores, que actualizan los nombres
@@ -650,7 +650,7 @@ curl -s -L "http://localhost$location" | table
 # El siguiente script crea una Order y consulta su estado respetando
 # Retry-After hasta el 303.
 
-./demos/14-asynchronous-request-reply.sh
+./demos/15-asynchronous-request-reply.sh
 
 # Resultado en consola: el 202 con sus encabezados; dos o tres consultas con 200
 # Pending, una cada 2 segundos; el 303 con Location: /orders/{id}; y la Order
@@ -761,7 +761,7 @@ curl -s http://localhost/orders/user/665f1c2ab4e8d9a0c1f2e302/details/view | jq 
 # El siguiente script hace la misma consulta por los dos lados, sin fallas y con
 # Products demorando 300 ms, y después muestra la consistencia eventual.
 
-./demos/15-cqrs.sh
+./demos/16-cqrs.sh
 
 # Resultado en consola: sin fallas, la síncrona demora unos 100 ms y la vista,
 # unos 3. Con Products lento, la síncrona pasa a casi 2 segundos y la vista no
@@ -879,13 +879,13 @@ curl -s -X POST http://localhost/users/UserService.svc \
       </soap:Envelope>' | xmllint --format -
 
 # Qué pasa con la vista cuando Users o Products fallan, y cuando los proyectores
-# están detenidos, se vio en la demo 15, CQRS. El siguiente script lo repite.
+# están detenidos, se vio en la demo 16, CQRS. El siguiente script lo repite.
 #
 # El siguiente script cambia el nombre del Product 1 de
 # "Camisa" a "Camisa de lino", hace fallar a Products y detiene los proyectores
 # mientras se crea una Order. Al terminar, le devuelve el nombre "Camisa".
 
-./demos/16-materialized-view.sh
+./demos/17-materialized-view.sh
 
 # Resultado en consola: la vista refleja el nombre nuevo. Con Products fallando,
 # la consulta síncrona responde "no disponible" y la vista, con los nombres. Con

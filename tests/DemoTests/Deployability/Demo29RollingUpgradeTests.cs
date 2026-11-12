@@ -3,10 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 28: un grupo de tres instancias pasa de la versión v1 a la v2 de a una,
+// Demo 29: un grupo de tres instancias pasa de la versión v1 a la v2 de a una,
 // y el servicio responde durante todo el reemplazo.
 [Category(TestEnvironment.Disruptive)]
-public class Demo28RollingUpgradeTests : DemoTest
+public class Demo29RollingUpgradeTests : DemoTest
 {
     [TearDown]
     public Task CleanupAsync() =>

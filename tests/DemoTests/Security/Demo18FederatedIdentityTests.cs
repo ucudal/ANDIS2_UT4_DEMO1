@@ -5,9 +5,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 17: por HTTPS, el User sale del token de Keycloak y no del cuerpo; cada
+// Demo 18: por HTTPS, el User sale del token de Keycloak y no del cuerpo; cada
 // uno ve solo sus Orders, el rol admin ve todas, y un token alterado no entra.
-public class Demo17FederatedIdentityTests : DemoTest
+public class Demo18FederatedIdentityTests : DemoTest
 {
     [Test]
     public async Task TheOrderBelongsToTheTokenUser()

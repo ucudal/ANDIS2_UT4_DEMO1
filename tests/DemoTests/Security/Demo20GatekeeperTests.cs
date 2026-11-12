@@ -5,10 +5,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 19: por HTTPS, el gateway rechaza las rutas de administración, los ids
+// Demo 20: por HTTPS, el gateway rechaza las rutas de administración, los ids
 // mal formados, los métodos y cuerpos que no corresponden y los encabezados de
 // identidad falsos, sin llegar a los servicios.
-public class Demo19GatekeeperTests : DemoTest
+public class Demo20GatekeeperTests : DemoTest
 {
     [TestCase("/orders/chaos", HttpStatusCode.OK)]
     [TestCase("/orders/patterns", HttpStatusCode.OK)]
@@ -81,7 +81,7 @@ public class Demo19GatekeeperTests : DemoTest
 
             Assert.That(async () => await Api.Http.GetAsync($"{DemoData.OrdersDirect}/orders/chaos"), Throws.InstanceOf<HttpRequestException>());
             var alice = await Identity.TokenAsync("alice");
-            Assert.That(await Demo17FederatedIdentityTests.ViewStatusAsync(alice, DemoData.User1), Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(await Demo18FederatedIdentityTests.ViewStatusAsync(alice, DemoData.User1), Is.EqualTo(HttpStatusCode.OK));
         }
         finally
         {

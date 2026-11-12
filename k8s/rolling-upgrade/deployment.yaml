@@ -1,5 +1,5 @@
-# Rolling Upgrade con un Deployment de Kubernetes: la primera parte de la demo 32.
-# Es la demo 28, pero lo que allí se hacía a mano -levantar una instancia nueva,
+# Rolling Upgrade con un Deployment de Kubernetes: la primera parte de la demo 33.
+# Es la demo 29, pero lo que allí se hacía a mano -levantar una instancia nueva,
 # esperar a que esté sana, detener una vieja- lo hace Kubernetes.
 #
 # Al cambiar la imagen, Kubernetes reemplaza los pods de a uno:

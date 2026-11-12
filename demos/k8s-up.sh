@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Crea el clúster de las demos de despliegue con Kubernetes, de la 31 a la 33, y
+# Crea el clúster de las demos de despliegue con Kubernetes, de la 32 a la 34, y
 # deja instalado lo que comparten:
 # - Gateway API y NGINX Gateway Fabric, la entrada de los clientes en el 8092.
 # - Argo Rollouts, que despliega cada versión con una estrategia, y su plugin de
@@ -88,4 +88,4 @@ until kubectl -n andis get deployment/andis-nginx > /dev/null 2>&1; do sleep 1; 
 kubectl -n andis rollout status deployment/andis-nginx --timeout=180s
 
 step "Listo"
-echo "  Gateway: http://localhost:8092. Las demos: ./demos/31-argo-blue-green.sh"
+echo "  Gateway: http://localhost:8092. Las demos: ./demos/32-argo-blue-green.sh"

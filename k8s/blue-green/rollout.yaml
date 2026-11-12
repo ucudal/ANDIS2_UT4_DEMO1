@@ -1,4 +1,4 @@
-# Blue/Green con Argo Rollouts: la demo 31. Es la demo 27, pero lo que allí se
+# Blue/Green con Argo Rollouts: la demo 32. Es la demo 28, pero lo que allí se
 # hacía a mano lo hace Argo Rollouts.
 #
 # Un Rollout es un Deployment con una estrategia de despliegue. Con blueGreen,
@@ -71,6 +71,6 @@ spec:
       autoPromotionEnabled: false
       scaleDownDelaySeconds: 60
   # Volver a una de las 3 versiones anteriores no repite la espera: se conmuta
-  # enseguida, como en la demo 27.
+  # enseguida, como en la demo 28.
   rollbackWindow:
     revisions: 3

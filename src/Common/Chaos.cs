@@ -19,7 +19,7 @@ namespace Ucu.Andis.Common;
 // Los valores iniciales salen de la configuración, Chaos:FailureRate y
 // Chaos:DelayMs -por variable de entorno, CHAOS__FAILURERATE y CHAOS__DELAYMS-.
 // Sin valor, son 0: el servicio arranca sin fallas. Las demos de Kubernetes, de
-// la 31 a la 33, construyen con ellos una versión de Users que falla desde que
+// la 32 a la 34, construyen con ellos una versión de Users que falla desde que
 // arranca, para ver cómo se detecta y se vuelve atrás.
 public class ChaosSettings
 {

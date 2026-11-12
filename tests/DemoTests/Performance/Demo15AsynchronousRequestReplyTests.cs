@@ -5,10 +5,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 14: POST /orders/ responde 202 con Location y Retry-After; el estado
+// Demo 15: POST /orders/ responde 202 con Location y Retry-After; el estado
 // responde 200 mientras la Order está Pending y 303 cuando se procesó. Con
 // Idempotency-Key, un reintento no crea otra Order.
-public class Demo14AsynchronousRequestReplyTests : DemoTest
+public class Demo15AsynchronousRequestReplyTests : DemoTest
 {
     [Test]
     public async Task StatusRedirectsWhenTheOrderIsProcessed()

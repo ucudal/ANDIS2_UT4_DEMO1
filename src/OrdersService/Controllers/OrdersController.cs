@@ -193,7 +193,7 @@ public class OrdersController : ControllerBase
         // Anti-corruption Layer: un cambio en el modelo de Orders. Con el flag
         // prendido, cada Order trae la fecha de su evento OrderCreated, de la misma
         // base. La capa anticorrupción de Purchases lee solo los campos que usa:
-        // la demo 22 muestra que Purchases responde igual.
+        // la demo 23 muestra que Purchases responde igual.
         if (_config.GetValue<bool>("Features:OrderDates"))
             return Ok(await (
                 from o in orders

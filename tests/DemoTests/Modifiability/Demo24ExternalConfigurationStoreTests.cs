@@ -3,10 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 23: los servicios leen sus valores de Consul mientras corren: un límite,
+// Demo 24: los servicios leen sus valores de Consul mientras corren: un límite,
 // un feature flag, un valor de otro servicio y una URL cambian sin reiniciar
 // nada, y si Consul no responde, siguen con los últimos valores.
-public class Demo23ExternalConfigurationStoreTests : DemoTest
+public class Demo24ExternalConfigurationStoreTests : DemoTest
 {
     [TearDown]
     public async Task ClearStoreAsync()

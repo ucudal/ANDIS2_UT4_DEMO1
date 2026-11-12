@@ -1,4 +1,4 @@
-# Parte 4: demos de los patrones de seguridad, de la 17 a la 21
+# Parte 4: demos de los patrones de seguridad, de la 18 a la 22
 #
 # Las demos de disponibilidad están en 02-availability.azcli y las de
 # rendimiento, en 03-performance.azcli.
@@ -52,7 +52,7 @@ claims() {
 }
 
 # Inicia sesión en Keycloak con el usuario que se le pasa y la contraseña
-# Pa55w0rd, y muestra el token de acceso. Se explica en la demo 17, Federated
+# Pa55w0rd, y muestra el token de acceso. Se explica en la demo 18, Federated
 # Identity.
 token() {
   curl -sS -X POST http://localhost:8080/realms/andis/protocol/openid-connect/token \
@@ -96,8 +96,8 @@ docker compose --profile observability up -d --wait
 # sidecar e imágenes".
 #
 # Al final del título de cada panel, entre corchetes, están las demos que lo
-# usan, por el número de su script en 'demos/': [Demo 20] es 20-sidecar.sh, y
-# [Demos 17, 18] son 17 y 18. En los textos de este archivo los paneles se
+# usan, por el número de su script en 'demos/': [Demo 21] es 21-sidecar.sh, y
+# [Demos 18, 19] son 18 y 19. En los textos de este archivo los paneles se
 # nombran sin ese agregado.
 #
 # Prometheus y el estado de cada target:
@@ -304,7 +304,7 @@ docker compose logs orders-service | grep --color=always '\[FEDERATED IDENTITY\]
 # El siguiente script repite lo anterior, iniciando sesión con la función
 # token, sin pasar por el navegador.
 
-./demos/17-federated-identity.sh
+./demos/18-federated-identity.sh
 
 # Resultado en consola: por HTTP cualquiera crea una Order para cualquier User.
 # Por HTTPS, bob crea Orders solo para él y ve solo las suyas; alice, las
@@ -318,7 +318,7 @@ docker compose logs orders-service --since 2m | grep '\[FEDERATED IDENTITY\]'
 #   función token; oauth2_device_verify_user_code y
 #   oauth2_device_code_to_token, el inicio de sesión de bob en el navegador;
 #   user_info_request, cada solicitud por la entrada HTTPS, porque el gateway
-#   le pregunta a Keycloak si el token es válido -ver la demo 18-; con
+#   le pregunta a Keycloak si el token es válido -ver la demo 19-; con
 #   invalid_token, los tokens alterados.
 # - "Solicitudes por segundo, por servicio y código HTTP": orders-service con
 #   403, las que rechazó Orders por los claims. Los 401 no aparecen: el
@@ -397,7 +397,7 @@ curl -sS --compressed -D - -o /dev/null --cacert gateway.crt \
 
 # El siguiente script repite lo anterior.
 
-./demos/18-gateway-offloading.sh
+./demos/19-gateway-offloading.sh
 
 # Resultado en consola: Orders no habla TLS; el gateway sí, con su
 # certificado. Sin token, 401 del gateway, sin llegar a Orders. La lista de
@@ -525,7 +525,7 @@ docker compose up -d --wait
 # El siguiente script repite lo anterior. Al terminar, vuelve a publicar los
 # puertos.
 
-./demos/19-gatekeeper.sh
+./demos/20-gatekeeper.sh
 
 # Resultado en consola: por HTTP, las rutas de administración, los métodos, los
 # cuerpos y los ids inválidos llegan a los servicios; por HTTPS, el gateway los
@@ -635,7 +635,7 @@ docker compose exec api-gateway curl -sS http://products-service:9901/stats/prom
 # El siguiente script repite lo anterior. Al terminar, le devuelve al Product
 # 3 el nombre "Zapatos".
 
-./demos/20-sidecar.sh
+./demos/21-sidecar.sh
 
 # Resultado en consola: por HTTP, cualquiera cambia el Product; por HTTPS, alice
 # lo lee pero no lo cambia, y carol sí. Desde adentro de la red,
@@ -769,7 +769,7 @@ rm -f "$image"
 # El siguiente script repite lo anterior, con una clave que vence a los 5
 # segundos.
 
-./demos/21-valet-key.sh
+./demos/22-valet-key.sh
 
 # Resultado en consola: sin Valet Key, la imagen pasa por Products por HTTP, y
 # no pasa por HTTPS. Con Valet Key, la imagen va directamente a Azurite; la

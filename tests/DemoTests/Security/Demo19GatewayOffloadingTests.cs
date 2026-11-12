@@ -3,9 +3,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 18: el gateway termina TLS, valida los tokens y comprime las respuestas;
+// Demo 19: el gateway termina TLS, valida los tokens y comprime las respuestas;
 // los servicios solo hablan HTTP.
-public class Demo18GatewayOffloadingTests : DemoTest
+public class Demo19GatewayOffloadingTests : DemoTest
 {
     [Test]
     public async Task ServicesOnlySpeakHttp()
@@ -24,7 +24,7 @@ public class Demo18GatewayOffloadingTests : DemoTest
         using var health = await https.GetAsync($"{DemoData.HttpsGateway}/health/orders");
 
         Assert.That(health.StatusCode, Is.EqualTo(HttpStatusCode.OK), "el certificado es el del gateway");
-        Assert.That(await Demo17FederatedIdentityTests.ViewStatusAsync(null, DemoData.User1), Is.EqualTo(HttpStatusCode.Unauthorized));
+        Assert.That(await Demo18FederatedIdentityTests.ViewStatusAsync(null, DemoData.User1), Is.EqualTo(HttpStatusCode.Unauthorized));
     }
 
     [Test]

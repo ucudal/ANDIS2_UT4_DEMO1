@@ -1,5 +1,5 @@
 # La ruta del Gateway hacia Users, con dos destinos y un peso para cada uno. Es
-# el split_clients de la demo 29: qué fracción de las solicitudes va a cada
+# el split_clients de la demo 30: qué fracción de las solicitudes va a cada
 # versión. Argo Rollouts cambia los pesos en cada paso; acá empiezan con todo a
 # la versión estable.
 apiVersion: gateway.networking.k8s.io/v1

@@ -147,7 +147,7 @@
     {
       "type": "timeseries",
       "id": 3,
-      "title": "Latencia p95 vista por k6, por endpoint [Demos 5, 10, 11, 15]",
+      "title": "Latencia p95 vista por k6, por endpoint [Demos 5, 11, 12, 16]",
       "description": "Percentil 95 del tiempo de respuesta medido por k6, acumulado desde que empezó el escenario: no baja aunque las últimas respuestas sean rápidas. Solo muestra los endpoints del escenario que está corriendo.",
       "datasource": {
         "type": "prometheus",
@@ -377,7 +377,7 @@
     {
       "type": "timeseries",
       "id": 24,
-      "title": "Patrones de resiliencia prendidos en Orders [Demos 1-4, 16]",
+      "title": "Patrones de resiliencia prendidos en Orders [Demos 1-4, 17]",
       "description": "1 prendido, 0 apagado. Cada demo deja prendido solo su patrón, para que no intervengan los demás; configurado con PUT /orders/patterns.",
       "datasource": {
         "type": "prometheus",
@@ -744,7 +744,7 @@
     {
       "type": "timeseries",
       "id": 11,
-      "title": "Resultado de las llamadas a cada dependencia [Demos 2, 3, 15]",
+      "title": "Resultado de las llamadas a cada dependencia [Demos 2, 3, 16]",
       "description": "Llamadas por segundo según cómo terminaron, después de aplicar toda la resiliencia: código HTTP, o la excepción si el circuito estaba abierto, el bulkhead lleno o venció el timeout.",
       "datasource": {
         "type": "prometheus",
@@ -884,7 +884,7 @@
     {
       "type": "state-timeline",
       "id": 26,
-      "title": "Salud de los servicios [Demos 6, 9, 16]",
+      "title": "Salud de los servicios [Demos 6, 9, 17]",
       "description": "Resultado de /health de cada servicio: verde Healthy, naranja Degraded, rojo Unhealthy, gris si el servicio no responde. Con varias réplicas, la peor. El detalle de cada chequeo está en /health.",
       "datasource": {
         "type": "prometheus",
@@ -983,7 +983,7 @@
     {
       "type": "timeseries",
       "id": 13,
-      "title": "Solicitudes por segundo, por servicio y código HTTP [Demos 5, 16]",
+      "title": "Solicitudes por segundo, por servicio y código HTTP [Demos 5, 17]",
       "description": "Medido por cada servicio; no incluye /health ni /metrics.",
       "datasource": {
         "type": "prometheus",
@@ -1034,7 +1034,7 @@
     {
       "type": "timeseries",
       "id": 14,
-      "title": "Latencia p95 por servicio [Demo 10]",
+      "title": "Latencia p95 por servicio [Demo 11]",
       "description": "Medida por cada servicio; no incluye /health ni /metrics.",
       "datasource": {
         "type": "prometheus",
@@ -1217,7 +1217,7 @@
     {
       "type": "timeseries",
       "id": 17,
-      "title": "Cola orders.process [Demos 7, 9, 11, 12]",
+      "title": "Cola orders.process [Demos 7, 9, 12, 13]",
       "description": "Mensajes esperando, mensajes entregados a un worker sin confirmar todavía, y consumidores conectados.",
       "datasource": {
         "type": "prometheus",
@@ -1334,7 +1334,7 @@
     {
       "type": "timeseries",
       "id": 18,
-      "title": "Orders procesadas por segundo, por réplica [Demos 7, 8, 11, 12]",
+      "title": "Orders procesadas por segundo, por réplica [Demos 7, 8, 12, 13]",
       "description": "Cada réplica de orders-worker se identifica por el id de su contenedor. Requeued: la Order volvió a la cola porque una dependencia no estaba disponible.",
       "datasource": {
         "type": "prometheus",
@@ -1389,8 +1389,8 @@
     {
       "type": "timeseries",
       "id": 27,
-      "title": "Mensajes en cada cola [Demo 13]",
-      "description": "Mensajes de cada cola de RabbitMQ, los que esperan más los entregados a un consumidor sin confirmar. Incluye cualquier cola que se cree, como la cola spy de la demo 13, sin cambiar el panel.",
+      "title": "Mensajes en cada cola [Demo 14]",
+      "description": "Mensajes de cada cola de RabbitMQ, los que esperan más los entregados a un consumidor sin confirmar. Incluye cualquier cola que se cree, como la cola spy de la demo 14, sin cambiar el panel.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1453,7 +1453,7 @@
     {
       "type": "timeseries",
       "id": 20,
-      "title": "Lecturas de la caché de Products, por resultado [Demo 10]",
+      "title": "Lecturas de la caché de Products, por resultado [Demo 11]",
       "description": "Cache-Aside: hit sale de Redis; miss lee MongoDB y lo guarda en Redis; error es Redis caído; disabled es la caché apagada desde /products/cache.",
       "datasource": {
         "type": "prometheus",
@@ -1565,7 +1565,7 @@
     {
       "type": "timeseries",
       "id": 21,
-      "title": "Latencia p95 del detalle de Orders: síncrono contra vista [Demo 15]",
+      "title": "Latencia p95 del detalle de Orders: síncrono contra vista [Demo 16]",
       "description": "CQRS y Materialized View: details arma el detalle llamando a Users y a Products; details/view lee la vista materializada.",
       "datasource": {
         "type": "prometheus",
@@ -1708,7 +1708,7 @@
     {
       "type": "timeseries",
       "id": 23,
-      "title": "Cola orders.details-view [Demos 9, 16]",
+      "title": "Cola orders.details-view [Demos 9, 17]",
       "description": "Publisher/Subscriber: la cola del proyector de la vista materializada. Si crece, la vista está atrasada respecto de los eventos.",
       "datasource": {
         "type": "prometheus",
@@ -1838,7 +1838,7 @@
     {
       "type": "timeseries",
       "id": 29,
-      "title": "Eventos de Keycloak por segundo [Demos 17, 18]",
+      "title": "Eventos de Keycloak por segundo [Demos 18, 19]",
       "description": "Federated Identity y Gateway Offloading: login es un inicio de sesión; user_info_request es una validación de token que el gateway le pide a Keycloak por cada solicitud HTTPS. Con error invalid_token, el token no era válido y el gateway respondió 401 sin llegar al servicio.",
       "datasource": {
         "type": "prometheus",
@@ -1889,7 +1889,7 @@
     {
       "type": "timeseries",
       "id": 30,
-      "title": "Solicitudes en el sidecar de Products, por resultado [Demo 20]",
+      "title": "Solicitudes en el sidecar de Products, por resultado [Demo 21]",
       "description": "Sidecar: permitidas son las que pasaron la autorización de Envoy y llegaron a Products; sin rol admin, las escrituras rechazadas con 403; token inválido, las rechazadas con 401. Products no se entera de las rechazadas.",
       "datasource": {
         "type": "prometheus",
@@ -2006,7 +2006,7 @@
     {
       "type": "timeseries",
       "id": 31,
-      "title": "Bytes de imágenes que recibe Products [Demo 21]",
+      "title": "Bytes de imágenes que recibe Products [Demo 22]",
       "description": "Valet Key: sin el patrón, los bytes de cada imagen pasan por el gateway y por Products, que la sube al almacenamiento. Con Valet Key, el cliente sube la imagen directamente a Azurite y este panel queda en cero.",
       "datasource": {
         "type": "prometheus",
@@ -2073,7 +2073,7 @@
     {
       "type": "timeseries",
       "id": 32,
-      "title": "Claves de imágenes que entrega Products [Demo 21]",
+      "title": "Claves de imágenes que entrega Products [Demo 22]",
       "description": "Valet Key: write es una URL firmada para subir la imagen de un Product; read, una para bajarla. Products firma cada clave sin recibir ni enviar los bytes de la imagen.",
       "datasource": {
         "type": "prometheus",
@@ -2168,7 +2168,7 @@
     {
       "type": "timeseries",
       "id": 34,
-      "title": "Solicitudes de la fachada, por destino [Demo 25]",
+      "title": "Solicitudes de la fachada, por destino [Demo 26]",
       "description": "Strangler Fig: el tráfico pasa del monolito a cada servicio, una ruta por vez. Lo informa k6 a partir del encabezado X-Served-By. Las marcas verticales son los pasos de la migración.",
       "datasource": {
         "type": "prometheus",
@@ -2223,7 +2223,7 @@
     {
       "type": "timeseries",
       "id": 35,
-      "title": "Respuestas de la fachada con error [Demo 25]",
+      "title": "Respuestas de la fachada con error [Demo 26]",
       "description": "Strangler Fig: tiene que quedar en cero durante toda la migración. Es lo que el cliente percibiría si migrar una ruta cortara el servicio.",
       "datasource": {
         "type": "prometheus",
@@ -2274,7 +2274,7 @@
     {
       "type": "timeseries",
       "id": 36,
-      "title": "Latencia p95 del detalle, por destino [Demo 25]",
+      "title": "Latencia p95 del detalle, por destino [Demo 26]",
       "description": "Strangler Fig: el monolito resuelve el detalle con un JOIN; Orders llama a Users y a Products por HTTP. Es el costo de separar los datos.",
       "datasource": {
         "type": "prometheus",
@@ -2325,7 +2325,7 @@
     {
       "type": "timeseries",
       "id": 37,
-      "title": "Cola bridge.erp [Demo 24]",
+      "title": "Cola bridge.erp [Demo 25]",
       "description": "Messaging Bridge: con ActiveMQ caído, los mensajes esperan en RabbitMQ; cuando vuelve, la cola se vacía.",
       "datasource": {
         "type": "prometheus",
@@ -2376,7 +2376,7 @@
     {
       "type": "timeseries",
       "id": 38,
-      "title": "Orders confirmadas por segundo [Demo 24]",
+      "title": "Orders confirmadas por segundo [Demo 25]",
       "description": "Messaging Bridge: se siguen confirmando durante la caída del ERP. Sin el puente, con una llamada directa, la confirmación dependería del ERP.",
       "datasource": {
         "type": "prometheus",
@@ -2427,7 +2427,7 @@
     {
       "type": "timeseries",
       "id": 39,
-      "title": "Latencia p95: Orders y Purchases [Demo 22]",
+      "title": "Latencia p95: Orders y Purchases [Demo 23]",
       "description": "Anti-corruption Layer: Purchases lee de Orders a través de su capa, que además le pregunta a Users por SOAP el nombre de cada comprador. La diferencia con Orders es el costo de la capa; si Users se demora, solo sube Purchases.",
       "datasource": {
         "type": "prometheus",
@@ -2478,7 +2478,7 @@
     {
       "type": "timeseries",
       "id": 40,
-      "title": "Solicitudes a Orders por resultado [Demo 23]",
+      "title": "Solicitudes a Orders por resultado [Demo 24]",
       "description": "External Configuration Store: las dos formas de cambiar el límite pasan los POST de 202 a 400. Con la variable de entorno aparecen solicitudes sin respuesta mientras se recrea el contenedor; con el almacén, no.",
       "datasource": {
         "type": "prometheus",
@@ -2529,7 +2529,7 @@
     {
       "type": "timeseries",
       "id": 41,
-      "title": "Valor vigente por proceso [Demo 23]",
+      "title": "Valor vigente por proceso [Demo 24]",
       "description": "External Configuration Store: el valor de cada clave en cada proceso. Todos cambian casi a la vez y sin reiniciarse.",
       "datasource": {
         "type": "prometheus",
@@ -2580,7 +2580,7 @@
     {
       "type": "timeseries",
       "id": 42,
-      "title": "Respuestas por cliente [Demo 26]",
+      "title": "Respuestas por cliente [Demo 27]",
       "description": "Backends for Frontends: la web y la app móvil, cada una por su backend. Mientras se redespliega el de la app, la web sigue respondiendo 200 OK.",
       "datasource": {
         "type": "prometheus",
@@ -2644,7 +2644,7 @@
     {
       "type": "timeseries",
       "id": 44,
-      "title": "Solicitudes por versión [Demos 27-33]",
+      "title": "Solicitudes por versión [Demos 28-34]",
       "description": "Qué versión de Users atendió cada solicitud de la entrada de despliegue, según el encabezado X-Version. En Blue/Green cambia de una vez; en Rolling Upgrade, en escalones; en Canary, sigue al porcentaje.",
       "datasource": {
         "type": "prometheus",
@@ -2695,7 +2695,7 @@
     {
       "type": "timeseries",
       "id": 45,
-      "title": "Respuestas con error, por versión [Demos 27-29, 31-33]",
+      "title": "Respuestas con error, por versión [Demos 28-30, 32-34]",
       "description": "Solicitudes de la entrada de despliegue que no respondieron 200 OK. Sin versión, respondió el gateway: la solicitud no llegó a ninguna instancia de Users.",
       "datasource": {
         "type": "prometheus",
@@ -2756,7 +2756,7 @@
     {
       "type": "timeseries",
       "id": 46,
-      "title": "Respuestas por variante [Demo 30]",
+      "title": "Respuestas por variante [Demo 31]",
       "description": "A/B Testing: cuántas veces mostró cada variante la versión 2 de Users, según sus propias métricas, por segmento.",
       "datasource": {
         "type": "prometheus",
@@ -2807,7 +2807,7 @@
     {
       "type": "timeseries",
       "id": 47,
-      "title": "Errores de cada versión, según Users [Demos 32-33]",
+      "title": "Errores de cada versión, según Users [Demos 33-34]",
       "description": "Lo que mide el análisis de Argo Rollouts -k8s/base/analysis-error-rate.yaml-: la fracción de las solicitudes SOAP de cada versión de Users que respondió con error, según el Prometheus del clúster. La línea roja es el límite del análisis, el 5%: por encima, Argo vuelve atrás. Necesita el clúster: ./demos/k8s-up.sh.",
       "datasource": {
         "type": "prometheus",

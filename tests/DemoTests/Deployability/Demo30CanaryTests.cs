@@ -3,9 +3,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 29: una fracción de las solicitudes va a la versión v2. Si la v2 falla,
+// Demo 30: una fracción de las solicitudes va a la versión v2. Si la v2 falla,
 // el error lo ve solo esa fracción, y volver atrás es mandar todo a la v1.
-public class Demo29CanaryTests : DemoTest
+public class Demo30CanaryTests : DemoTest
 {
     [TearDown]
     public Task BackToV1Async() => Shell.DemoAsync("v2_reset_chaos; deploy_target users-service:8000");

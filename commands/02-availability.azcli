@@ -65,7 +65,7 @@ docker compose --profile observability up -d --wait
 #
 # Al final del título de cada panel, entre corchetes, están las demos que lo
 # usan, por el número de su script en 'demos/': [Demo 1] es 01-retry.sh, y
-# [Demos 1-3, 16] son 01, 02, 03 y 16. En los textos de este archivo los
+# [Demos 1-3, 17] son 01, 02, 03 y 17. En los textos de este archivo los
 # paneles se nombran sin ese agregado.
 #
 # Prometheus y el estado de cada target:

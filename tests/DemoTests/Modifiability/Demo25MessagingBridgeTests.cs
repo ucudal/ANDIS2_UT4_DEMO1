@@ -2,10 +2,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 24: una Order confirmada llega al ERP por el puente entre RabbitMQ y
+// Demo 25: una Order confirmada llega al ERP por el puente entre RabbitMQ y
 // ActiveMQ, y su factura vuelve. Si el broker del ERP no está, el pedido espera
 // y nada se pierde.
-public class Demo24MessagingBridgeTests : DemoTest
+public class Demo25MessagingBridgeTests : DemoTest
 {
     [TearDown]
     public Task RestoreAsync() => Shell.ComposeAsync("start legacy-broker");

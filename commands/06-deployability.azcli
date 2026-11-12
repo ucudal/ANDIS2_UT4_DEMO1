@@ -1,4 +1,4 @@
-# Parte 6: demos de las estrategias de despliegue, de la 27 a la 33
+# Parte 6: demos de las estrategias de despliegue, de la 28 a la 34
 #
 # Las demos de disponibilidad están en 02-availability.azcli, las de
 # rendimiento, en 03-performance.azcli, las de seguridad, en 04-security.azcli y
@@ -12,7 +12,7 @@
 # contenedor del gateway. Cada respuesta dice qué versión la atendió, en el
 # encabezado X-Version.
 #
-# Las demos 31 a 33 son las 27 a 29 con Kubernetes: la demo de Kubernetes es
+# Las demos 32 a 34 son las 28 a 30 con Kubernetes: la demo de Kubernetes es
 # siempre la de Docker Compose más 4. Corren en un clúster de kind, con una
 # imagen por versión de Users, y los despliegues los hace Argo Rollouts. Están
 # al final del archivo, y no necesitan Docker Compose.
@@ -71,7 +71,7 @@ soap2='<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 </soap:Envelope>'
 
 # ---------------------------------------------------------------------------
-# Demo 27: Blue/Green Deployment
+# Demo 28: Blue/Green Deployment
 # ---------------------------------------------------------------------------
 # La versión v2 se despliega al lado de la v1, se prueba sin que reciba tráfico
 # y se conmuta de una vez. Volver atrás es conmutar de nuevo.
@@ -116,7 +116,7 @@ EOF
 # La demo completa, con una sonda que pide el User de alice cada 0.1 segundos mientras
 # se conmuta: ninguna respuesta con error
 
-./demos/27-blue-green.sh
+./demos/28-blue-green.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
 # cambio queda marcado con una línea vertical en los paneles. Resultado en
@@ -128,7 +128,7 @@ EOF
 ./demos/load-deployment.sh bluegreen
 
 # ---------------------------------------------------------------------------
-# Demo 28: Rolling Upgrade
+# Demo 29: Rolling Upgrade
 # ---------------------------------------------------------------------------
 # Tres instancias de la versión v1 se reemplazan de a una por réplicas de la v2.
 # Cada lote espera a que la instancia nueva esté sana antes de detener una vieja.
@@ -214,7 +214,7 @@ EOF
 # La demo completa, con una sonda que pide el User de alice cada 0.1 segundos durante
 # todo el reemplazo: ninguna respuesta con error
 
-./demos/28-rolling-upgrade.sh
+./demos/29-rolling-upgrade.sh
 
 # Bajo carga. Resultado en Grafana:
 # - "Solicitudes por versión": la versión v2 sube en escalones, un tercio por
@@ -224,7 +224,7 @@ EOF
 ./demos/load-deployment.sh rolling
 
 # ---------------------------------------------------------------------------
-# Demo 29: Canary Testing
+# Demo 30: Canary Testing
 # ---------------------------------------------------------------------------
 # Una fracción de las solicitudes va a la versión v2. Si sus métricas son
 # buenas, la fracción crece; si no, vuelve a cero. split_clients de nginx elige
@@ -278,7 +278,7 @@ done | sort | uniq -c
 
 # La demo completa: 10%, 50% y 100%, y después el canario que falla
 
-./demos/29-canary.sh
+./demos/30-canary.sh
 
 # Bajo carga. Resultado en Grafana:
 # - "Solicitudes por versión": la versión v2 sigue al porcentaje del canario.
@@ -288,7 +288,7 @@ done | sort | uniq -c
 ./demos/load-deployment.sh canary
 
 # ---------------------------------------------------------------------------
-# Demo 30: A/B Testing
+# Demo 31: A/B Testing
 # ---------------------------------------------------------------------------
 # La versión v2 trae un experimento: cada User ve su nombre en una de dos
 # variantes. La A muestra el nombre, y la B el nombre y el email. Qué variante
@@ -318,7 +318,7 @@ curl -sS -X POST http://localhost:4242/api/admin/context \
   -d '{"name": "segment", "stickiness": false}' | jq
 
 # Crear en Unleash el flag, de tipo experimento. Si ya existe, porque ya se
-# corrió demos/30-ab-testing.sh o estos mismos comandos, Unleash responde con un
+# corrió demos/31-ab-testing.sh o estos mismos comandos, Unleash responde con un
 # error, y se sigue igual
 curl -sS -X POST http://localhost:4242/api/admin/projects/default/features \
   -H 'Authorization: *:*.andis-admin-token' \
@@ -429,7 +429,7 @@ EOF
 
 # La demo completa
 
-./demos/30-ab-testing.sh
+./demos/31-ab-testing.sh
 
 # Bajo carga: los dos Users consultan a la versión v2, y la mitad de las
 # consultas de bob traen el segmento beta. Resultado en Grafana:
@@ -439,7 +439,7 @@ EOF
 ./demos/load-deployment.sh ab
 
 # ---------------------------------------------------------------------------
-# Demos 31 a 33: las mismas estrategias, con Kubernetes
+# Demos 32 a 34: las mismas estrategias, con Kubernetes
 # ---------------------------------------------------------------------------
 # Necesitan kind, kubectl y el plugin de Argo Rollouts para kubectl:
 #   brew install kind kubectl argoproj/tap/kubectl-argo-rollouts
@@ -459,9 +459,9 @@ EOF
 kubectl get pods,services,gateway -n andis
 
 # ---------------------------------------------------------------------------
-# Demo 31: Blue/Green con Argo Rollouts
+# Demo 32: Blue/Green con Argo Rollouts
 # ---------------------------------------------------------------------------
-# Es la demo 27, pero lo que allí se hacía a mano lo hace Argo Rollouts, con un
+# Es la demo 28, pero lo que allí se hacía a mano lo hace Argo Rollouts, con un
 # comando por paso. Los clientes van al Service users-active; la versión nueva
 # se prueba por users-preview, en http://preview.localhost:8092.
 
@@ -534,16 +534,16 @@ kubectl delete -f k8s/blue-green
 # La demo completa, con una sonda que pide el User de alice cada 0.1 segundos durante
 # la conmutación y la vuelta atrás: ninguna respuesta con error
 
-./demos/31-argo-blue-green.sh
+./demos/32-argo-blue-green.sh
 
 # Bajo carga. Necesita el perfil observability de Docker Compose. Resultado en
-# Grafana: lo mismo que en la demo 27
+# Grafana: lo mismo que en la demo 28
 ./demos/load-deployment.sh k8s-bluegreen
 
 # ---------------------------------------------------------------------------
-# Demo 32: Rolling Upgrade con Kubernetes
+# Demo 33: Rolling Upgrade con Kubernetes
 # ---------------------------------------------------------------------------
-# Es la demo 28, en dos partes. Primero con un Deployment de Kubernetes, que
+# Es la demo 29, en dos partes. Primero con un Deployment de Kubernetes, que
 # reemplaza los pods de a uno pero solo sabe si un pod está listo. Después con
 # Argo Rollouts, que después de cada paso mide en Prometheus los errores de los
 # pods nuevos, y vuelve atrás solo si fallan.
@@ -642,7 +642,7 @@ kubectl delete -f k8s/rolling-upgrade --ignore-not-found
 
 # La demo completa
 
-./demos/32-k8s-rolling-upgrade.sh
+./demos/33-k8s-rolling-upgrade.sh
 
 # Bajo carga, solo la parte del Deployment. Resultado en Grafana:
 # - "Solicitudes por versión": la versión v2 reemplaza a la v1, y después la v3
@@ -652,9 +652,9 @@ kubectl delete -f k8s/rolling-upgrade --ignore-not-found
 ./demos/load-deployment.sh k8s-rolling
 
 # ---------------------------------------------------------------------------
-# Demo 33: Canary con Argo Rollouts
+# Demo 34: Canary con Argo Rollouts
 # ---------------------------------------------------------------------------
-# Es la demo 29, pero lo que allí se hacía a mano -cambiar el porcentaje, mirar
+# Es la demo 30, pero lo que allí se hacía a mano -cambiar el porcentaje, mirar
 # los errores, decidir- lo hace Argo Rollouts. Cambia los pesos de la ruta users
 # entre los Service users-stable y users-canary: 10%, análisis, 50%, análisis y
 # 100%. Si un análisis falla, vuelve todo a la versión estable.
@@ -711,7 +711,7 @@ kubectl delete -f k8s/canary
 
 # La demo completa
 
-./demos/33-argo-canary.sh
+./demos/34-argo-canary.sh
 
 # Bajo carga. Resultado en Grafana:
 # - "Solicitudes por versión": la versión v2 sigue a los pesos del 10% y el

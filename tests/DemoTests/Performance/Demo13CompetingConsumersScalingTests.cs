@@ -5,10 +5,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 12: con el doble de réplicas de orders-worker, las mismas Orders se
+// Demo 13: con el doble de réplicas de orders-worker, las mismas Orders se
 // procesan en menos tiempo, sin cambiar el código.
 [Category(TestEnvironment.Disruptive)]
-public class Demo12CompetingConsumersScalingTests : DemoTest
+public class Demo13CompetingConsumersScalingTests : DemoTest
 {
     [TearDown]
     public Task ScaleBackAsync() =>

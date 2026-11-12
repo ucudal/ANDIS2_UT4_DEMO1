@@ -1,8 +1,8 @@
-# Canary con Argo Rollouts: la demo 33. Es la demo 29, pero lo que allí se
+# Canary con Argo Rollouts: la demo 34. Es la demo 30, pero lo que allí se
 # hacía a mano -cambiar el porcentaje en el gateway, mirar las métricas, decidir
 # si seguir o volver- lo hace Argo Rollouts.
 #
-# A diferencia de la demo 32, el reparto no depende de cuántos pods hay: con
+# A diferencia de la demo 33, el reparto no depende de cuántos pods hay: con
 # trafficRouting, Argo cambia los pesos de la HTTPRoute users entre dos Service,
 # users-stable y users-canary, mediante el plugin de Gateway API. NGINX Gateway
 # Fabric reparte las solicitudes según esos pesos.

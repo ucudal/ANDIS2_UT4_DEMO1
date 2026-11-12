@@ -971,12 +971,12 @@ anterior, porque mientras conviven comparten la base y los clientes.
 Blue/Green, Rolling Upgrade y Canary Testing tienen dos implementaciones:
 
 * **Con [Docker Compose](https://docs.docker.com/compose/), a mano:** las demos
-  27 a 29. Cada paso es un cambio en el gateway o un contenedor que se levanta o
+  28 a 30. Cada paso es un cambio en el gateway o un contenedor que se levanta o
   se detiene, y se ve qué hace cada uno.
-* **Con [Kubernetes](https://kubernetes.io/):** las demos 31 a 33, en un clúster
+* **Con [Kubernetes](https://kubernetes.io/):** las demos 32 a 34, en un clúster
   de [kind](https://kind.sigs.k8s.io/). Los pasos los hace [Argo
   Rollouts](https://argoproj.github.io/rollouts/), o Kubernetes mismo en la
-  primera parte de la demo 32; y en las demos 32 y 33 avanzar o volver atrás lo
+  primera parte de la demo 33; y en las demos 33 y 34 avanzar o volver atrás lo
   decide un análisis de las métricas de la versión nueva en
   [Prometheus](https://prometheus.io/). La entrada de los clientes es un
   *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con
@@ -1001,7 +1001,7 @@ CodeDeploy](https://aws.amazon.com/codedeploy/).
 | ---------- | ----------- | --------- | ------- |
 | `users-service-v2` | Nada propio: comparte la base de `users-service` | gateway, por la entrada de despliegue | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated`, y Unleash, para leer el *flag* del experimento |
 | `unleash` | El *flag* `users-display-name` y sus estrategias, en `unleash-db` | `users-service-v2` cada 2 segundos, con [OpenFeature](https://openfeature.dev/); las demos, con su API de administración | Nada |
-| El clúster de kind | Otra copia de `Users` y de su base, con una imagen por versión, y su propio Prometheus | k6 y las demos 31 a 33, por el Gateway en el puerto 8092 | Nada fuera del clúster |
+| El clúster de kind | Otra copia de `Users` y de su base, con una imagen por versión, y su propio Prometheus | k6 y las demos 32 a 34, por el Gateway en el puerto 8092 | Nada fuera del clúster |
 
 **Para analizar:**
 
@@ -1021,10 +1021,10 @@ CodeDeploy](https://aws.amazon.com/codedeploy/).
   <!-- → La tasa de errores y la latencia por versión, comparadas con las de la
   versión `v1` en el mismo período, y las de quien llama a Users, como Orders. Con
   pocas solicitudes, el 10% no alcanza para decidir: hay que esperar o subir el
-  porcentaje. Las demos 32 y 33 usan solo la tasa de errores, en
+  porcentaje. Las demos 33 y 34 usan solo la tasa de errores, en
   k8s/base/analysis-error-rate.yaml; un AnalysisTemplate puede tener varias
   métricas, y el despliegue avanza solo si todas pasan. -->
-* El análisis de la demo 33 espera 30 segundos antes de medir. ¿Qué pasa si la
+* El análisis de la demo 34 espera 30 segundos antes de medir. ¿Qué pasa si la
   versión nueva recibe tan pocas solicitudes que no hay datos?
   <!-- → La consulta da 0/0: no cumple ni la condición de éxito ni la de falla,
   el resultado no es concluyente, y Argo Rollouts detiene el despliegue para que
@@ -1061,9 +1061,9 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Una sola instancia del puente | Se conserva el orden de los pedidos | Si se cae, los mensajes esperan hasta que vuelva | — |
 | `Purchases` y los BFF solo en la entrada HTTP | No hace falta agregarlos a las reglas de autorización | Cualquiera puede consultar las compras de un `Product` o las `Orders` de un `User`, sin identificarse | — |
 | La migración del monolito no sincroniza los datos | La demo se concentra en el enrutamiento | Durante la convivencia, los dos sistemas pueden responder distinto | [Strangler Fig](PATTERNS.md#strangler-fig) lo muestra y explica cómo resolverlo |
-| La versión `v2` de `Users` es la misma imagen con otra configuración | No hace falta construir otra imagen | No se ve un cambio de código real entre versiones, ni el tiempo de construir y publicar una imagen | Demos 31 a 33: una imagen por versión, `users-service:v1`, `v2` y `v3-bad` |
-| La estrategia de despliegue se cambia a mano en el gateway | Se ve cada paso | Nadie decide con las métricas: en producción, una herramienta avanza o vuelve atrás sola | Demos 32 y 33: [Argo Rollouts](https://argoproj.github.io/rollouts/) avanza o vuelve atrás según un análisis en Prometheus |
-| El clúster de las demos 31 a 33 es de un solo nodo, con su propia base de `Users` | Se levanta en una máquina, sin tocar Docker Compose | No se ve qué pasa cuando se cae un nodo, y los datos se pierden si se borra el pod de la base | — |
+| La versión `v2` de `Users` es la misma imagen con otra configuración | No hace falta construir otra imagen | No se ve un cambio de código real entre versiones, ni el tiempo de construir y publicar una imagen | Demos 32 a 34: una imagen por versión, `users-service:v1`, `v2` y `v3-bad` |
+| La estrategia de despliegue se cambia a mano en el gateway | Se ve cada paso | Nadie decide con las métricas: en producción, una herramienta avanza o vuelve atrás sola | Demos 33 y 34: [Argo Rollouts](https://argoproj.github.io/rollouts/) avanza o vuelve atrás según un análisis en Prometheus |
+| El clúster de las demos 32 a 34 es de un solo nodo, con su propia base de `Users` | Se levanta en una máquina, sin tocar Docker Compose | No se ve qué pasa cuando se cae un nodo, y los datos se pierden si se borra el pod de la base | — |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de [Docker](https://www.docker.com/), sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 

@@ -1,6 +1,6 @@
 # El análisis que decide si una versión nueva de Users sigue adelante: qué
 # fracción de sus solicitudes respondió con error, según Prometheus. Lo usan los
-# Rollout de las demos 32 y 33, en sus pasos.
+# Rollout de las demos 33 y 34, en sus pasos.
 #
 # Argo Rollouts le pasa el hash de la plantilla de los pods de la versión nueva,
 # pod-hash, y la consulta mira solo esos pods. Mide 3 veces, cada 10 segundos:
@@ -22,7 +22,7 @@ spec:
     - name: error-rate
       # Antes de la primera medida, los pods nuevos tienen que haber recibido
       # solicitudes, y Prometheus tiene que haber leído varias veces sus
-      # métricas. Con el 10% del tráfico, de la demo 33, llegan pocas. Sin
+      # métricas. Con el 10% del tráfico, de la demo 34, llegan pocas. Sin
       # datos, la consulta da 0/0, que no cumple ninguna de las dos
       # condiciones: el resultado no es concluyente, y Argo Rollouts detiene el
       # despliegue para que decida una persona.

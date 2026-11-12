@@ -1,4 +1,4 @@
-# Funciones comunes de las demos de despliegue con Kubernetes, de la 31 a la 33.
+# Funciones comunes de las demos de despliegue con Kubernetes, de la 32 a la 34.
 # Se carga después de demos/common.sh, del que se usan get_user, user_summary,
 # versions, tally y deploy_probe. Acá apuntan al Gateway del clúster, en el
 # puerto 8092, en lugar de la entrada de despliegue de Docker Compose. No se

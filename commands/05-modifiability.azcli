@@ -1,4 +1,4 @@
-# Parte 5: demos de los patrones de facilidad de modificación, de la 22 a la 25
+# Parte 5: demos de los patrones de facilidad de modificación, de la 23 a la 27
 #
 # Las demos de disponibilidad están en 02-availability.azcli, las de rendimiento,
 # en 03-performance.azcli y las de seguridad, en 04-security.azcli.
@@ -52,7 +52,7 @@ table() {
 }
 
 # ---------------------------------------------------------------------------
-# Demo 22: Anti-corruption Layer
+# Demo 23: Anti-corruption Layer
 # ---------------------------------------------------------------------------
 # Purchases, un cliente nuevo, muestra para un Product todas sus compras con su
 # propio modelo: comprador, unidades y si está confirmada. Los datos vienen de
@@ -106,7 +106,7 @@ grep -rlE 'user_id|product_id|"Rejected"|Envelope|SOAPAction' src/PurchasesServi
 
 # La demo completa:
 
-./demos/22-anti-corruption-layer.sh
+./demos/23-anti-corruption-layer.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
 # cambio queda marcado con una línea vertical en los paneles. Resultado en
@@ -117,7 +117,7 @@ grep -rlE 'user_id|product_id|"Rejected"|Envelope|SOAPAction' src/PurchasesServi
 ./demos/load-modifiability.sh acl
 
 # ---------------------------------------------------------------------------
-# Demo 23: External Configuration Store
+# Demo 24: External Configuration Store
 # ---------------------------------------------------------------------------
 # Los límites, los feature flags y las URL están en un almacén central, Consul.
 # Cambian sin redesplegar y sin reiniciar. Este paso a paso usa dos valores:
@@ -170,7 +170,7 @@ curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
 
 # La demo completa:
 
-./demos/23-external-configuration-store.sh
+./demos/24-external-configuration-store.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
 # cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
@@ -183,7 +183,7 @@ curl -s -X DELETE 'http://localhost:8500/v1/kv/andis/?recurse=true'
 ./demos/load-modifiability.sh config
 
 # ---------------------------------------------------------------------------
-# Demo 24: Messaging Bridge
+# Demo 25: Messaging Bridge
 # ---------------------------------------------------------------------------
 # Un ERP legado usa otro broker, ActiveMQ, y otro formato, registros de ancho
 # fijo. El puente reenvía las Orders confirmadas de RabbitMQ a ActiveMQ, y las
@@ -230,7 +230,7 @@ curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data
 
 # La demo completa:
 
-./demos/24-messaging-bridge.sh
+./demos/25-messaging-bridge.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
 # cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
@@ -241,7 +241,7 @@ curl -s http://localhost:8000/orders/$id/events | jq -c '.events[] | {type, data
 ./demos/load-modifiability.sh bridge
 
 # ---------------------------------------------------------------------------
-# Demo 25: Strangler Fig
+# Demo 26: Strangler Fig
 # ---------------------------------------------------------------------------
 # Una fachada, en el puerto 8090, recibe todas las solicitudes y las desvía,
 # ruta por ruta, del monolito a los microservicios.
@@ -328,7 +328,7 @@ docker compose up -d --force-recreate --wait monolith api-gateway
 
 # La demo completa:
 
-./demos/25-strangler-fig.sh
+./demos/26-strangler-fig.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
 # cambio queda marcado con una línea vertical en los paneles. Resultado en Grafana:
@@ -342,7 +342,7 @@ docker compose up -d --force-recreate --wait monolith api-gateway
 ./demos/load-modifiability.sh strangler
 
 # ---------------------------------------------------------------------------
-# Demo 26: Backends for Frontends
+# Demo 27: Backends for Frontends
 # ---------------------------------------------------------------------------
 # La web y la app móvil muestran las Orders de un User, pero cada una necesita
 # algo distinto. Cada cliente tiene su propio backend: bff-web y bff-mobile. El
@@ -370,7 +370,7 @@ docker inspect -f '{{.State.StartedAt}}' $(docker compose ps -q bff-web)
 
 # La demo completa:
 
-./demos/26-backends-for-frontends.sh
+./demos/27-backends-for-frontends.sh
 
 # Bajo carga: lanza un escenario de k6 y hace los cambios mientras corre. Cada
 # cambio queda marcado con una línea vertical en los paneles. Resultado en

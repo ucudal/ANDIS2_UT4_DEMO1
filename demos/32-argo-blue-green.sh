@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Blue/Green con Argo Rollouts: la demo 27 en Kubernetes. La versión nueva de
+# Blue/Green con Argo Rollouts: la demo 28 en Kubernetes. La versión nueva de
 # Users se despliega al lado de la actual, se prueba sin que reciba tráfico y
-# se conmuta de una vez. Lo que en la demo 27 se hacía a mano -levantar la
+# se conmuta de una vez. Lo que en la demo 28 se hacía a mano -levantar la
 # versión nueva, probarla, cambiar el destino del gateway- lo hace Argo
 # Rollouts, con un comando por paso.
 #
@@ -55,4 +55,4 @@ while_probing rollouts undo users
 rollout_tree
 get_user "$ALICE" -i | user_summary
 note "Como los pods de la versión v1 seguían vivos, volver fue conmutar de nuevo,"
-note "sin esperar a que arranquen. Es la demo 27, pero con un comando por paso."
+note "sin esperar a que arranquen. Es la demo 28, pero con un comando por paso."

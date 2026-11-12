@@ -842,7 +842,7 @@ curl -X DELETE http://localhost/products/cache
 ### Patrones de rendimiento
 
 Como en las demos de disponibilidad, cada patrón tiene un script en
-[demos](demos/), del `10` al `16`. Los *logs* de
+[demos](demos/), del `11` al `17`. Los *logs* de
 [Docker](https://www.docker.com/) muestran los eventos con una etiqueta:
 `[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en `users-service`,
 `products-service` y `orders-projector`; y `[MATERIALIZED VIEW]` en
@@ -876,18 +876,18 @@ falla.
 **Cómo funciona:**
 
 ![Secuencia de una lectura y una invalidación con
-Cache-Aside](assets/10-cache-aside.svg)
+Cache-Aside](assets/11-cache-aside.svg)
 
 Si Redis no responde, `Products` lee directamente de PostgreSQL.
 
 **Código:**
 
-![Clases de la caché de Products](assets/10-cache-aside-clases.svg)
+![Clases de la caché de Products](assets/11-cache-aside-clases.svg)
 
 `ProductCache` no conoce a PostgreSQL: su método `GetOrLoadAsync` recibe la lectura
 como una función, `load`.
 
-**Cómo verlo:** la demo [10 de Cache-Aside](demos/10-cache-aside.sh) simula una
+**Cómo verlo:** la demo [11 de Cache-Aside](demos/11-cache-aside.sh) simula una
 base que demora 200 ms y lee el mismo `Product` varias veces: la primera lectura
 demora 200 ms y las siguientes, 2 o 3 ms. Después cambia su nombre: la lectura
 siguiente es un *miss* y trae el nombre nuevo. Con Redis detenido, `Products`
@@ -918,13 +918,13 @@ lo muestra bajo un pico.
 
 **Cómo funciona:**
 
-![La cola absorbe un pico de Orders](assets/11-queue-based-load-leveling.svg)
+![La cola absorbe un pico de Orders](assets/12-queue-based-load-leveling.svg)
 
 El pico se acumula en la cola, no en `Users` ni en `Products`. El código es el
 de [Competing Consumers](#competing-consumers-para-disponibilidad).
 
-**Cómo verlo:** la demo [11 de Queue-Based Load
-Leveling](demos/11-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
+**Cómo verlo:** la demo [12 de Queue-Based Load
+Leveling](demos/12-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
 directamente en `orders-service`: el Throttling por cliente del gateway
 rechazaría el pico antes de que llegara a la cola. Todas responden `202` en
 pocos milisegundos; la cola baja de a 3 mensajes cada 2 segundos hasta vaciarse.
@@ -946,8 +946,8 @@ cambiar el código.
 disponibilidad](#competing-consumers-para-disponibilidad), con 6 réplicas en
 lugar de 3.
 
-**Cómo verlo:** la demo [12 de Competing Consumers para
-rendimiento](demos/12-competing-consumers-scaling.sh) procesa 30 `Orders` con 3
+**Cómo verlo:** la demo [13 de Competing Consumers para
+rendimiento](demos/13-competing-consumers-scaling.sh) procesa 30 `Orders` con 3
 réplicas, unos 21 segundos, y otras 30 con 6 réplicas, unos 12 segundos. Al
 final vuelve a 3 réplicas.
 
@@ -994,21 +994,21 @@ Consumers](#competing-consumers-para-rendimiento): las réplicas de
 **Cómo funciona:**
 
 ![Quién publica cada evento y quién se
-suscribe](assets/13-publisher-subscriber.svg)
+suscribe](assets/14-publisher-subscriber.svg)
 
 Quien publica no conoce las colas: cada suscriptor declara la suya y elige las
 claves de ruteo.
 
 **Código:**
 
-![Clases de Publisher/Subscriber](assets/13-publisher-subscriber-clases.svg)
+![Clases de Publisher/Subscriber](assets/14-publisher-subscriber-clases.svg)
 
 Los contratos de los eventos y la conexión a RabbitMQ están en `Common`, el
 único proyecto que comparten los servicios. Los registros `OrderConfirmed` y
 `OrderRejected` también están ahí; el diagrama no los muestra.
 
-**Cómo verlo:** la demo [13 de
-Publisher/Subscriber](demos/13-publisher-subscriber.sh) muestra los enlaces del
+**Cómo verlo:** la demo [14 de
+Publisher/Subscriber](demos/14-publisher-subscriber.sh) muestra los enlaces del
 exchange, crea una `Order` y muestra los *logs* del *worker* y de los
 proyectores, que la reciben los dos. Después cambia el nombre de un `Product` y
 de un `User`: esos eventos solo los reciben los proyectores.
@@ -1071,10 +1071,10 @@ reintento posterior crea otra `Order`. Ver [Idempotencia](ARCHITECTURE.md#idempo
 **Cómo funciona:**
 
 ![Secuencia de Asynchronous
-Request-Reply](assets/14-asynchronous-request-reply.svg)
+Request-Reply](assets/15-asynchronous-request-reply.svg)
 
-**Cómo verlo:** la demo [14 de Asynchronous
-Request-Reply](demos/14-asynchronous-request-reply.sh) crea una `Order`, muestra
+**Cómo verlo:** la demo [15 de Asynchronous
+Request-Reply](demos/15-asynchronous-request-reply.sh) crea una `Order`, muestra
 el `202` con sus encabezados y consulta el estado respetando `Retry-After` hasta
 el `303`. Sigue la redirección y muestra la `Order` confirmada. Al final crea
 otra `Order` con `Idempotency-Key` y repite el `POST` con la misma clave, como
@@ -1117,7 +1117,7 @@ los comandos.
 
 **Cómo funciona:**
 
-![Comandos y consultas con modelos separados](assets/15-cqrs.svg)
+![Comandos y consultas con modelos separados](assets/16-cqrs.svg)
 
 La flecha de los eventos es la consistencia eventual: el modelo de lectura se
 actualiza un momento después. El recorrido completo de una consulta desde la
@@ -1127,12 +1127,12 @@ ARCHITECTURE.md.
 
 **Código:**
 
-![Clases de los comandos y las consultas](assets/15-cqrs-clases.svg)
+![Clases de los comandos y las consultas](assets/16-cqrs-clases.svg)
 
 La separación se ve en el código: un controlador para los comandos, sobre
 `Order`, y otro para las consultas, sobre `OrderDetails`.
 
-**Cómo verlo:** la demo [15 de CQRS](demos/15-cqrs.sh) hace la misma consulta por
+**Cómo verlo:** la demo [16 de CQRS](demos/16-cqrs.sh) hace la misma consulta por
 los dos lados. Sin fallas, la síncrona demora unos 100 ms y la vista, 3 ms. Con
 `Products` demorando 300 ms, la síncrona pasa a casi 2 segundos -una llamada por
 `Order`- y la vista no cambia. Después crea una `Order` y consulta enseguida: la
@@ -1230,16 +1230,16 @@ pero no rendimiento.
 
 **Cómo funciona:**
 
-![Secuencia de la vista materializada](assets/16-materialized-view.svg)
+![Secuencia de la vista materializada](assets/17-materialized-view.svg)
 
 **Código:**
 
-![Clases de los proyectores de la vista](assets/16-materialized-view-clases.svg)
+![Clases de los proyectores de la vista](assets/17-materialized-view-clases.svg)
 
 Los proyectores son los únicos que escriben la vista, y los únicos que llaman a
 `Users` y a `Products`.
 
-**Cómo verlo:** la demo [16 de Materialized View](demos/16-materialized-view.sh)
+**Cómo verlo:** la demo [17 de Materialized View](demos/17-materialized-view.sh)
 cambia el nombre de un `Product` y la vista lo refleja. Con `Products` fallando
 siempre, la consulta síncrona responde "no disponible" y la vista sigue
 respondiendo con los nombres. Después detiene los proyectores, hace que `Users`
@@ -1330,7 +1330,7 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 
 ### Patrones de seguridad
 
-Cada patrón tiene un script en [demos](demos/), del `17` al `21`, y un paso a
+Cada patrón tiene un script en [demos](demos/), del `18` al `22`, y un paso a
 paso en [commands/04-security.azcli](commands/04-security.azcli) que compara la
 misma solicitud por la entrada
 [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la
@@ -1388,21 +1388,21 @@ pero no se usaría en una aplicación real.
 **Cómo funciona:**
 
 ![Inicio de sesión con el flujo de dispositivo y una solicitud con el
-token](assets/17-federated-identity.svg)
+token](assets/18-federated-identity.svg)
 
 El token dura 15 minutos. Keycloak no interviene en cada decisión: `Orders`
 decide con los claims que trae el token.
 
 **Código:**
 
-![Clases de la identidad en Orders](assets/17-federated-identity-clases.svg)
+![Clases de la identidad en Orders](assets/18-federated-identity-clases.svg)
 
 `Orders` no conoce a Keycloak ni valida tokens: lee los encabezados que arma el
 gateway. Esa confianza depende del [Gatekeeper](#gatekeeper): si alguien llega a
 `Orders` sin pasar por el gateway, puede mandar esos encabezados con cualquier
 valor.
 
-**Cómo verlo:** la demo [17 de Federated Identity](demos/17-federated-identity.sh)
+**Cómo verlo:** la demo [18 de Federated Identity](demos/18-federated-identity.sh)
 crea una `Order` para el `User` 2 por la entrada HTTP, sin identificarse.
 Después bob inicia sesión y, por la entrada HTTPS, crea una `Order` sin indicar
 el `User`: es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta
@@ -1462,7 +1462,7 @@ sin preguntarle cada vez, a cambio de no enterarse si se cerró la sesión.
 **Cómo funciona:**
 
 ![Funciones que el gateway les quita a los
-servicios](assets/18-gateway-offloading.svg)
+servicios](assets/19-gateway-offloading.svg)
 
 **Código:** la validación del token, en
 [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
@@ -1482,7 +1482,7 @@ js_set $user_id identity.userId;
 proxy_set_header X-User-Id $user_id;
 ```
 
-**Cómo verlo:** la demo [18 de Gateway Offloading](demos/18-gateway-offloading.sh)
+**Cómo verlo:** la demo [19 de Gateway Offloading](demos/19-gateway-offloading.sh)
 muestra que `Orders` no habla TLS y que el gateway sí, con su certificado. Sin
 token, el gateway responde 401, y su *log* muestra que la solicitud no llegó a
 ningún servicio; con token, la reenvía. La lista de `Orders` llega unas 15 veces
@@ -1544,7 +1544,7 @@ docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --
 **Cómo funciona:**
 
 ![Controles del gateway antes de reenviar una
-solicitud](assets/19-gatekeeper.svg)
+solicitud](assets/20-gatekeeper.svg)
 
 **Código:** las rutas de `Orders` y el saneamiento de los encabezados, en
 [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
@@ -1569,7 +1569,7 @@ location / {
 }
 ```
 
-**Cómo verlo:** la demo [19 de Gatekeeper](demos/19-gatekeeper.sh) compara las dos
+**Cómo verlo:** la demo [20 de Gatekeeper](demos/20-gatekeeper.sh) compara las dos
 entradas. Por HTTP, las rutas de administración responden 200, y los métodos,
 los cuerpos y los ids inválidos llegan a `Orders`, que los rechaza después de
 recibirlos. Por HTTPS, el gateway los rechaza sin llegar a los servicios. alice
@@ -1630,7 +1630,7 @@ y agrega TLS mutuo entre los sidecars; acá hay uno solo, sin TLS mutuo.
 
 **Cómo funciona:**
 
-![El sidecar de Products y quién lo llama](assets/20-sidecar.svg)
+![El sidecar de Products y quién lo llama](assets/21-sidecar.svg)
 
 Cada solicitud pasa por los filtros de Envoy, en orden: primero `jwt_authn`, que
 verifica el token y guarda sus claims; después `rbac`, que usa esos claims para
@@ -1665,7 +1665,7 @@ policies:
           value: { list_match: { one_of: { string_match: { exact: admin } } } }
 ```
 
-**Cómo verlo:** la demo [20 de Sidecar](demos/20-sidecar.sh) cambia el nombre de
+**Cómo verlo:** la demo [21 de Sidecar](demos/21-sidecar.sh) cambia el nombre de
 un `Product` por HTTP, sin identificarse. Por HTTPS, alice lo lee pero no lo
 puede cambiar, y carol sí. Desde adentro de la red, `products-service:8000`
 acepta cualquier cambio, y el sidecar, `products-service:9000`, lo rechaza: 403
@@ -1725,13 +1725,13 @@ URL de escritura.
 
 **Cómo funciona:**
 
-![Subida y bajada de una imagen con Valet Key](assets/21-valet-key.svg)
+![Subida y bajada de una imagen con Valet Key](assets/22-valet-key.svg)
 
 **Código:**
 
-![Clases de las imágenes de Products](assets/21-valet-key-clases.svg)
+![Clases de las imágenes de Products](assets/22-valet-key-clases.svg)
 
-**Cómo verlo:** la demo [21 de Valet Key](demos/21-valet-key.sh) sube una imagen
+**Cómo verlo:** la demo [22 de Valet Key](demos/22-valet-key.sh) sube una imagen
 de 5 MB a través de `Products`, por HTTP; por HTTPS, el gateway la rechaza con
 413. Después carol pide una URL firmada y sube la imagen directamente a Azurite.
 Con esa URL no se puede leer la imagen, ni escribir la de otro `Product`, y sin
@@ -1789,7 +1789,7 @@ note.
 
 ### Patrones de facilidad de modificación
 
-Cada patrón tiene un script en [demos](demos/), del `22` al `26`, y un paso a
+Cada patrón tiene un script en [demos](demos/), del `23` al `27`, y un paso a
 paso en [commands/05-modifiability.azcli](commands/05-modifiability.azcli). Los
 *logs* de [Docker](https://www.docker.com/) muestran los eventos con una
 etiqueta: `[EXTERNAL CONFIG]` en los servicios, `[MESSAGING BRIDGE]` en
@@ -1856,12 +1856,12 @@ servicio.
 **Cómo funciona:**
 
 ![Purchases lee de Orders y de Users a través de su capa
-anticorrupción](assets/22-anti-corruption-layer.svg)
+anticorrupción](assets/23-anti-corruption-layer.svg)
 
 **Código:**
 
 ![Clases de Purchases y de su capa
-anticorrupción](assets/22-anti-corruption-layer-clases.svg)
+anticorrupción](assets/23-anti-corruption-layer-clases.svg)
 
 La traducción de las `Orders`, en el método `ForProductAsync` de la clase
 `OrdersTranslator`:
@@ -1874,7 +1874,7 @@ return orders
 ```
 
 **Cómo verlo:**
-la demo [22 de Anti-corruption Layer](demos/22-anti-corruption-layer.sh) muestra,
+la demo [23 de Anti-corruption Layer](demos/23-anti-corruption-layer.sh) muestra,
 para el mismo `Product`, la respuesta de `Orders`, la de `Users` por SOAP y la
 de `Purchases`. Después cambia el modelo de `Orders`: prende un flag en
 [Consul](https://developer.hashicorp.com/consul) con el que cada `Order` trae su
@@ -1957,22 +1957,22 @@ que leerla en cada uso, y no guardarla al arrancar. Los valores de la demo:
 | --------------- | ------------ | -------- |
 | `andis/Orders/MaxQuantity` | El método `CreateOrder` de la clase `OrdersController` | Límite: cuántas unidades de un `Product` se pueden pedir en una `Order`. Sin valor, no hay límite |
 | `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | Feature flag: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
-| `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | Feature flag: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 22, para cambiar el modelo de `Orders` |
+| `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | Feature flag: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 23, para cambiar el modelo de `Orders` |
 | `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de [Redis](https://redis.io/) |
 | `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [OrdersService/Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
 
 **Cómo funciona:**
 
 ![Orders lee el almacén y sigue funcionando si no
-responde](assets/23-external-configuration-store.svg)
+responde](assets/24-external-configuration-store.svg)
 
 **Código:**
 
 ![Clases del proveedor de
-configuración](assets/23-external-configuration-store-clases.svg)
+configuración](assets/24-external-configuration-store-clases.svg)
 
 **Cómo verlo:**
-la demo [23 de External Configuration Store](demos/23-external-configuration-store.sh)
+la demo [24 de External Configuration Store](demos/24-external-configuration-store.sh)
 cambia cada valor de la tabla en Consul y muestra el efecto: una `Order` de 10
 unidades pasa de `202 Accepted` a `400 Bad Request`, el detalle gana una columna
 de precio, la caché dura 5 segundos y `Orders` deja de llegar a `Products` y
@@ -2127,13 +2127,13 @@ FACTURA 0000000004F0000000004 20261105
 **Cómo funciona:**
 
 ![El puente entre RabbitMQ y ActiveMQ, en los dos
-sentidos](assets/24-messaging-bridge.svg)
+sentidos](assets/25-messaging-bridge.svg)
 
 **Código:**
 
-![Clases del puente](assets/24-messaging-bridge-clases.svg)
+![Clases del puente](assets/25-messaging-bridge-clases.svg)
 
-**Cómo verlo:** la demo [24 de Messaging Bridge](demos/24-messaging-bridge.sh)
+**Cómo verlo:** la demo [25 de Messaging Bridge](demos/25-messaging-bridge.sh)
 crea una `Order` para el `User` 2 y muestra su historial con `OrderInvoiced`, y
 el registro de ancho fijo que pasó por el puente. Después detiene ActiveMQ y
 crea otra `Order`: se confirma igual, y su mensaje espera en la cola
@@ -2218,7 +2218,7 @@ Gateway.
 **Cómo funciona:**
 
 ![La fachada desvía las rutas del monolito a los
-servicios](assets/25-strangler-fig.svg)
+servicios](assets/26-strangler-fig.svg)
 
 **Código:** la tabla de rutas al principio, en
 [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf):
@@ -2229,7 +2229,7 @@ set $products_route monolith:8000;
 set $orders_route   monolith:8000;
 ```
 
-**Cómo verlo:** la demo [25 de Strangler Fig](demos/25-strangler-fig.sh) hace las
+**Cómo verlo:** la demo [26 de Strangler Fig](demos/26-strangler-fig.sh) hace las
 mismas solicitudes mientras migra `Products`, `Users` y `Orders`, de a una, y
 muestra quién atiende cada ruta. A mitad de camino cambia el nombre de un
 `Product` por la fachada: lo recibe el microservicio, y el JOIN del monolito
@@ -2347,7 +2347,7 @@ Gateway.
 **Cómo funciona:**
 
 ![Un backend para la web y otro para la app
-móvil](assets/26-backends-for-frontends.svg)
+móvil](assets/27-backends-for-frontends.svg)
 
 **Código:** la respuesta de la app, en
 [BffMobile/Program.cs](src/BffMobile/Program.cs):
@@ -2361,7 +2361,7 @@ return Results.Ok(new
 ```
 
 **Cómo verlo:**
-la demo [26 de Backends for Frontends](demos/26-backends-for-frontends.sh) muestra
+la demo [27 de Backends for Frontends](demos/27-backends-for-frontends.sh) muestra
 la respuesta de cada BFF para el `User` 1: 238 bytes para la web y 107 para la
 app. Después redespliega `bff-mobile` mientras consulta a los dos clientes. La
 app puede recibir algún `502 Bad Gateway`; la web sigue respondiendo `200 OK`, y
@@ -2405,7 +2405,7 @@ ni reinicios. Para mostrarlo,
 [k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
 marcado con una línea vertical en el dashboard, con una anotación de
 [Grafana](https://grafana.com/oss/grafana/), para distinguir el antes y el
-después. Los scripts del `22` al `26` también marcan sus pasos si Grafana está
+después. Los scripts del `23` al `27` también marcan sus pasos si Grafana está
 levantado.
 
 ```bash
@@ -2572,25 +2572,25 @@ qué variante la atendió.
 | Entrada de despliegue del gateway | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [ApiGateway/nginxconf/deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
 | Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [UsersService/Release.cs](src/UsersService/Release.cs). |
 | El experimento | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
-| `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 30 los levanta sola. |
-| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 31 a 33. Lo crea [demos/k8s-up.sh](demos/k8s-up.sh) y lo borra [demos/k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
+| `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 31 los levanta sola. |
+| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 32 a 34. Lo crea [demos/k8s-up.sh](demos/k8s-up.sh) y lo borra [demos/k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
 | Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [UsersService/Dockerfile](src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
 | El *Gateway* del clúster | La entrada de los clientes en el puerto 8092: un *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [k8s/base/gateway.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
-| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 32 y 33 decide si sigue o vuelve atrás con el análisis de [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el plugin `kubectl argo rollouts`. |
+| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el plugin `kubectl argo rollouts`. |
 
 La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión
 `v1` con otra configuración y en otros contenedores, para simplificar las demos
-27 a 30. En las demos 31 a 33, como en producción, cada versión es una imagen
+28 a 31. En las demos 32 a 34, como en producción, cada versión es una imagen
 distinta: un
 [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
 de Kubernetes, o un `Rollout` de Argo Rollouts, cuyos pods cambian de imagen.
 
 ### Patrones de facilidad de despliegue
 
-Cada estrategia tiene un script en [demos](demos/), del `27` al `30`, y un paso
+Cada estrategia tiene un script en [demos](demos/), del `28` al `31`, y un paso
 a paso en [commands/06-deployability.azcli](commands/06-deployability.azcli).
 Blue/Green, Rolling Upgrade y Canary Testing tienen además una versión con
-[Kubernetes](https://kubernetes.io/), del `31` al `33`, análoga a la demo de
+[Kubernetes](https://kubernetes.io/), del `32` al `34`, análoga a la demo de
 [Docker Compose](https://docs.docker.com/compose/) pero automatizando el
 despliegue. Necesitan el clúster, que se crea una vez con `./demos/k8s-up.sh`, y
 además de Docker, [kind](https://kind.sigs.k8s.io/),
@@ -2669,7 +2669,7 @@ Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/
 **Cómo funciona:**
 
 ![La entrada de despliegue conmuta de la versión `v1` a la
-`v2`](assets/27-blue-green.svg)
+`v2`](assets/28-blue-green.svg)
 
 **Código:** el destino, en el archivo de estrategia, después de conmutar:
 
@@ -2691,7 +2691,7 @@ map $host $users_target {
   versión `v2` directamente, desde adentro de la red de Docker, con la función
   `get_user_inside`.
 
-La demo [27 de Blue/Green Deployment](demos/27-blue-green.sh) muestra que la versión
+La demo [28 de Blue/Green Deployment](demos/28-blue-green.sh) muestra que la versión
 `v1` atiende la entrada de despliegue publicada en el puerto 8091 y prueba la
 `v2` por adentro, con su campo nuevo. Después cambia de versión mientras una
 sonda pide el `User` 1 cada 0.1 segundos: las respuestas pasan de la versión
@@ -2699,7 +2699,7 @@ sonda pide el `User` 1 cada 0.1 segundos: las respuestas pasan de la versión
 
 ##### Cómo verlo con Kubernetes
 
-Lo que la demo 27 hace a mano, con [Kubernetes](https://kubernetes.io/) lo hace
+Lo que la demo 28 hace a mano, con [Kubernetes](https://kubernetes.io/) lo hace
 [Argo Rollouts](https://argoproj.github.io/rollouts/), con un comando por paso.
 En Kubernetes, un `Rollout` es como un Deployment, pero con una estrategia de
 despliegue.
@@ -2735,8 +2735,8 @@ strategy:
     scaleDownDelaySeconds: 60
 ```
 
-La demo [31 de Blue/Green Deployment con Kubernetes](demos/31-argo-blue-green.sh) sigue los
-mismos pasos que la demo 27, y en cada uno muestra el estado del `Rollout` como
+La demo [32 de Blue/Green Deployment con Kubernetes](demos/32-argo-blue-green.sh) sigue los
+mismos pasos que la demo 28, y en cada uno muestra el estado del `Rollout` como
 lo muestra Argo: cada versión con sus pods y su papel, `stable`, `active` o
 `preview`. La conmutación y la vuelta atrás, con una sonda pidiendo el `User` 1
 cada 0,1 segundos, responden todas `200 OK`.
@@ -2806,7 +2806,7 @@ Es la estrategia por defecto de un Deployment de
 [servicios de
 ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html).
 En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
-`maxUnavailable`: la demo 32 lo muestra, más abajo.
+`maxUnavailable`: la demo 33 lo muestra, más abajo.
 
 <!-- markdownlint-disable-next-line MD024 -->
 ##### Cómo verlo con Docker
@@ -2814,7 +2814,7 @@ En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
 **Cómo funciona:**
 
 ![Las instancias del grupo se reemplazan de a una por la versión
-`v2`](assets/28-rolling-upgrade.svg)
+`v2`](assets/29-rolling-upgrade.svg)
 
 **Código:** un paso, en la función `pool_replace` de
 [demos/common.sh](demos/common.sh):
@@ -2852,7 +2852,7 @@ docker stop "users-v1-$1"
   [SOAP](https://www.w3.org/TR/soap/), hasta `GetUser`, que es una lectura, es
   un POST, y nginx no reintenta un POST que ya envió.
 
-La demo [28 de Rolling Upgrade](demos/28-rolling-upgrade.sh) arma el grupo
+La demo [29 de Rolling Upgrade](demos/29-rolling-upgrade.sh) arma el grupo
 con tres instancias de la versión `v1` y las reemplaza en tres pasos. Después de
 cada paso muestra qué instancias tiene el grupo y cuántas respuestas dio cada
 versión. Durante todo el reemplazo, una sonda pide el `User` 1 cada 0.1
@@ -2870,7 +2870,7 @@ Rollouts](https://argoproj.github.io/rollouts/).
   tienen, de cualquier versión, y el Deployment y el `Rollout` se la ponen a
   todos sus pods.
 * **Con un Deployment:** Kubernetes reemplaza los pods de a uno, como la función
-  `pool_replace` de la demo 28: con `maxSurge: 1` levanta un pod de más, y con
+  `pool_replace` de la demo 29: con `maxSurge: 1` levanta un pod de más, y con
   `maxUnavailable: 0` no detiene uno viejo hasta que el nuevo esté listo, según
   su `readinessProbe`. Pero solo sabe si un pod está listo: la versión `v3-bad`
   responde `/health` y falla en el 30% de las solicitudes, y Kubernetes la
@@ -2886,14 +2886,14 @@ Rollouts](https://argoproj.github.io/rollouts/).
   `rollouts_pod_template_hash` que Argo les pone.
 * **Los pods que se van:** cada pod espera 5 segundos antes de detenerse, con un
   `preStop`, para que el *Gateway* deje de mandarle solicitudes antes. Es lo que
-  en la demo 28 resuelve `proxy_next_upstream`.
+  en la demo 29 resuelve `proxy_next_upstream`.
 
 | Qué | Dónde |
 | --- | ----- |
 | El Deployment | [k8s/rolling-upgrade/deployment.yaml](k8s/rolling-upgrade/deployment.yaml) |
 | El `Rollout`, con los pasos y el análisis | [k8s/rolling-upgrade/rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
 | El Service y la ruta, para los dos | [k8s/rolling-upgrade/service.yaml](k8s/rolling-upgrade/service.yaml) |
-| El análisis, que comparten las demos 32 y 33 | [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
+| El análisis, que comparten las demos 33 y 34 | [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
 | Prometheus del clúster | [k8s/base/prometheus.yaml](k8s/base/prometheus.yaml) |
 
 Los pasos del `Rollout`: sin un router que reparta el tráfico, `setWeight` es la
@@ -2913,7 +2913,7 @@ steps:
   - analysis: ...
 ```
 
-La demo [32 de Rolling Upgrade con Kubernetes](demos/32-k8s-rolling-upgrade.sh)
+La demo [33 de Rolling Upgrade con Kubernetes](demos/33-k8s-rolling-upgrade.sh)
 muestra primero el Deployment: la versión `v2` reemplaza a la `v1` sin errores,
 y la `v3-bad` llega a los tres pods y falla hasta el `undo`. Después cambia el
 Deployment por el `Rollout` y despliega la `v3-bad`: llega a un solo pod, el
@@ -2989,7 +2989,7 @@ Balancer reparte por pesos entre grupos de destino.
 **Cómo funciona:**
 
 ![La entrada de despliegue manda el 10% a la versión `v2`, y las métricas
-deciden si sigue](assets/29-canary.svg)
+deciden si sigue](assets/30-canary.svg)
 
 **Código:** el reparto, en el archivo de estrategia:
 
@@ -3017,7 +3017,7 @@ El reparto es por solicitud: el mismo cliente puede recibir una versión y
 después la otra. Para que cada cliente vea siempre la misma, el hash puede usar
 una cookie o el `User`.
 
-La demo [29 de Canary Testing](demos/29-canary.sh) manda a la versión `v2` el 10%,
+La demo [30 de Canary Testing](demos/30-canary.sh) manda a la versión `v2` el 10%,
 el 50% y el 100% de las solicitudes, y con cada porcentaje cuenta cuántas
 respuestas dio cada versión. Después vuelve al 10% con una versión `v2` que
 falla: fallan solo sus respuestas, cerca del 10%. Al final vuelve todo a la
@@ -3026,7 +3026,7 @@ versión `v1`.
 <!-- markdownlint-disable-next-line MD024 -->
 ##### Cómo verlo con Kubernetes
 
-Lo que la demo 29 hace a mano -cambiar el porcentaje, mirar los errores,
+Lo que la demo 30 hace a mano -cambiar el porcentaje, mirar los errores,
 decidir- lo hace [Argo Rollouts](https://argoproj.github.io/rollouts/), con un
 análisis después de cada paso.
 
@@ -3034,15 +3034,15 @@ análisis después de cada paso.
   puerto 8092. El componente que reparte es el mismo *Gateway*, implementado con
   [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/): su ruta
   tiene dos destinos, `users-stable` y `users-canary`, cada uno con un peso, y
-  reparte las solicitudes según esos pesos. Es el `split_clients` de la demo 29,
+  reparte las solicitudes según esos pesos. Es el `split_clients` de la demo 30,
   en [Gateway API](https://gateway-api.sigs.k8s.io/). Argo cambia los pesos con
   su [plugin de Gateway
   API](https://rollouts-plugin-trafficrouter-gatewayapi.readthedocs.io/en/latest/).
 * **Los pasos:** 10% a la versión nueva, análisis, 50%, análisis, y 100%. Cada
-  análisis es el mismo de la demo 32: los errores de los pods nuevos en
+  análisis es el mismo de la demo 33: los errores de los pods nuevos en
   [Prometheus](https://prometheus.io/).
 * **La falla:** la versión `v3-bad`, que falla desde que arranca. A diferencia
-  de la demo 29, no se le inyectan fallas después: es una versión con un error.
+  de la demo 30, no se le inyectan fallas después: es una versión con un error.
 * **Sin datos no hay decisión:** el análisis espera 30 segundos antes de medir.
   Si la versión nueva no recibió solicitudes, la consulta da 0/0, que no es ni
   éxito ni falla, y Argo detiene el despliegue para que decida una persona.
@@ -3071,7 +3071,7 @@ strategy:
       - analysis: ...
 ```
 
-La demo [33 de Canary Testing con Kubernetes](demos/33-argo-canary.sh) despliega la versión
+La demo [34 de Canary Testing con Kubernetes](demos/34-argo-canary.sh) despliega la versión
 `v2`, que avanza sola del 10% al 100% en un minuto y medio, sin errores. Después
 despliega la `v3-bad`: con el 10%, el análisis mide alrededor del 30% de
 errores, y Argo vuelve todo a la `v2` en medio minuto. En cada cambio muestra
@@ -3092,7 +3092,7 @@ Service](https://azure.microsoft.com/products/kubernetes-service/); en AWS, en
 | Aumentar la exposición de a poco | Sí | Una línea por paso |
 | Detectar una falla que no se ve en las métricas que se miran | No | El canario avanza igual: hay que elegir bien qué métricas deciden |
 | Que un cliente vea siempre la misma versión | No | Con `$request_id`, cada solicitud se reparte por separado |
-| Avanzar o volver atrás sin que nadie mire | Solo con un análisis | En la demo 29 decide una persona; en la 33, Argo Rollouts, con las métricas de la versión nueva |
+| Avanzar o volver atrás sin que nadie mire | Solo con un análisis | En la demo 30 decide una persona; en la 34, Argo Rollouts, con las métricas de la versión nueva |
 
 **Ventajas y desventajas:**
 
@@ -3193,7 +3193,7 @@ y los *feature flags* de AWS AppConfig.
 **Cómo funciona:**
 
 ![La versión `v2` le pregunta a Unleash la variante de cada User, por segmento o
-por porcentaje](assets/30-ab-testing.svg)
+por porcentaje](assets/31-ab-testing.svg)
 
 **Código:** la elección de la variante, en el método `ApplyAsync` de la clase
 `Experiment`. El contexto de la evaluación lleva el id del `User`, que fija la
@@ -3226,7 +3226,7 @@ El feature flag y sus estrategias los crean las funciones `experiment_start` y
 `experiment_split` de [demos/common.sh](demos/common.sh), con la API de
 administración de Unleash.
 
-**Cómo verlo:** la demo [30 de A/B Testing](demos/30-ab-testing.sh) levanta
+**Cómo verlo:** la demo [31 de A/B Testing](demos/31-ab-testing.sh) levanta
 Unleash, muestra que la versión `v1` no tiene experimento y despliega la `v2`
 con Blue/Green. Pide los dos `Users`: 'alice' cae en la B y 'bob' en la A. Pide
 a 'bob' tres veces, y siempre recibe la A; con `X-Segment: beta`, recibe la B.
@@ -3266,7 +3266,7 @@ cada variante, según las métricas de `Users`.
 La demo [despliegue con carga](demos/load-deployment.sh) lanza un escenario de
 [k6](https://k6.io/) y despliega la versión `v2` mientras corre. Cada paso queda
 marcado con una línea vertical en el dashboard, con la etiqueta `despliegue`.
-Los scripts del `27` al `30` también marcan sus pasos si
+Los scripts del `28` al `31` también marcan sus pasos si
 [Grafana](https://grafana.com/oss/grafana/) está levantado.
 
 ```bash
@@ -3289,7 +3289,7 @@ Las métricas por versión las informa k6 con el encabezado `X-Version`, para no
 tener que instrumentar [nginx](https://nginx.org/). Las del experimento son de
 `Users`.
 
-Las demos 31 a 33 tienen sus propios escenarios, con el clúster de
+Las demos 32 a 34 tienen sus propios escenarios, con el clúster de
 [Kubernetes](https://kubernetes.io/) creado. No necesitan el resto de Docker
 Compose, solo el perfil `observability`:
 
@@ -3306,13 +3306,13 @@ Rollouts](https://argoproj.github.io/rollouts/), con una línea roja en el 5%.
 
 | Estrategia | Qué se hace | Qué mirar | Resultado |
 | ---------- | ----------- | --------- | --------- |
-| Blue/Green, demo 31 | La versión `v2` en *preview*, `promote` y, 20 segundos después, `undo` | "Solicitudes por versión" y "Respuestas con error, por versión" | El tráfico pasa de una versión a la otra de una vez. Las 1201 solicitudes respondieron `200 OK` |
-| Rolling Upgrade, demo 32 | Con el Deployment: la versión `v2`, después la `v3-bad`, y `undo` a mano | Lo mismo | Cada reemplazo tarda unos 7 segundos. La versión `v3` respondió `503 Service Unavailable` 195 veces, hasta el `undo` |
-| Canary Testing, demo 33 | La versión `v2` hasta el 100%, y después la `v3-bad` | Lo mismo, y "Errores de cada versión, según Users" | La versión `v2` sigue a los pesos del 10% y el 50%, sin errores. La `v3` supera la línea del 5%, y Argo vuelve atrás: 17 respuestas `503` de 3999, todas de la `v3` |
+| Blue/Green, demo 32 | La versión `v2` en *preview*, `promote` y, 20 segundos después, `undo` | "Solicitudes por versión" y "Respuestas con error, por versión" | El tráfico pasa de una versión a la otra de una vez. Las 1201 solicitudes respondieron `200 OK` |
+| Rolling Upgrade, demo 33 | Con el Deployment: la versión `v2`, después la `v3-bad`, y `undo` a mano | Lo mismo | Cada reemplazo tarda unos 7 segundos. La versión `v3` respondió `503 Service Unavailable` 195 veces, hasta el `undo` |
+| Canary Testing, demo 34 | La versión `v2` hasta el 100%, y después la `v3-bad` | Lo mismo, y "Errores de cada versión, según Users" | La versión `v2` sigue a los pesos del 10% y el 50%, sin errores. La `v3` supera la línea del 5%, y Argo vuelve atrás: 17 respuestas `503` de 3999, todas de la `v3` |
 
 Además de los `503` de la versión `v3`, hubo unas pocas solicitudes sin
 respuesta: 6 de 2400 en Rolling Upgrade y 1 de 3999 en Canary. Coinciden con los
 cambios de pods: NGINX Gateway Fabric recarga nginx cada vez que cambian los
 pods detrás de un Service, y una recarga puede cortar alguna conexión que k6
-tenía abierta para reutilizar. En la demo 28, el gateway de Docker Compose no se
+tenía abierta para reutilizar. En la demo 29, el gateway de Docker Compose no se
 recarga: encuentra las instancias nuevas por DNS.

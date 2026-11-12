@@ -1,4 +1,4 @@
-# Rolling Upgrade con Argo Rollouts: la segunda parte de la demo 32. El mismo
+# Rolling Upgrade con Argo Rollouts: la segunda parte de la demo 33. El mismo
 # reemplazo de a un pod que el Deployment, pero después de cada paso Argo mira
 # las métricas de los pods nuevos -ver k8s/base/analysis-error-rate.yaml-. Si
 # fallan, aborta y vuelve a la versión anterior, sin que nadie intervenga.

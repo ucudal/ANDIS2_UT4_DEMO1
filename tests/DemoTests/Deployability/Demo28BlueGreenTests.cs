@@ -3,10 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 27: la versión v2 está desplegada al lado de la v1, sin tráfico.
+// Demo 28: la versión v2 está desplegada al lado de la v1, sin tráfico.
 // Conmutar es cambiar el destino del gateway, sin errores, y volver atrás es
 // conmutar de nuevo.
-public class Demo27BlueGreenTests : DemoTest
+public class Demo28BlueGreenTests : DemoTest
 {
     [TearDown]
     public Task BackToV1Async() => Shell.DemoAsync("deploy_target users-service:8000");

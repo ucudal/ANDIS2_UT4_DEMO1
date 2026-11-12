@@ -194,7 +194,7 @@ publish_event() {
         -d "$(jq -nc --arg rk "$1" --arg p "$2" '{properties: {}, routing_key: $rk, payload: $p, payload_encoding: "string"}')" > /dev/null
 }
 
-# Funciones de los demos de seguridad, de la 17 en adelante. Usan jq.
+# Funciones de los demos de seguridad, de la 18 en adelante. Usan jq.
 
 HTTPS_GATEWAY=${HTTPS_GATEWAY:-https://localhost}
 KEYCLOAK=${KEYCLOAK:-http://localhost:8080}
@@ -257,7 +257,7 @@ call_inside() {
     printf '  HTTP %s  %s\n' "${out##*$'\n'}" "$(head -c 110 <<< "${out%$'\n'*}" | tr -d '\n')"
 }
 
-# Funciones de los demos de facilidad de modificación, de la 22 en adelante.
+# Funciones de los demos de facilidad de modificación, de la 23 en adelante.
 
 CONSUL=${CONSUL:-http://localhost:8500}
 FACADE=${FACADE:-http://localhost:8090}
@@ -295,7 +295,7 @@ strangler_route() {
     sleep 1
 }
 
-# Funciones de los demos de facilidad de despliegue, de la 27 en adelante.
+# Funciones de los demos de facilidad de despliegue, de la 28 en adelante.
 
 DEPLOY=${DEPLOY:-http://localhost:8091}
 

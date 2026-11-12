@@ -3,9 +3,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 31: Blue/Green con Argo Rollouts. La versión v2 se despliega al lado,
+// Demo 32: Blue/Green con Argo Rollouts. La versión v2 se despliega al lado,
 // se prueba por el Service de preview, y promote y undo conmutan sin errores.
-public class Demo31ArgoBlueGreenTests : KubernetesTest
+public class Demo32ArgoBlueGreenTests : KubernetesTest
 {
     [TearDown]
     public Task DeleteAsync() => KubernetesAsync("strategy_delete blue-green");

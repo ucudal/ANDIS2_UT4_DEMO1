@@ -19,7 +19,7 @@ COPY --from=build /app/out ./
 EXPOSE 8000
 ENV ASPNETCORE_URLS=http://0.0.0.0:8000
 
-# Una imagen por versión, para las demos de Kubernetes, de la 31 a la 33:
+# Una imagen por versión, para las demos de Kubernetes, de la 32 a la 34:
 #   docker build --build-arg RELEASE_VERSION=2 -t users-service:v2 ...
 # La versión 3 se construye además con CHAOS_FAILURE_RATE=0.3: es una versión
 # con un error, que falla en el 30% de las solicitudes desde que arranca.

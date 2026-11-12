@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Rolling Upgrade en Kubernetes: la demo 28 en Kubernetes, en dos partes.
+# Rolling Upgrade en Kubernetes: la demo 29 en Kubernetes, en dos partes.
 #
 # 1. Con un Deployment: Kubernetes reemplaza los pods de a uno, esperando a que
-#    cada pod nuevo esté listo. Es lo que la demo 28 hacía a mano. Pero solo
+#    cada pod nuevo esté listo. Es lo que la demo 29 hacía a mano. Pero solo
 #    sabe si un pod está listo: una versión que responde /health y falla en las
 #    solicitudes llega a todos los pods, y volver atrás es a mano.
 # 2. Con Argo Rollouts: el mismo reemplazo, pero después de cada paso Argo mira
@@ -68,7 +68,7 @@ step "Se despliega la versión v2: kubectl set image"
 while_probing deployment_update v2
 pods
 note "Kubernetes levantó un pod nuevo, esperó a que estuviera listo y recién"
-note "entonces detuvo uno viejo, tres veces. Sin errores: es la demo 28, sin scripts."
+note "entonces detuvo uno viejo, tres veces. Sin errores: es la demo 29, sin scripts."
 
 step "Se despliega una versión v3 con un error"
 while_probing deployment_update v3-bad

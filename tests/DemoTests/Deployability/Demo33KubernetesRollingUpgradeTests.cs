@@ -3,10 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 32: un Deployment de Kubernetes reemplaza los pods de a uno, pero
+// Demo 33: un Deployment de Kubernetes reemplaza los pods de a uno, pero
 // despliega igual una versión con errores; un Rollout de Argo, con análisis, la
 // detecta y vuelve atrás solo.
-public class Demo32KubernetesRollingUpgradeTests : KubernetesTest
+public class Demo33KubernetesRollingUpgradeTests : KubernetesTest
 {
     [TearDown]
     public Task DeleteAsync() => KubernetesAsync(

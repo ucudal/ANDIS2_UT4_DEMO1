@@ -107,7 +107,7 @@ nombres en la vista.
 | [`column`](https://man7.org/linux/man-pages/man1/column.1.html) | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
 | [`xmllint`](https://gnome.pages.gitlab.gnome.org/libxml2/xmllint.html) | Indentar las respuestas [SOAP](https://www.w3.org/TR/soap/) de `Users` en `commands/01-api-gateway.azcli` y los errores de [Azurite](https://github.com/Azure/Azurite) en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el [XML](https://www.w3.org/XML/) sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir los archivos de [commands](commands/) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
-| kind[^kind], kubectl[^kubectl] y el plugin de Argo Rollouts para kubectl[^argorollouts] | Solo para las demos de despliegue con Kubernetes, de la 31 a la 33: crear el clúster y manejar los despliegues | `brew install kind kubectl argoproj/tap/kubectl-argo-rollouts` | En WSL, con los binarios para Linux de cada sitio |
+| kind[^kind], kubectl[^kubectl] y el plugin de Argo Rollouts para kubectl[^argorollouts] | Solo para las demos de despliegue con Kubernetes, de la 32 a la 34: crear el clúster y manejar los despliegues | `brew install kind kubectl argoproj/tap/kubectl-argo-rollouts` | En WSL, con los binarios para Linux de cada sitio |
 | Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de [MySQL](https://www.mysql.com/), [PostgreSQL](https://www.postgresql.org/), [MongoDB](https://www.mongodb.com/) y [Redis](https://redis.io/); los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
 [^docker]: Docker Desktop: <https://www.docker.com/products/docker-desktop/>
@@ -143,13 +143,13 @@ Los comandos están en la carpeta [commands](commands/), en seis archivos:
 * [02-availability.azcli](commands/02-availability.azcli): demos de los
   patrones de disponibilidad, de la 01 a la 09.
 * [03-performance.azcli](commands/03-performance.azcli): demos de los
-  patrones de rendimiento, de la 10 a la 16.
+  patrones de rendimiento, de la 11 a la 17.
 * [04-security.azcli](commands/04-security.azcli): demos de los patrones de
-  seguridad, de la 17 a la 21.
+  seguridad, de la 18 a la 22.
 * [05-modifiability.azcli](commands/05-modifiability.azcli): demos de los
-  patrones de facilidad de modificación, de la 22 a la 26.
+  patrones de facilidad de modificación, de la 23 a la 27.
 * [06-deployability.azcli](commands/06-deployability.azcli): demos de las
-  estrategias de despliegue, de la 27 a la 33. Las demos 31 a 33 corren en un
+  estrategias de despliegue, de la 28 a la 34. Las demos 32 a 34 corren en un
   clúster de [Kubernetes](https://kubernetes.io/), que se crea con
   `./demos/k8s-up.sh`, y no usan Docker Compose: la entrada de los clientes al
   clúster está en el puerto 8092, y su Prometheus, en el 30090.
@@ -322,7 +322,7 @@ no cambian. Algunos tienen una categoría, para elegir cuáles correr:
 | `Disruptive` | Detienen, escalan o recrean contenedores | `docker compose up` |
 | `FeatureFlags` | Levantan [Unleash](https://www.getunleash.io/), con el perfil `feature-flags` | `docker compose up` |
 | `Gatekeeper` | Recrean los servicios con [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) y los vuelven a la normalidad; tarda varios minutos | `docker compose up` |
-| `Kubernetes` | Las demos 31 a 33; si no está el clúster, se ignoran | `./demos/k8s-up.sh` |
+| `Kubernetes` | Las demos 32 a 34; si no está el clúster, se ignoran | `./demos/k8s-up.sh` |
 
 Para correr solo los tests de una demo, por ejemplo la de Retry:
 `dotnet test tests/DemoTests --filter "FullyQualifiedName~Demo01"`.
@@ -421,7 +421,7 @@ dashboard.
 | `ab-testing.js` | 20 lecturas por segundo de los dos `Users` a la versión `v2`; la mitad de las de bob, con `X-Segment: beta` | Cada `User` recibe siempre su variante, salvo con el segmento |
 
 `blue-green.js`, `rolling-upgrade.js` y `canary.js` también sirven para las
-demos 31 a 33, con [Kubernetes](https://kubernetes.io/): el script los apunta al
+demos 32 a 34, con [Kubernetes](https://kubernetes.io/): el script los apunta al
 clúster, y el panel "Errores de cada versión, según Users" muestra lo que mide
 el análisis de Argo Rollouts.
 

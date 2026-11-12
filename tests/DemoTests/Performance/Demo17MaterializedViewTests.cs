@@ -2,10 +2,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 16: la vista materializada tiene los nombres copiados, así que responde
+// Demo 17: la vista materializada tiene los nombres copiados, así que responde
 // aunque Products falle; los proyectores toleran eventos que llegan a la vez y
 // desordenados.
-public class Demo16MaterializedViewTests : DemoTest
+public class Demo17MaterializedViewTests : DemoTest
 {
     [TearDown]
     public async Task RestoreAsync()
@@ -43,14 +43,14 @@ public class Demo16MaterializedViewTests : DemoTest
             id = await Api.CreateOrderAsync(DemoData.User2, DemoData.Shirt.Id);
             await Api.WaitProcessedAsync([id]);
 
-            Assert.That(await Demo13PublisherSubscriberTests.ViewRowAsync(id), Is.Null, "con los proyectores detenidos, la vista no tiene la Order");
+            Assert.That(await Demo14PublisherSubscriberTests.ViewRowAsync(id), Is.Null, "con los proyectores detenidos, la vista no tiene la Order");
         }
         finally
         {
             await Shell.ComposeAsync("start orders-projector");
         }
 
-        var row = await Eventually.GetAsync(() => Demo13PublisherSubscriberTests.ViewRowAsync(id),
+        var row = await Eventually.GetAsync(() => Demo14PublisherSubscriberTests.ViewRowAsync(id),
             r => r?["status"]?.GetValue<string>() == "Confirmed" && r?["customer_name"] is not null, TimeSpan.FromSeconds(90));
 
         Assert.That(row?["status"]?.GetValue<string>(), Is.EqualTo("Confirmed"), "el upsert no pierde el estado final");
@@ -61,7 +61,7 @@ public class Demo16MaterializedViewTests : DemoTest
     public async Task AnOlderNameDoesNotOverwriteANewerOne()
     {
         var id = await Api.CreateOrderAsync(DemoData.User2, DemoData.Shirt.Id);
-        await Eventually.GetAsync(() => Demo13PublisherSubscriberTests.ViewRowAsync(id), r => r?["customer_name"] is not null);
+        await Eventually.GetAsync(() => Demo14PublisherSubscriberTests.ViewRowAsync(id), r => r?["customer_name"] is not null);
 
         var now = DateTime.UtcNow;
         await Api.PublishEventAsync("user.updated", new { UserId = DemoData.User2, Name = "Roberto", OccurredAt = now });
@@ -69,7 +69,7 @@ public class Demo16MaterializedViewTests : DemoTest
         await Api.PublishEventAsync("user.updated", new { UserId = DemoData.User2, Name = "Bob", OccurredAt = now.AddSeconds(-10) });
         await Task.Delay(TimeSpan.FromSeconds(2));
 
-        var row = await Demo13PublisherSubscriberTests.ViewRowAsync(id);
+        var row = await Demo14PublisherSubscriberTests.ViewRowAsync(id);
         Assert.That(row?["customer_name"]?.GetValue<string>(), Is.EqualTo("Roberto"));
     }
 }

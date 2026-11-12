@@ -3,9 +3,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 22: Purchases ve las Orders con su propio modelo -comprador, unidades y
+// Demo 23: Purchases ve las Orders con su propio modelo -comprador, unidades y
 // si está confirmada-, y un cambio en el modelo de Orders no lo afecta.
-public class Demo22AntiCorruptionLayerTests : DemoTest
+public class Demo23AntiCorruptionLayerTests : DemoTest
 {
     private static readonly DemoData.Product Product = DemoData.Shoes;
 

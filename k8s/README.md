@@ -1,9 +1,9 @@
 # Demos de despliegue con Kubernetes
 
-Los manifiestos de las demos 31 a 33: Blue/Green, Rolling Upgrade y Canary
-Testing en un clúster de [Kubernetes](https://kubernetes.io/). Son las demos 27
-a 29 de Docker Compose, pero los pasos los hace [Argo
-Rollouts](https://argoproj.github.io/rollouts/) o Kubernetes, y en la 32 y la 33
+Los manifiestos de las demos 32 a 34: Blue/Green, Rolling Upgrade y Canary
+Testing en un clúster de [Kubernetes](https://kubernetes.io/). Son las demos 28
+a 30 de Docker Compose, pero los pasos los hace [Argo
+Rollouts](https://argoproj.github.io/rollouts/) o Kubernetes, y en la 33 y la 34
 avanzar o volver atrás lo decide un análisis de las métricas de la versión
 nueva. Qué muestra cada demo está en [Patrones de facilidad de
 despliegue](../PATTERNS.md#patrones-de-facilidad-de-despliegue), en PATTERNS.md,
@@ -24,9 +24,9 @@ brew install kind kubectl argoproj/tap/kubectl-argo-rollouts
 
 ```bash
 ./demos/k8s-up.sh                  # crea el clúster, una sola vez
-./demos/31-argo-blue-green.sh
-./demos/32-k8s-rolling-upgrade.sh
-./demos/33-argo-canary.sh
+./demos/32-argo-blue-green.sh
+./demos/33-k8s-rolling-upgrade.sh
+./demos/34-argo-canary.sh
 ./demos/k8s-down.sh                # borra el clúster
 ```
 
@@ -38,17 +38,17 @@ tres usan el mismo nombre, `users`, y hay una sola por vez.
 | Archivo | Qué es |
 | ------- | ------ |
 | [kind.yaml](kind.yaml) | El clúster: un nodo, que publica en la máquina el Gateway en el puerto 8092 y Prometheus en el 30090 |
-| [common.sh](common.sh) | Las funciones de las demos 31 a 33 |
+| [common.sh](common.sh) | Las funciones de las demos 32 a 34 |
 | [base](base/) | Lo que comparten las tres demos. Lo aplica `demos/k8s-up.sh` |
 | [base/users-db.yaml](base/users-db.yaml) | La base de `Users`, con los mismos datos iniciales que en Docker Compose |
 | [base/users-config.yaml](base/users-config.yaml) | La configuración de `Users`. No lleva la versión: cada versión es una imagen |
 | [base/gateway.yaml](base/gateway.yaml) | La entrada de los clientes: un *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/) |
 | [base/prometheus.yaml](base/prometheus.yaml) | [Prometheus](https://prometheus.io/), que encuentra los pods de `Users` preguntándole a Kubernetes |
-| [base/analysis-error-rate.yaml](base/analysis-error-rate.yaml) | El análisis de las demos 32 y 33: la fracción de errores de los pods de la versión nueva |
+| [base/analysis-error-rate.yaml](base/analysis-error-rate.yaml) | El análisis de las demos 33 y 34: la fracción de errores de los pods de la versión nueva |
 | [base/argo-rollouts-gateway-api.yaml](base/argo-rollouts-gateway-api.yaml) | El permiso del plugin de Gateway API de Argo Rollouts para cambiar los pesos de las rutas |
-| [blue-green](blue-green/) | La demo 31: el `Rollout` con la estrategia `blueGreen`, los Service `users-active` y `users-preview`, y sus rutas |
-| [rolling-upgrade](rolling-upgrade/) | La demo 32: el Deployment, el `Rollout` con análisis, y el Service y la ruta que comparten |
-| [canary](canary/) | La demo 33: el `Rollout` con la estrategia `canary`, los Service `users-stable` y `users-canary`, y la ruta con los pesos |
+| [blue-green](blue-green/) | La demo 32: el `Rollout` con la estrategia `blueGreen`, los Service `users-active` y `users-preview`, y sus rutas |
+| [rolling-upgrade](rolling-upgrade/) | La demo 33: el Deployment, el `Rollout` con análisis, y el Service y la ruta que comparten |
+| [canary](canary/) | La demo 34: el `Rollout` con la estrategia `canary`, los Service `users-stable` y `users-canary`, y la ruta con los pesos |
 
 ## Cómo se relaciona con Docker Compose
 

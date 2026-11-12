@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Canary con Argo Rollouts: la demo 29 en Kubernetes. Una fracción de las
+# Canary con Argo Rollouts: la demo 30 en Kubernetes. Una fracción de las
 # solicitudes va a la versión nueva, y la fracción crece si las métricas son
-# buenas. Lo que en la demo 29 se hacía a mano -cambiar el porcentaje, mirar los
+# buenas. Lo que en la demo 30 se hacía a mano -cambiar el porcentaje, mirar los
 # errores, decidir- lo hace Argo Rollouts: cambia los pesos de la HTTPRoute
 # users, y en cada paso consulta a Prometheus los errores de la versión nueva.
 #

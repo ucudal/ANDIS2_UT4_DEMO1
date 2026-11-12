@@ -1,5 +1,5 @@
 # Permiso para que Argo Rollouts, con el plugin de Gateway API, cambie los pesos
-# de las HTTPRoute del namespace andis durante un Canary -ver la demo 33-. Solo
+# de las HTTPRoute del namespace andis durante un Canary -ver la demo 34-. Solo
 # en este namespace, y solo lo que el plugin necesita.
 #
 # El plugin se registra en demos/k8s-up.sh, porque su dirección depende de la

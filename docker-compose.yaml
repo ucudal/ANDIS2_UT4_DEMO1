@@ -12,7 +12,7 @@ services:
       # Strangler Fig: la fachada, con la tabla de rutas que se migra de a una
       # -ver ApiGateway/nginxconf/nginx.conf-.
       - "8090:8090"
-      # Facilidad de despliegue: la entrada de las demos 27 a 30, hacia las dos
+      # Facilidad de despliegue: la entrada de las demos 28 a 31, hacia las dos
       # versiones de Users -ver ApiGateway/nginxconf/deployment-routes.conf-.
       - "8091:8091"
     depends_on:
@@ -485,7 +485,7 @@ services:
       default:
         # Rolling Upgrade: el grupo de instancias que atiende la entrada de
         # despliegue. Las réplicas de esta versión y las instancias de la 1 que
-        # crea la demo 28 comparten el nombre, y el DNS de Docker devuelve todas.
+        # crea la demo 29 comparten el nombre, y el DNS de Docker devuelve todas.
         aliases: ["users-pool"]
     healthcheck:
       # La imagen de ASP.NET no trae curl: se hace el GET con bash y se
@@ -506,7 +506,7 @@ services:
   # versión 2 de Users se lo pregunta con OpenFeature -ver UsersService/Experiment.cs-.
   # Se levanta con
   #   docker compose --profile feature-flags up -d --wait
-  # La demo 30 lo levanta sola. Consola: http://localhost:4242, usuario admin,
+  # La demo 31 lo levanta sola. Consola: http://localhost:4242, usuario admin,
   # contraseña unleash4all.
   unleash-db:
     image: postgres:18

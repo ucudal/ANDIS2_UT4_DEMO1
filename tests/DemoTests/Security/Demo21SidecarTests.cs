@@ -3,9 +3,9 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 20: el sidecar de Products exige el rol admin para cambiar el catálogo,
+// Demo 21: el sidecar de Products exige el rol admin para cambiar el catálogo,
 // verifica la firma del token y no deja pasar a quien no lo tiene.
-public class Demo20SidecarTests : DemoTest
+public class Demo21SidecarTests : DemoTest
 {
     private static readonly DemoData.Product Product = DemoData.Shoes;
     private static readonly object Body = new { name = Product.Name, price = Product.Price };

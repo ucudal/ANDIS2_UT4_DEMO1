@@ -1,4 +1,4 @@
-# El clúster de las demos de despliegue con Kubernetes, de la 31 a la 33: un
+# El clúster de las demos de despliegue con Kubernetes, de la 32 a la 34: un
 # solo nodo, que es un contenedor de Docker. Lo crea demos/k8s-up.sh.
 #
 # kind publica en la máquina dos puertos del nodo:

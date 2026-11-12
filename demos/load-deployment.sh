@@ -6,7 +6,7 @@
 #   docker compose --profile observability up -d --wait
 #   ./demos/load-deployment.sh <bluegreen|rolling|canary|ab>
 #
-# Los escenarios k8s-bluegreen, k8s-rolling y k8s-canary son las demos 31 a 33:
+# Los escenarios k8s-bluegreen, k8s-rolling y k8s-canary son las demos 32 a 34:
 # k6 apunta al Gateway del clúster, y el despliegue lo hace Argo Rollouts o
 # Kubernetes. Necesitan además el clúster, ./demos/k8s-up.sh, pero no el resto
 # de Docker Compose:
@@ -101,9 +101,9 @@ ab_cleanup() {
     deploy_target users-service:8000
 }
 
-# Las demos 31 a 33 bajo carga. k6 corre en Docker Compose y llega al Gateway del
+# Las demos 32 a 34 bajo carga. k6 corre en Docker Compose y llega al Gateway del
 # clúster por la red de Docker; sus métricas van al Prometheus de Compose, como
-# en las demos 27 a 30. El panel "Errores de cada versión, según Users" lee
+# en las demos 28 a 31. El panel "Errores de cada versión, según Users" lee
 # el Prometheus del clúster.
 
 k8s_bluegreen() {
@@ -127,7 +127,7 @@ k8s_bluegreen_cleanup() {
     strategy_delete blue-green
 }
 
-# Solo la parte del Deployment de la demo 32: la versión con el error queda
+# Solo la parte del Deployment de la demo 33: la versión con el error queda
 # hasta que alguien vuelve atrás. La vuelta atrás automática de Argo Rollouts se
 # ve bajo carga con k8s-canary.
 k8s_rolling() {
@@ -160,7 +160,7 @@ k8s_canary() {
     note "Aplicando k8s/canary, con la versión v1..."
     strategy_apply canary
     # La v2 tarda un minuto y medio en llegar al 100%, y la v3 medio minuto en
-    # volver atrás: más que los 90 segundos del escenario de la demo 29.
+    # volver atrás: más que los 90 segundos del escenario de la demo 30.
     K6_ENV+=(-e DURATION=200s)
     load canary.js
     sleep 10
@@ -186,7 +186,7 @@ case "$pattern" in
     k8s-bluegreen|k8s-rolling|k8s-canary)
         source k8s/common.sh
         # k6 llega al Gateway del clúster por la red de Docker Compose, como a la
-        # entrada de despliegue en las demos 27 a 30: el nodo de kind se suma a
+        # entrada de despliegue en las demos 28 a 31: el nodo de kind se suma a
         # esa red. Por host.docker.internal pasaría por el reenvío de puertos de
         # Docker Desktop, que con 20 solicitudes por segundo pierde algunas.
         network=$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' \
