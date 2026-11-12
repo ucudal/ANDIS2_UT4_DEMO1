@@ -124,6 +124,16 @@ public static class Api
                 $"{(int)response.StatusCode} {response.RequestMessage?.Method} {response.RequestMessage?.RequestUri}: {await response.Content.ReadAsStringAsync()}");
     }
 
+    // Saga: el stock de un Product, y un ajuste que lo fija.
+    public static async Task<int> StockAsync(int id) =>
+        (await GetProductAsync(id))["stock"]!.GetValue<int>();
+
+    public static async Task SetStockAsync(int id, int stock)
+    {
+        using var response = await Http.PutAsJsonAsync($"{DemoData.Gateway}/products/{id}/stock", new { stock });
+        await EnsureSuccessAsync(response);
+    }
+
     public static async Task<JsonObject> GetProductAsync(int id) =>
         (await Http.GetFromJsonAsync<JsonObject>($"{DemoData.Gateway}/products/{id}"))!;
 

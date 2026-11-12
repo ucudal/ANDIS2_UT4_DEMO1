@@ -13,5 +13,10 @@ namespace ProductsService.Models
 
         [Column("price")]
         public double Price { get; set; }
+
+        // Saga: las unidades disponibles. Lo cambian las reservas y las
+        // compensaciones -ver StockReservations.cs- y PUT /products/{id}/stock.
+        [Column("stock")]
+        public int Stock { get; set; }
     }
 }

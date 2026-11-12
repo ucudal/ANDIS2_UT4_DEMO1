@@ -147,7 +147,7 @@ docker compose exec api-gateway curl -sS http://products-service:9901/stats/prom
     docker compose logs -f --since 1s api-gateway orders-service products-sidecar products-service
 
 # -----------------------------
-# --- 17 Federated Identity ---
+# --- 18 Federated Identity ---
 # -----------------------------
 # La aplicación no autentica a los usuarios: lo hace Keycloak, un proveedor de
 # identidad externo. El usuario inicia sesión en Keycloak, que le entrega un
@@ -325,7 +325,7 @@ docker compose logs orders-service --since 2m | grep '\[FEDERATED IDENTITY\]'
 #   gateway los respondió sin llegar a Orders.
 
 # -----------------------------
-# --- 18 Gateway Offloading ---
+# --- 19 Gateway Offloading ---
 # -----------------------------
 # El gateway se hace cargo de funciones que de otro modo tendría que
 # implementar cada servicio, y que necesitan configuración especializada: en la
@@ -411,7 +411,7 @@ docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
 #   invalid_token, las rechazadas.
 
 # ---------------------
-# --- 19 Gatekeeper ---
+# --- 20 Gatekeeper ---
 # ---------------------
 # El gateway es el intermediario entre los clientes y los servicios: en la
 # entrada HTTPS valida y limpia cada solicitud antes de reenviarla. Publica solo
@@ -543,7 +543,7 @@ docker compose logs api-gateway --since 2m | grep '\[HTTPS\]'
 #   publicarlos.
 
 # ------------------
-# --- 20 Sidecar ---
+# --- 21 Sidecar ---
 # ------------------
 # Un proxy Envoy corre junto a products-service, en su mismo espacio de red, y
 # le agrega autenticación, autorización y un registro de accesos sin cambiar su
@@ -651,7 +651,7 @@ docker compose logs products-sidecar --since 2m | grep '\[SIDECAR\]'
 #   sin token; token inválido, 401, el token alterado.
 
 # --------------------
-# --- 21 Valet Key ---
+# --- 22 Valet Key ---
 # --------------------
 # Las imágenes de los Products se guardan en Azurite, el emulador de Azure
 # Storage. Products tiene la clave de la cuenta de almacenamiento, pero no la

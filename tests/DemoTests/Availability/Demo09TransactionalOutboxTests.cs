@@ -9,7 +9,7 @@ namespace Ucu.Andis.DemoTests.Availability;
 public class Demo09TransactionalOutboxTests : DemoTest
 {
     [Test]
-    public async Task MessagesWaitInTheOutboxAndArePublishedOnce()
+    public async Task MessagesWaitInTheOutboxUntilRabbitMqReturns()
     {
         var ids = new List<int>();
         try
@@ -22,12 +22,6 @@ public class Demo09TransactionalOutboxTests : DemoTest
             var health = await Demo06HealthTests.HealthAsync("orders");
             Assert.That(health.Body?["status"]?.GetValue<string>(), Is.EqualTo("Degraded"));
             Assert.That(await PendingAsync(), Is.GreaterThanOrEqualTo(5));
-
-            // El relay publica dos veces el order.created de la última Order.
-            await Shell.OrdersSqlAsync(
-                "INSERT INTO outbox_messages (routing_key, payload, created_at) " +
-                "SELECT routing_key, payload, NOW(6) FROM outbox_messages " +
-                $"WHERE routing_key = 'order.created' AND published_at IS NULL AND JSON_EXTRACT(payload, '$.OrderId') = {ids[^1]}");
         }
         finally
         {
@@ -39,11 +33,34 @@ public class Demo09TransactionalOutboxTests : DemoTest
 
         var pending = await Eventually.GetAsync(PendingAsync, p => p == 0);
         Assert.That(pending, Is.EqualTo(0));
+    }
 
-        var types = await Api.EventTypesAsync(ids[^1]);
+    // Products en pausa: la Order queda Pending, y las dos copias de
+    // stock.reserved llegan a la vez a dos workers antes que la reserva real.
+    [Test]
+    public async Task ADuplicatedMessageConfirmsTheOrderOnce()
+    {
+        int id;
+        try
+        {
+            await Shell.ComposeAsync("pause products-service");
+            id = await Api.CreateOrderAsync(DemoData.User2, DemoData.Shirt.Id);
+            for (var i = 0; i < 2; i++)
+                await Api.PublishEventAsync("stock.reserved", new { OrderId = id, ProductId = DemoData.Shirt.Id, Quantity = 1 });
+
+            var statuses = await Api.WaitProcessedAsync([id]);
+            Assert.That(statuses[id], Is.EqualTo("Confirmed"));
+        }
+        finally
+        {
+            await Shell.ComposeAsync("unpause products-service");
+        }
+        await Eventually.GetAsync(PendingAsync, p => p == 0);
+
+        var types = await Api.EventTypesAsync(id);
         Assert.That(types.Count(t => t == "OrderConfirmed"), Is.EqualTo(1));
         var confirmedMessages = await Shell.OrdersSqlAsync(
-            $"SELECT COUNT(*) FROM outbox_messages WHERE routing_key = 'order.confirmed' AND JSON_EXTRACT(payload, '$.OrderId') = {ids[^1]}");
+            $"SELECT COUNT(*) FROM outbox_messages WHERE routing_key = 'order.confirmed' AND JSON_EXTRACT(payload, '$.OrderId') = {id}");
         Assert.That(confirmedMessages, Is.EqualTo("1"));
     }
 

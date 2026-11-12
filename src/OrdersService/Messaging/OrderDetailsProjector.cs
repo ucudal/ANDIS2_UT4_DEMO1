@@ -26,8 +26,8 @@ namespace Ucu.Andis.OrdersService.Messaging;
 //    Users y a Products, que tardan. El worker confirma la Order y la réplica B
 //    recibe order.confirmed, no encuentra la fila y descarta el estado. A
 //    inserta la fila como Pending, y la vista queda Pending para siempre.
-//    Solución: el estado solo avanza -Pending pasa a Confirmed o Rejected, que
-//    son finales-, así que el resultado no depende del orden. SetStatusAsync
+//    Solución: el estado solo avanza -Pending pasa a Confirmed o Rejected, y
+//    Confirmed a Cancelled-, así que el resultado no depende del orden. SetStatusAsync
 //    crea la fila si no existe, y AddOrderAsync nunca pisa el estado.
 // b. Duplicados que pasan el chequeo. Verificar si la fila o el evento ya
 //    existen y después insertarlos son dos pasos: dos copias en dos réplicas
@@ -152,6 +152,12 @@ public class OrderDetailsProjector : BackgroundService
                 // completa cuando llegue.
                 var rejected = JsonSerializer.Deserialize<OrderRejected>(body.Span)!;
                 await SetStatusAsync(db, rejected.OrderId, OrderStatus.Rejected, string.Empty, null, 0, cancellationToken);
+                return true;
+
+            // Saga: la Order confirmada que el ERP no facturó.
+            case Events.OrderCancelled:
+                var cancelled = JsonSerializer.Deserialize<OrderCancelled>(body.Span)!;
+                await SetStatusAsync(db, cancelled.OrderId, OrderStatus.Cancelled, string.Empty, null, 0, cancellationToken);
                 return true;
 
             // Messaging Bridge: la factura del ERP queda en el historial de la
@@ -284,9 +290,11 @@ public class OrderDetailsProjector : BackgroundService
     // Sin esto, el estado se descartaba y la fila quedaba Pending para siempre.
     //
     // Alcanza con que el estado solo avance: Pending pasa a Confirmed o a
-    // Rejected, y esos dos son finales. Por eso no hace falta numerar los
-    // eventos de cada Order: aplicados en cualquier orden, el resultado es el
-    // mismo. Si la fila ya tiene un estado final, no se cambia.
+    // Rejected, y Confirmed puede pasar a Cancelled. Rejected y Cancelled son
+    // finales. Por eso no hace falta numerar los eventos de cada Order:
+    // aplicados en cualquier orden, el resultado es el mismo. Si order.cancelled
+    // llega antes que order.confirmed, la fila queda Cancelled y la confirmación
+    // ya no la cambia.
     private async Task SetStatusAsync(OrdersDbContext db, int orderId, string status,
         string userId, int? productId, int quantity, CancellationToken cancellationToken)
     {
@@ -297,7 +305,9 @@ public class OrderDetailsProjector : BackgroundService
             VALUES ({orderId}, {userId}, {productId}, {quantity}, {status}, {now})
             AS new
             ON DUPLICATE KEY UPDATE
-                status = IF(order_details.status = {OrderStatus.Pending}, new.status, order_details.status),
+                status = IF(order_details.status = {OrderStatus.Pending}
+                            OR (order_details.status = {OrderStatus.Confirmed} AND new.status = {OrderStatus.Cancelled}),
+                            new.status, order_details.status),
                 updated_at = new.updated_at
             """, cancellationToken);
 

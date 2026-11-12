@@ -14,9 +14,19 @@ namespace Ucu.Andis.OrdersService.Messaging;
 // así que las réplicas se reparten el trabajo. Si una réplica se cae antes de
 // confirmar -ack- un mensaje, RabbitMQ se lo entrega a otra.
 //
-// Publisher/Subscriber: la cola orders.process es la suscripción del worker al
-// evento order.created del exchange andis.events. Los proyectores de la
-// vista materializada tienen su propia cola y reciben el mismo evento.
+// Saga: el worker es el paso de Orders en la coreografía. La cola
+// orders.process es su suscripción, en el exchange andis.events, a lo que
+// responden los otros participantes:
+//
+// - stock.reserved: Products reservó el stock. El worker verifica el User y
+//   confirma la Order, o la rechaza si el User no existe; con order.rejected,
+//   Products libera la reserva.
+// - stock.rejected: Products no reservó nada. El worker rechaza la Order.
+// - order.invoice-failed: el ERP no facturó una Order confirmada. El worker la
+//   cancela, y con order.cancelled Products libera la reserva.
+//
+// Nadie coordina la Saga: cada participante reacciona a los eventos de los
+// otros -ver PATTERNS.md-.
 public class OrderProcessingWorker : BackgroundService
 {
     public const string MeterName = "Ucu.Andis.OrdersWorker";
@@ -31,7 +41,7 @@ public class OrderProcessingWorker : BackgroundService
     // cómo se reparte el trabajo entre las réplicas.
     private static readonly Meter Meter = new(MeterName);
     private static readonly Counter<long> OrdersProcessed = Meter.CreateCounter<long>("orders.processed", "{order}",
-        "Órdenes procesadas por el worker: Confirmed, Rejected o Requeued");
+        "Órdenes procesadas por el worker: Confirmed, Rejected, Cancelled o Requeued");
 
     private readonly RabbitMq _rabbitMq;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -52,7 +62,8 @@ public class OrderProcessingWorker : BackgroundService
     {
         var connection = await ConnectAsync(stoppingToken);
         var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
-        await RabbitMq.DeclareSubscriberQueueAsync(channel, OrdersQueue, [Events.OrderCreated], stoppingToken);
+        await RabbitMq.DeclareSubscriberQueueAsync(channel, OrdersQueue,
+            [Events.StockReserved, Events.StockRejected, Events.OrderInvoiceFailed], stoppingToken);
 
         // Cada réplica toma un solo mensaje a la vez: así el trabajo se reparte
         // según la capacidad de cada una, en lugar de que una acapare la cola.
@@ -61,28 +72,17 @@ public class OrderProcessingWorker : BackgroundService
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, delivery) =>
         {
-            // Un mensaje que no es un OrderCreated válido no se va a poder procesar
-            // nunca: se descarta en lugar de devolverlo a la cola para siempre.
-            OrderCreated? created;
-            try
-            {
-                created = JsonSerializer.Deserialize<OrderCreated>(delivery.Body.Span);
-            }
-            catch (JsonException)
-            {
-                created = null;
-            }
-            if (created is null)
-            {
-                _logger.LogWarning("Worker {Worker}: se descarta un mensaje que no es un OrderCreated", _workerName);
-                await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, stoppingToken);
-                return;
-            }
-
             bool processed;
             try
             {
-                processed = await ProcessAsync(created.OrderId, stoppingToken);
+                processed = await HandleAsync(delivery.RoutingKey, delivery.Body, stoppingToken);
+            }
+            catch (JsonException)
+            {
+                // Un mensaje mal formado no se va a poder procesar nunca: se
+                // descarta en lugar de devolverlo a la cola para siempre.
+                _logger.LogWarning("Worker {Worker}: se descarta un mensaje {RoutingKey} mal formado", _workerName, delivery.RoutingKey);
+                processed = true;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -93,7 +93,7 @@ public class OrderProcessingWorker : BackgroundService
                 // canal. Trade-off: un mensaje que falla siempre -un poison
                 // message- vuelve a la cola para siempre; la alternativa es una
                 // dead-letter queue, que la demo no tiene.
-                _logger.LogError(ex, "Worker {Worker}: no se pudo procesar la orden {OrderId}; vuelve a la cola", _workerName, created.OrderId);
+                _logger.LogError(ex, "Worker {Worker}: no se pudo procesar {RoutingKey}; vuelve a la cola", _workerName, delivery.RoutingKey);
                 processed = false;
             }
 
@@ -114,6 +114,18 @@ public class OrderProcessingWorker : BackgroundService
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
+    // Devuelve false si el mensaje no se pudo procesar porque una dependencia no
+    // está disponible; en ese caso vuelve a la cola. Un mensaje con otra clave de
+    // ruteo no es para el worker: se descarta.
+    private Task<bool> HandleAsync(string routingKey, ReadOnlyMemory<byte> body, CancellationToken cancellationToken) =>
+        routingKey switch
+        {
+            Events.StockReserved => ConfirmAsync(JsonSerializer.Deserialize<StockReserved>(body.Span)!.OrderId, cancellationToken),
+            Events.StockRejected => RejectAsync(JsonSerializer.Deserialize<StockRejected>(body.Span)!, cancellationToken),
+            Events.OrderInvoiceFailed => CancelAsync(JsonSerializer.Deserialize<OrderInvoiceFailed>(body.Span)!, cancellationToken),
+            _ => Task.FromResult(true)
+        };
+
     private async Task<IConnection> ConnectAsync(CancellationToken stoppingToken)
     {
         while (true)
@@ -130,30 +142,26 @@ public class OrderProcessingWorker : BackgroundService
         }
     }
 
-    // Devuelve false si la orden no se pudo procesar porque una dependencia no
-    // está disponible; en ese caso el mensaje vuelve a la cola.
+    // Con el stock reservado, verifica el User y confirma la Order, o la
+    // rechaza si el User no existe.
     //
     // Es idempotente: el outbox entrega cada mensaje al menos una vez, no
     // exactamente una, y una Order que ya no está Pending no se procesa de
     // nuevo. Pero preguntar si está Pending y después cambiarla son dos pasos
     // -check-then-act-, y con varias réplicas eso no alcanza:
     //
-    // 1. El relay publica dos veces el mismo order.created -ver OutboxRelay.cs-.
+    // 1. Products publica dos veces el mismo stock.reserved -ver OutboxRelay.cs-.
     // 2. Las dos copias llegan a la vez a dos réplicas.
-    // 3. Las dos leen la Order como Pending, esperan la demora y las llamadas a
-    //    Users y Products, y las dos guardan el cambio.
+    // 3. Las dos leen la Order como Pending, esperan la demora y la llamada a
+    //    Users, y las dos guardan el cambio.
     //
     // Quedarían dos OrderConfirmed en el historial y dos order.confirmed en el
     // outbox, que llegarían dos veces a los proyectores y al ERP.
     //
     // Por eso la lectura inicial solo evita trabajo inútil con un duplicado que
     // llega después; lo que decide es el primer paso de la transacción: un
-    // UPDATE que cambia el estado solo si sigue Pending. Es una sola sentencia,
-    // y MySQL bloquea la fila: la segunda réplica espera a que la primera
-    // confirme, ve que ya no está Pending, no cambia nada y descarta la Order.
-    // El índice único de order_events es una segunda barrera -ver
-    // mysqlinit.sql-.
-    private async Task<bool> ProcessAsync(int orderId, CancellationToken cancellationToken)
+    // UPDATE que cambia el estado solo si sigue Pending -ver ChangeStatusAsync-.
+    private async Task<bool> ConfirmAsync(int orderId, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
@@ -168,45 +176,86 @@ public class OrderProcessingWorker : BackgroundService
         _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} procesando la orden {OrderId}", _workerName, orderId);
         await Task.Delay(_processingDelay, cancellationToken);
 
-        var user = await Dependencies.GetUserAsync(httpClientFactory.CreateClient("UsersService"), order.UserId, cancellationToken);
-        var product = await Dependencies.GetAsync<ProductDto>(httpClientFactory.CreateClient("ProductsService"), $"{order.ProductId}", cancellationToken);
-
-        if (!user.Available || !product.Available)
+        var user = await Dependencies.GetUserAsync(httpClientFactory.CreateClient("UsersService"), order.UserId!, cancellationToken);
+        if (!user.Available)
         {
-            _logger.LogWarning("Worker {Worker}: la orden {OrderId} vuelve a la cola [usuarios: {Users}, productos: {Products}]",
-                _workerName, orderId, user.Failure ?? "ok", product.Failure ?? "ok");
+            _logger.LogWarning("Worker {Worker}: la orden {OrderId} vuelve a la cola [usuarios: {Users}]",
+                _workerName, orderId, user.Failure);
             Count("Requeued");
             return false;
         }
 
-        var rejection = user.NotFound ? $"El usuario {order.UserId} no existe"
-            : product.NotFound ? $"El producto {order.ProductId} no existe"
-            : null;
-        var newStatus = rejection is null ? OrderStatus.Confirmed : OrderStatus.Rejected;
+        if (user.NotFound)
+        {
+            // Saga: el stock ya está reservado. order.rejected es lo que hace
+            // que Products lo libere -la compensación-.
+            var reason = $"El usuario {order.UserId} no existe";
+            await ChangeStatusAsync(db, orderId, OrderStatus.Pending, OrderStatus.Rejected,
+                OrderEvent.Create(orderId, OrderEventTypes.OrderRejected, new OrderRejectedData(reason, _workerName)),
+                OutboxMessage.Create(Events.OrderRejected, new OrderRejected(orderId, reason)), reason, cancellationToken);
+            return true;
+        }
 
-        var orderEvent = rejection is null
-            ? OrderEvent.Create(orderId, OrderEventTypes.OrderConfirmed, new OrderConfirmedData(_workerName))
-            : OrderEvent.Create(orderId, OrderEventTypes.OrderRejected, new OrderRejectedData(rejection, _workerName));
+        await ChangeStatusAsync(db, orderId, OrderStatus.Pending, OrderStatus.Confirmed,
+            OrderEvent.Create(orderId, OrderEventTypes.OrderConfirmed, new OrderConfirmedData(_workerName)),
+            OutboxMessage.Create(Events.OrderConfirmed, new OrderConfirmed(orderId, order.UserId, order.ProductId, order.Quantity)),
+            null, cancellationToken);
+        return true;
+    }
 
-        // Transactional Outbox: el evento de Event Sourcing, el cambio de estado y
-        // el mensaje para los suscriptores se guardan juntos.
-        var outboxMessage = rejection is null
-            ? OutboxMessage.Create(Events.OrderConfirmed, new OrderConfirmed(orderId, order.UserId, order.ProductId, order.Quantity))
-            : OutboxMessage.Create(Events.OrderRejected, new OrderRejected(orderId, rejection));
+    // Products no reservó el stock: la Order se rechaza. No hay nada que
+    // compensar; el order.rejected igual llega a Products, que no encuentra
+    // una reserva que liberar.
+    private async Task<bool> RejectAsync(StockRejected rejected, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        await ChangeStatusAsync(db, rejected.OrderId, OrderStatus.Pending, OrderStatus.Rejected,
+            OrderEvent.Create(rejected.OrderId, OrderEventTypes.OrderRejected, new OrderRejectedData(rejected.Reason, _workerName)),
+            OutboxMessage.Create(Events.OrderRejected, new OrderRejected(rejected.OrderId, rejected.Reason)),
+            rejected.Reason, cancellationToken);
+        return true;
+    }
 
+    // Saga: el ERP no facturó la Order. Ya estaba confirmada, así que no se
+    // puede rechazar: se cancela, y order.cancelled hace que Products libere el
+    // stock.
+    private async Task<bool> CancelAsync(OrderInvoiceFailed failed, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        var reason = $"El ERP no la facturó: {failed.Reason}";
+        await ChangeStatusAsync(db, failed.OrderId, OrderStatus.Confirmed, OrderStatus.Cancelled,
+            OrderEvent.Create(failed.OrderId, OrderEventTypes.OrderCancelled, new OrderCancelledData(reason, _workerName)),
+            OutboxMessage.Create(Events.OrderCancelled, new OrderCancelled(failed.OrderId, reason)),
+            reason, cancellationToken);
+        return true;
+    }
+
+    // Transactional Outbox: el evento de Event Sourcing, el cambio de estado y
+    // el mensaje para los suscriptores se guardan juntos.
+    //
+    // Competing Consumers: la transición de estado es condicional y atómica. Es
+    // una sola sentencia, y MySQL bloquea la fila: si dos réplicas procesan a la
+    // vez dos copias del mismo mensaje, la segunda espera a que la primera
+    // confirme, ve que la Order ya no está en el estado de origen, no cambia
+    // nada y la descarta. El índice único de order_events es una segunda
+    // barrera -ver mysqlinit.sql-.
+    private async Task ChangeStatusAsync(OrdersDbContext db, int orderId, string from, string to,
+        OrderEvent orderEvent, OutboxMessage outboxMessage, string? reason, CancellationToken cancellationToken)
+    {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-        // Competing Consumers: la transición de estado condicional y atómica.
         var changed = await db.Orders
-            .Where(o => o.Id == orderId && o.Status == OrderStatus.Pending)
-            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, newStatus), cancellationToken);
+            .Where(o => o.Id == orderId && o.Status == from)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, to), cancellationToken);
         if (changed == 0)
         {
             // Otra réplica ya la procesó: no se agrega ni el evento ni el mensaje.
             await transaction.RollbackAsync(cancellationToken);
-            _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} descarta la orden {OrderId}: ya la procesó otra réplica",
-                _workerName, orderId);
-            return true;
+            _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker} descarta la orden {OrderId}: no está {Status}",
+                _workerName, orderId, from);
+            return;
         }
 
         db.OrderEvents.Add(orderEvent);
@@ -214,10 +263,9 @@ public class OrderProcessingWorker : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        _logger.LogInformation("[COMPETING CONSUMERS] Worker {Worker}: orden {OrderId} {Status}{Reason}",
-            _workerName, orderId, newStatus, rejection is null ? "" : $" [{rejection}]");
-        Count(newStatus);
-        return true;
+        _logger.LogInformation("[SAGA] Worker {Worker}: orden {OrderId} {Status}{Reason}",
+            _workerName, orderId, to, reason is null ? "" : $" [{reason}]");
+        Count(to);
     }
 
     private void Count(string result) =>

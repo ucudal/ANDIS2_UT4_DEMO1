@@ -24,11 +24,13 @@ class UserService
 class ProductsController
 class OrderProcessingWorker
 class OrderDetailsProjector
+class StockReservations
 
 OutboxRelay --> RabbitMq : publica
 UserService --> RabbitMq : publica UserUpdated
 ProductsController --> RabbitMq : publica ProductUpdated
 OrderProcessingWorker --> RabbitMq : se suscribe
 OrderDetailsProjector --> RabbitMq : se suscribe
+StockReservations --> RabbitMq : se suscribe
 RabbitMq ..> Events
 @enduml

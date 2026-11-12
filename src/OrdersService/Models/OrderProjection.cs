@@ -31,6 +31,9 @@ public static class OrderProjection
                 case OrderEventTypes.OrderRejected when order is not null:
                     order.Status = OrderStatus.Rejected;
                     break;
+                case OrderEventTypes.OrderCancelled when order is not null:
+                    order.Status = OrderStatus.Cancelled;
+                    break;
             }
         }
 

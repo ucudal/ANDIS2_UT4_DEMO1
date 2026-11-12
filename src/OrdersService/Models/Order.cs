@@ -18,7 +18,7 @@ public class Order
     [Column("quantity")]
     public int Quantity { get; set; }
 
-    // Pending, Confirmed o Rejected. Esta tabla es una proyección: el estado se
+    // Pending, Confirmed, Rejected o Cancelled. Esta tabla es una proyección: el estado se
     // deriva de los eventos de la orden -ver OrderEvent-.
     [Column("status")]
     public string Status { get; set; } = OrderStatus.Pending;
@@ -29,4 +29,6 @@ public static class OrderStatus
     public const string Pending = "Pending";
     public const string Confirmed = "Confirmed";
     public const string Rejected = "Rejected";
+    // Saga: una Order confirmada que el ERP no pudo facturar.
+    public const string Cancelled = "Cancelled";
 }

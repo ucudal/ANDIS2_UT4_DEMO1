@@ -121,7 +121,7 @@ docker compose run --rm k6 run -e RATE=50 -e DURATION=2m /scripts/load.js
     ./demos/monitor-health.sh
 
 # ----------------------
-# --- 10 Cache-Aside ---
+# --- 11 Cache-Aside ---
 # ----------------------
 # Products busca primero en Redis. Si no está -miss-, lee MongoDB y lo guarda en
 # Redis por 60 segundos; la próxima lectura sale de Redis -hit-. Al cambiar un
@@ -248,14 +248,14 @@ docker compose run --rm k6 run /scripts/cache-aside.js
 # El script de la demo hace pocas lecturas: en Grafana se ve solo bajo carga.
 
 # ------------------------------------
-# --- 11 Queue-Based Load Leveling ---
+# --- 12 Queue-Based Load Leveling ---
 # ------------------------------------
-# POST /orders/ solo guarda la Order y responde; el trabajo de verificar el User
-# y el Product lo hacen los workers desde la cola, a su ritmo. La cola absorbe
-# el pico: Users y Products reciben como máximo una llamada por réplica del
-# worker, lleguen las Orders que lleguen.
+# POST /orders/ solo guarda la Order y responde. Products reserva el stock, y
+# el trabajo de verificar el User lo hacen los workers desde la cola, a su
+# ritmo. La cola absorbe el pico: Users recibe como máximo una llamada por
+# réplica del worker, lleguen las Orders que lleguen.
 #
-# A continuación e detienen los workers, se crea un pico de Orders que queda en
+# A continuación se detienen los workers, se crea un pico de Orders que queda en
 # la cola, y después se levantan los workers de a poco para ver a qué ritmo la
 # vacían. En Grafana se ve en el panel "Cola orders.process": "esperando" es la
 # cantidad de mensajes en la cola, "en proceso" los que un worker tomó y todavía
@@ -325,10 +325,10 @@ for i in $(seq 10); do
 done
 
 # En ningún momento las solicitudes esperaron a los workers: el pico lo absorbió
-# la cola, y Users y Products recibieron como máximo una llamada a la vez por
-# réplica, lleguen las Orders que lleguen. Sin la cola, cada POST /orders/
-# habría tenido que esperar a que se procesara su Order, y Users y Products
-# habrían recibido las 30 llamadas a la vez.
+# la cola, y Users recibió como máximo una llamada a la vez por réplica, lleguen
+# las Orders que lleguen. Sin la cola, cada POST /orders/ habría tenido que
+# esperar a que se procesara su Order, y Users habría recibido las 30 llamadas
+# a la vez.
 #
 # El siguiente script crea 30 Orders a la vez, directamente en orders-service:
 # el Throttling por cliente del gateway rechazaría el pico antes de llegar a la
@@ -353,7 +353,7 @@ docker compose run --rm k6 run /scripts/load-leveling.js
 #   debajo de 30 ms durante todo el pico.
 
 # ---------------------------------------------
-# --- 12 Competing Consumers: escalabilidad ---
+# --- 13 Competing Consumers: escalabilidad ---
 # ---------------------------------------------
 # El mismo patrón de la demo 07, en 02-availability.azcli, ahora como patrón de
 # rendimiento: el throughput crece agregando réplicas de orders-worker, sin
@@ -448,11 +448,13 @@ docker compose up -d --scale orders-worker=3
 #   cada una identificada por el id de su contenedor.
 
 # -------------------------------
-# --- 13 Publisher/Subscriber ---
+# --- 14 Publisher/Subscriber ---
 # -------------------------------
 # Orders, Users y Products publican eventos en el exchange andis.events. Cada
 # suscriptor tiene su propia cola y la enlaza con las claves que le interesan:
-# orders.process, del worker, recibe order.created; orders.details-view, de
+# products.stock, de Products, recibe order.created, order.rejected y
+# order.cancelled; orders.process, del worker, recibe stock.reserved,
+# stock.rejected y order.invoice-failed -ver Saga-; orders.details-view, de
 # los proyectores, recibe order.*, user.updated y product.updated. Los enlaces se ven
 # en la consola de RabbitMQ, http://localhost:15672, en Exchanges >
 # andis.events. La diferencia entre el exchange y las colas está explicada en
@@ -471,8 +473,9 @@ curl -s -X POST http://localhost/orders/ \
   -H "Content-Type: application/json" \
   -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq
 
-# Esperar unos 3 segundos y ver las últimas 4 líneas de los logs de los dos
-# suscriptores: orders-worker procesa la Order porque recibió order.created, y
+# Esperar unos 3 segundos y ver las últimas líneas de los logs de los
+# suscriptores: products-service reservó el stock porque recibió order.created;
+# orders-worker procesa la Order porque recibió stock.reserved, y
 # orders-projector recibió order.created y, cuando el worker la confirmó,
 # order.confirmed. Orders publicó cada evento una sola vez, sin saber cuántos
 # suscriptores había. docker compose logs muestra las líneas agrupadas por
@@ -481,9 +484,9 @@ curl -s -X POST http://localhost/orders/ \
 # salida de grep pasa por otros comandos, --color=always hace que igual
 # resalte la etiqueta entre corchetes.
 
-docker compose logs -t orders-worker orders-projector \
-  | grep --color=always -E '\[PUB/SUB\]|\[COMPETING CONSUMERS\]' \
-  | sort -k3 | tail -4 | sed -E 's/ [0-9T:.-]+Z / /'
+docker compose logs -t products-service orders-worker orders-projector \
+  | grep --color=always -E '\[PUB/SUB\]|\[COMPETING CONSUMERS\]|\[SAGA\] Reservadas' \
+  | sort -k3 | tail -5 | sed -E 's/ [0-9T:.-]+Z / /'
 
 # Cambiar el nombre del Product 3 de "Zapatos" a
 # "Zapatillas".
@@ -580,7 +583,7 @@ curl -s -X POST http://localhost/users/UserService.svc \
 
 ./demos/14-publisher-subscriber.sh
 
-# Resultado en consola: order.created llega al worker y a los proyectores;
+# Resultado en consola: order.created llega a Products y a los proyectores;
 # product.updated y user.updated, solo a los proyectores, que actualizan los nombres
 # en la vista. Logs de Docker:
 
@@ -590,14 +593,14 @@ docker compose logs users-service products-service --since 2m | grep '\[PUB/SUB\
 # Grafana:
 # - "Mensajes en cada cola": durante el paso a paso, la cola spy aparece al
 #   crearla y sube de a uno con cada evento, porque nadie la consume; vuelve a
-#   0 al leer sus mensajes y desaparece al borrarla. orders.process y
-#   orders.details-view quedan en 0: sus suscriptores procesan cada evento
-#   enseguida. El script no crea la cola spy, así que con él solo se ven esas
-#   dos.
+#   0 al leer sus mensajes y desaparece al borrarla. orders.process,
+#   orders.details-view y products.stock quedan en 0: sus suscriptores procesan
+#   cada evento enseguida. El script no crea la cola spy, así que con él solo se
+#   ven esas tres.
 # - Los enlaces se ven en la consola de RabbitMQ.
 
 # -------------------------------------
-# --- 14 Asynchronous Request-Reply ---
+# --- 15 Asynchronous Request-Reply ---
 # -------------------------------------
 # POST /orders/ responde 202 Accepted con Location: /orders/{id}/status y
 # Retry-After: 2. El estado responde 200 mientras la Order está Pending, y 303
@@ -657,7 +660,7 @@ curl -s -L "http://localhost$location" | table
 # confirmada. Grafana: no hay un panel propio.
 
 # ---------------
-# --- 15 CQRS ---
+# --- 16 CQRS ---
 # ---------------
 # CQRS separa las operaciones que cambian datos -comandos- de las que solo los
 # leen -consultas-, y le da a cada lado sus propias tablas.
@@ -785,7 +788,7 @@ docker compose run --rm k6 run -e DETAILS=view /scripts/load.js
 #   Products.
 
 # ----------------------------
-# --- 16 Materialized View ---
+# --- 17 Materialized View ---
 # ----------------------------
 # 'order_details' guarda el detalle de cada Order con el nombre del cliente y
 # del producto ya copiados. La mantiene orders-projector a partir de los

@@ -14,8 +14,8 @@ O --> R : order.confirmed\nJSON
 R --> B
 B --> A : PEDIDO\nancho fijo
 A --> E
-E --> A : FACTURA\nancho fijo
+E --> A : FACTURA o RECHAZO\nancho fijo
 A --> B
-B --> R : order.invoiced\nJSON
+B --> R : order.invoiced u\norder.invoice-failed\nJSON
 R --> O
 @enduml

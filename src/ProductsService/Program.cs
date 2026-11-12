@@ -36,14 +36,20 @@ builder.Services.AddSingleton<ProductImages>();
 // Publisher/Subscriber: Products publica ProductUpdated en RabbitMQ.
 builder.Services.AddSingleton<RabbitMq>();
 
+// Saga: Products reserva el stock de cada Order y lo libera si la Order se
+// rechaza o se cancela -ver StockReservations.cs-. Los eventos de la Saga pasan
+// por su outbox -ver Common/OutboxRelay.cs-.
+builder.Services.AddHostedService<StockReservations>();
+builder.Services.AddHostedService<OutboxRelay<ProductsDbContext>>();
+
 // Health Endpoint Monitoring: el servicio está sano si puede conectarse a su base.
 // Ni Redis ni RabbitMQ entran: Products atiende igual sin ellos.
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ProductsDbContext>("products-db");
 
 // Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más los
-// aciertos de la caché y las imágenes.
-builder.AddObservability(ProductCache.MeterName, ProductImages.MeterName);
+// aciertos de la caché, las imágenes y los mensajes del outbox.
+builder.AddObservability(ProductCache.MeterName, ProductImages.MeterName, OutboxRelay.MeterName);
 
 builder.Services.AddControllers();
 

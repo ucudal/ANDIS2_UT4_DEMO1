@@ -6,8 +6,9 @@
 # mensaje que llegan a la vez a dos workers confirman la Order una sola vez.
 source "$(dirname "$0")/common.sh"
 
-# Al terminar, RabbitMQ queda levantado aunque el script se interrumpa.
-trap 'docker compose start rabbitmq > /dev/null 2>&1; reset_chaos' EXIT
+# Al terminar, RabbitMQ y Products quedan funcionando aunque el script se
+# interrumpa.
+trap 'docker compose start rabbitmq > /dev/null 2>&1; docker compose unpause products-service > /dev/null 2>&1; reset_chaos' EXIT
 
 pending() { orders_sql "SELECT id, routing_key, created_at FROM outbox_messages WHERE published_at IS NULL ORDER BY id"; }
 
@@ -35,16 +36,6 @@ pending
 note "Se esperan 15\" con RabbitMQ detenido, para que se vea en Grafana..."
 sleep 15
 
-# La última Order: su mensaje y la copia quedan juntos al final del outbox, y
-# salen a la vez hacia dos workers distintos.
-dup=${ids##* }
-step "Se simula que el relay publica dos veces el order.created de la Order $dup"
-orders_sql "INSERT INTO outbox_messages (routing_key, payload, created_at)
-    SELECT routing_key, payload, NOW(6) FROM outbox_messages
-    WHERE routing_key = 'order.created' AND published_at IS NULL AND JSON_EXTRACT(payload, '\$.OrderId') = $dup"
-pending
-note "Es lo que pasa si el relay se cae después de publicar y antes de marcar el mensaje."
-
 step "Se vuelve a levantar RabbitMQ"
 docker compose start rabbitmq 2>&1 | sed 's/^/  /'
 note "Esperando a que el relay publique los mensajes y los workers procesen las Orders..."
@@ -61,7 +52,23 @@ echo "  -ninguno-"
 step "Estado de las Orders"
 for id in $ids; do curl -s "$ORDERS_DIRECT/orders/$id" | jq -c '{id, status}' | sed 's/^/  /'; done
 
-step "La Order $dup: dos copias de order.created, una sola confirmación"
+# Products también entrega con un outbox -ver la demo 10-: puede publicar dos
+# veces el mismo stock.reserved, que es lo que hace que el worker confirme una
+# Order. Products se pone en pausa para que la Order quede Pending y las dos
+# copias simuladas lleguen antes que la reserva real.
+step "Se simula que Products publica dos veces el stock.reserved de una Order nueva"
+docker compose pause products-service 2>&1 | sed 's/^/  /'
+dup=$(create_order "$BOB" 1)
+echo "  Order $dup -> $(curl -s "$ORDERS_DIRECT/orders/$dup" | jq -r .status)"
+for i in 1 2; do publish_event stock.reserved "{\"OrderId\": $dup, \"ProductId\": 1, \"Quantity\": 1}"; done
+note "Es lo que pasa si el relay se cae después de publicar y antes de marcar el mensaje."
+wait_processed "$dup"
+docker compose unpause products-service 2>&1 | sed 's/^/  /'
+note "Products sigue: reserva el stock y publica su stock.reserved, que el worker ignora"
+note "porque la Order ya no está Pending."
+until outbox_empty; do sleep 1; done
+
+step "La Order $dup: dos copias de stock.reserved, una sola confirmación"
 # La réplica que descarta la Order lo registra después de que la otra confirma.
 for i in $(seq 10); do
     discarded=$(docker compose logs --since 2m orders-worker 2>/dev/null | grep "descarta la orden $dup:" || true)

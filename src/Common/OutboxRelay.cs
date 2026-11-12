@@ -1,12 +1,24 @@
 using System.Diagnostics.Metrics;
 using Microsoft.EntityFrameworkCore;
-using Ucu.Andis.Common;
-using Ucu.Andis.OrdersService.Data;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace Ucu.Andis.OrdersService.Messaging;
+namespace Ucu.Andis.Common;
 
-// Transactional Outbox: publica en RabbitMQ los mensajes que POST /orders/ y el
-// worker dejaron en la tabla outbox_messages. Cada segundo toma los pendientes
+// Las métricas del relay, con el mismo nombre en cada servicio que lo usa.
+public static class OutboxRelay
+{
+    public const string MeterName = "Ucu.Andis.Outbox";
+
+    internal static readonly Meter Meter = new(MeterName);
+    internal static readonly Counter<long> MessagesPublished = Meter.CreateCounter<long>("outbox.published", "{message}",
+        "Mensajes del outbox publicados en RabbitMQ");
+}
+
+// Transactional Outbox: publica en RabbitMQ los mensajes que el servicio dejó en
+// su tabla outbox_messages -en Orders, POST /orders/ y el worker; en Products,
+// la reserva y la liberación de stock-. Cada segundo toma los pendientes
 // en orden, los publica y les completa la fecha de publicación. Si RabbitMQ no
 // está, los mensajes quedan pendientes y se reintentan en la próxima vuelta: no
 // se pierde ninguno.
@@ -14,30 +26,25 @@ namespace Ucu.Andis.OrdersService.Messaging;
 // La entrega es al menos una vez, no exactamente una: si el relay se cae
 // después de publicar un mensaje y antes de marcarlo, lo vuelve a publicar al
 // arrancar. Por eso los suscriptores tienen que ser idempotentes.
-public class OutboxRelay : BackgroundService
+public class OutboxRelay<TDbContext> : BackgroundService
+    where TDbContext : DbContext, IOutboxDbContext
 {
-    public const string MeterName = "Ucu.Andis.Outbox";
-
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
-
-    private static readonly Meter Meter = new(MeterName);
-    private static readonly Counter<long> MessagesPublished = Meter.CreateCounter<long>("outbox.published", "{message}",
-        "Mensajes del outbox publicados en RabbitMQ");
 
     private readonly RabbitMq _rabbitMq;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<OutboxRelay> _logger;
+    private readonly ILogger _logger;
     private long _pending;
     private bool _rabbitMqDown;
 
-    public OutboxRelay(RabbitMq rabbitMq, IServiceScopeFactory scopeFactory, ILogger<OutboxRelay> logger)
+    public OutboxRelay(RabbitMq rabbitMq, IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory)
     {
         _rabbitMq = rabbitMq;
         _scopeFactory = scopeFactory;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger("OutboxRelay");
         // Mensajes que esperan ser publicados: sube si RabbitMQ no está y vuelve
         // a cero cuando el relay se pone al día.
-        Meter.CreateObservableGauge("outbox.pending", () => Interlocked.Read(ref _pending), "{message}",
+        OutboxRelay.Meter.CreateObservableGauge("outbox.pending", () => Interlocked.Read(ref _pending), "{message}",
             "Mensajes del outbox pendientes de publicar");
     }
 
@@ -61,11 +68,12 @@ public class OutboxRelay : BackgroundService
     private async Task PublishPendingAsync(CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<TDbContext>();
 
         // Hasta 50 mensajes por vuelta. FOR UPDATE SKIP LOCKED bloquea los que
         // toma esta instancia y saltea los que ya tomó otra: con más de una
-        // instancia del relay, cada mensaje lo publica una sola.
+        // instancia del relay, cada mensaje lo publica una sola. La sentencia es
+        // la misma en MySQL y en PostgreSQL.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var messages = await db.OutboxMessages
             .FromSqlRaw("SELECT * FROM outbox_messages WHERE published_at IS NULL ORDER BY id LIMIT 50 FOR UPDATE SKIP LOCKED")
@@ -101,7 +109,7 @@ public class OutboxRelay : BackgroundService
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        MessagesPublished.Add(published);
+        OutboxRelay.MessagesPublished.Add(published);
 
         Interlocked.Exchange(ref _pending, await db.OutboxMessages.LongCountAsync(m => m.PublishedAt == null, cancellationToken));
     }

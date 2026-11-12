@@ -1,4 +1,4 @@
-# Parte 2: demos de los patrones de disponibilidad, de la 01 a la 09
+# Parte 2: demos de los patrones de disponibilidad, de la 01 a la 10
 #
 # Las demos de rendimiento están en 03-performance.azcli, y las de seguridad,
 # en 04-security.azcli.
@@ -100,11 +100,11 @@ curl -s -X PUT http://localhost/orders/patterns -H "Content-Type: application/js
 curl -s -X DELETE http://localhost/orders/patterns | jq
 
 # Mientras corren, se puede tener abierto en otras terminales:
-# 1. Los logs de Docker de Orders, donde cada patrón deja su etiqueta: [RETRY],
-#    [CIRCUIT BREAKER], [BULKHEAD], [THROTTLING], [COMPETING CONSUMERS] y
-#    [OUTBOX]
+# 1. Los logs de Docker de Orders y de Products, donde cada patrón deja su
+#    etiqueta: [RETRY], [CIRCUIT BREAKER], [BULKHEAD], [THROTTLING],
+#    [COMPETING CONSUMERS], [OUTBOX] y [SAGA]
 
-    docker compose logs -f --since 1s orders-service orders-worker
+    docker compose logs -f --since 1s orders-service orders-worker products-service
 
 # 2. La salud de los servicios en vivo
 
@@ -613,17 +613,19 @@ docker compose logs products-service --since 2m
 # ------------------------------
 # Al crear una Order con POST /orders/, Orders la guarda como pendiente y
 # publica el evento order.created en RabbitMQ, a través del outbox -ver
-# Transactional Outbox-. El evento llega a la cola orders.process. Tres
-# réplicas de orders-worker consumen la misma cola, y RabbitMQ entrega cada
-# mensaje a una sola. Cada réplica procesa una Order por vez: le pide a Users y
-# a Products sus datos -como Orders en la demo de Retry-, la confirma o la
-# rechaza, y recién entonces le confirma el mensaje a RabbitMQ -ack-. Si una
-# réplica se cae antes, RabbitMQ entrega el mensaje a otra.
+# Transactional Outbox-. Products reserva el stock y publica stock.reserved,
+# que llega a la cola orders.process -ver Saga-. Tres réplicas de
+# orders-worker consumen la misma cola, y RabbitMQ entrega cada mensaje a una
+# sola. Cada réplica procesa una Order por vez: le pide a Users el User -como
+# Orders en la demo de Retry-, confirma o rechaza la Order, y recién entonces le
+# confirma el mensaje a RabbitMQ -ack-. Si una réplica se cae antes, RabbitMQ
+# entrega el mensaje a otra.
 #
 # Ver las tres réplicas de orders-worker y la cola orders.process: en la
 # columna consumers, la cola tiene 3, una por réplica, y en messages no tiene
 # mensajes esperando. La cola orders.details-view es la de los proyectores de la
-# vista -ver CQRS- y no participa en esta demo.
+# vista -ver CQRS-, y products.stock, la de Products en la Saga; no participan
+# en esta demo.
 
 docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' orders-worker
 docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
@@ -643,8 +645,8 @@ id=$(curl -s -X POST http://localhost/orders/ \
 echo "$id"
 
 # Esperar unos segundos y consultar la Order: sigue Pending, porque no hay
-# ningún worker. El mensaje espera en la cola: orders.process tiene 1 en
-# messages y 0 en consumers.
+# ningún worker. Products ya reservó el stock, y su stock.reserved espera en la
+# cola: orders.process tiene 1 en messages y 0 en consumers.
 
 curl -s http://localhost/orders/$id | table
 docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
@@ -853,8 +855,10 @@ docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr
 # y el mensaje order.created en la tabla 'outbox_messages', en la misma
 # transacción. El relay del outbox, que corre en orders-service, publica cada
 # segundo los mensajes pendientes y los marca como publicados. El worker hace lo
-# mismo con order.confirmed y order.rejected. Si RabbitMQ no está, los mensajes
-# esperan en la base: no se pierde ninguno, y Orders sigue aceptando Orders.
+# mismo con order.confirmed, order.rejected y order.cancelled, y Products con
+# los eventos de la Saga, en su propio outbox -ver Saga-. Si RabbitMQ no está,
+# los mensajes esperan en la base: no se pierde ninguno, y Orders sigue
+# aceptando Orders.
 #
 # Ver los últimos mensajes del outbox. Cada Order deja dos: order.created, que
 # guarda Orders al crearla, y order.confirmed, que guarda el worker al
@@ -927,8 +931,10 @@ docker compose logs orders-service --since 1m | grep '\[OUTBOX\]'
 
 for id in "${ids[@]}"; do curl -s http://localhost/orders/$id | jq -c '{id, status}'; done
 
-# El siguiente script hace lo mismo con 5 Orders: detiene RabbitMQ, crea 5 Orders, muestra los mensajes
-# pendientes y vuelve a levantar RabbitMQ. Tarda unos 30 segundos.
+# El siguiente script hace lo mismo con 5 Orders: detiene RabbitMQ, crea 5
+# Orders, muestra los mensajes pendientes y vuelve a levantar RabbitMQ. Después
+# simula que Products publica dos veces el mismo stock.reserved. Tarda unos 40
+# segundos.
 
 ./demos/09-transactional-outbox.sh
 
@@ -936,7 +942,11 @@ for id in "${ids[@]}"; do curl -s http://localhost/orders/$id | jq -c '{id, stat
 # outbox, Orders respondía 503 y la Order quedaba Pending para siempre.
 # /health/orders responde Degraded, no Unhealthy. Los 5 mensajes quedan
 # pendientes en 'outbox_messages'; al levantar RabbitMQ, el relay los publica,
-# los workers confirman las Orders y no queda ninguno pendiente.
+# los workers confirman las Orders y no queda ninguno pendiente. Con
+# products-service en pausa, la Order nueva queda Pending, y las dos copias de su
+# stock.reserved llegan a la vez a dos workers: uno la confirma y el otro la
+# descarta, porque el UPDATE condicional solo cambia una Order Pending. Queda un
+# solo OrderConfirmed y un solo order.confirmed.
 # Logs de Docker: "RabbitMQ no está disponible", una línea por mensaje publicado
 # y "RabbitMQ volvió".
 
@@ -958,6 +968,92 @@ docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr
 #   naranja, Degraded, porque sigue aceptando Orders gracias al outbox; y
 #   orders-worker y orders-projector en rojo, Unhealthy, porque sin RabbitMQ no
 #   pueden consumir.
+
+# ---------------
+# --- 10 Saga ---
+# ---------------
+# Una Order pasa por tres sistemas, cada uno con su base: Products reserva el
+# stock, el worker de Orders verifica el User y la confirma, y el ERP la
+# factura. No hay una transacción que los abarque: si un paso falla después de
+# otro que ya guardó sus cambios, una compensación los deshace. Nadie coordina
+# los pasos: cada servicio reacciona a los eventos de los otros -coreografía-.
+#
+# Ver el stock de Zapatos. Guardarlo en una variable, para devolverlo al final.
+
+initial=$(curl -s http://localhost/products/3 | jq .stock)
+echo "$initial"
+
+# Fijar el stock en 20 unidades, como un ajuste de inventario.
+
+curl -s -X PUT http://localhost/products/3/stock -H "Content-Type: application/json" \
+  -d '{"stock": 20}' | jq
+
+# Pedir 2 unidades para bob. Products las reserva, el worker confirma la Order y
+# el ERP la factura.
+
+id=$(curl -s -X POST http://localhost/orders/ -H "Content-Type: application/json" \
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 2}' | jq .id)
+echo "$id"
+
+# Esperar unos segundos y ver los eventos de la Order -OrderCreated,
+# OrderConfirmed y OrderInvoiced- y el stock: 18.
+
+curl -s http://localhost/orders/$id/events | jq -c '.events[] | {type, data}'
+curl -s http://localhost/products/3 | jq .stock
+
+# Pedir 50 unidades: no hay stock. Products publica stock.rejected y el worker
+# rechaza la Order. El stock no cambia.
+
+id=$(curl -s -X POST http://localhost/orders/ -H "Content-Type: application/json" \
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 50}' | jq .id)
+curl -s http://localhost/orders/$id/events | jq -c '.events[] | {type, data}'
+curl -s http://localhost/products/3 | jq .stock
+
+# Pedir 3 unidades para un User que no existe. Products las reserva; el worker
+# no encuentra el User y rechaza la Order; con order.rejected, Products devuelve
+# las 3 unidades. Es la compensación del primer paso.
+
+id=$(curl -s -X POST http://localhost/orders/ -H "Content-Type: application/json" \
+  -d '{"userId": "000000000000000000000000", "productId": 3, "quantity": 3}' | jq .id)
+curl -s http://localhost/orders/$id/events | jq -c '.events[] | {type, data}'
+curl -s http://localhost/products/3 | jq .stock
+
+# Pedir 12 unidades para bob. El worker confirma la Order, pero el ERP no
+# factura pedidos de más de 10 unidades: responde con un rechazo, que el puente
+# publica como order.invoice-failed. El worker cancela la Order -ya estaba
+# confirmada, no se puede rechazar- y, con order.cancelled, Products devuelve
+# las 12 unidades.
+
+id=$(curl -s -X POST http://localhost/orders/ -H "Content-Type: application/json" \
+  -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 12}' | jq .id)
+curl -s http://localhost/orders/$id/events | jq -c '.events[] | {type, data}'
+curl -s http://localhost/products/3 | jq .stock
+
+# Ver las reservas en la base de Products: Reserved, Rejected o Released.
+
+docker compose exec products-db psql -U productsusr -d productsdb \
+  -c "SELECT order_id, product_id, quantity, status, reason FROM stock_reservations ORDER BY order_id DESC LIMIT 4"
+
+# Ver los pasos en los logs, con la etiqueta [SAGA].
+
+docker compose logs products-service orders-worker --since 2m | grep '\[SAGA\]'
+
+# Devolver el stock inicial.
+
+curl -s -X PUT http://localhost/products/3/stock -H "Content-Type: application/json" \
+  -d "{\"stock\": $initial}" | jq
+
+# El siguiente script hace lo mismo y además publica otra vez un order.created y
+# un order.rejected, para mostrar que el stock no cambia dos veces. Tarda unos 30
+# segundos.
+
+./demos/10-saga.sh
+
+# Resultado: la primera Order termina facturada, con 2 unidades menos de stock.
+# La segunda se rechaza sin tocar el stock. La tercera baja el stock y la
+# compensación lo devuelve. La cuarta pasa de Confirmed a Cancelled, y el stock
+# vuelve. Las copias de los eventos no cambian el stock: la reserva tiene como
+# clave la Order, y la liberación solo cambia una reserva Reserved.
 
 # ---------------------------------------------------------------------------
 # Tear down

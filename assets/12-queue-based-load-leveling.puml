@@ -5,12 +5,12 @@ rectangle "Pico de pedidos\n30 POST /orders/ a la vez" as C
 rectangle "Orders guarda y responde 202\nCreateOrder" as O
 queue "Cola\norders.process" as Q
 rectangle "3 réplicas\norders-worker" as W
+rectangle "Reserva el stock\nproducts-service" as P
 rectangle "Users\nusers-service" as U
-rectangle "Products\nproducts-service" as P
 
 C --> O
-O --> Q
+O --> P : order.created
+P --> Q : stock.reserved
 Q --> W : a ritmo constante\n1 por réplica
 W --> U
-W --> P
 @enduml

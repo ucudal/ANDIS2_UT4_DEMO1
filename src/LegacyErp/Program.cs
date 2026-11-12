@@ -2,12 +2,14 @@ using Apache.NMS;
 using Apache.NMS.ActiveMQ;
 
 // Un ERP legado simulado. Solo sabe leer registros de ancho fijo de la cola
-// ERP.PEDIDOS de ActiveMQ y escribir sus facturas en ERP.FACTURAS. No conoce
-// RabbitMQ, ni JSON, ni la aplicación: no comparte código con ella. Es el
-// sistema que no se puede cambiar.
+// ERP.PEDIDOS de ActiveMQ y escribir sus respuestas en ERP.FACTURAS: una
+// factura, o un rechazo si el pedido supera las unidades que factura sin
+// aprobación. No conoce RabbitMQ, ni JSON, ni la aplicación: no comparte código
+// con ella. Es el sistema que no se puede cambiar.
 //
 //   PEDIDO  | pedido: 10 | cliente: 24 | artículo: 8 | cantidad: 5
 //   FACTURA | pedido: 10 | factura: 12 | fecha AAAAMMDD: 8
+//   RECHAZO | pedido: 10 | motivo: 30
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Erp>();
 builder.Build().Run();
@@ -15,11 +17,15 @@ builder.Build().Run();
 public class Erp : BackgroundService
 {
     private readonly string _brokerUri;
+    private readonly int _maxQuantity;
     private readonly ILogger<Erp> _logger;
 
     public Erp(IConfiguration config, ILogger<Erp> logger)
     {
         _brokerUri = $"failover:(tcp://{config["LegacyBroker:Host"] ?? "localhost"}:61616)?transport.startupMaxReconnectAttempts=0";
+        // Saga: un pedido de más unidades necesita una aprobación que el ERP no
+        // pide; lo rechaza, y Orders cancela la Order -ver la demo 10-.
+        _maxQuantity = config.GetValue("Erp:MaxQuantity", 10);
         _logger = logger;
     }
 
@@ -53,12 +59,14 @@ public class Erp : BackgroundService
             }
 
             // La factura sale del número de pedido: si el mismo pedido llega dos
-            // veces, se emite la misma factura.
+            // veces, se emite la misma factura, o el mismo rechazo.
             var order = record[8..18];
-            var invoice = $"FACTURA {order}{"F" + order,-12}{DateTime.UtcNow:yyyyMMdd}";
-            await producer.SendAsync(await session.CreateTextMessageAsync(invoice));
+            var response = int.Parse(record[50..55]) > _maxQuantity
+                ? $"RECHAZO {order}{$"MAS DE {_maxQuantity} UNIDADES",-30}"
+                : $"FACTURA {order}{"F" + order,-12}{DateTime.UtcNow:yyyyMMdd}";
+            await producer.SendAsync(await session.CreateTextMessageAsync(response));
             await session.CommitAsync();
-            _logger.LogInformation("[ERP] Recibido '{Record}'; emitido '{Invoice}'", record, invoice);
+            _logger.LogInformation("[ERP] Recibido '{Record}'; emitido '{Response}'", record, response);
         }
     }
 }

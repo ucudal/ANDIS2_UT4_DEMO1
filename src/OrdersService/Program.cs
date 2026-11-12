@@ -103,7 +103,7 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton<RabbitMq>();
 var outboxEnabled = builder.Configuration.GetValue<bool>("Outbox:Enabled");
 if (outboxEnabled)
-    builder.Services.AddHostedService<OutboxRelay>();
+    builder.Services.AddHostedService<OutboxRelay<OrdersDbContext>>();
 if (builder.Configuration.GetValue<bool>("Worker:Enabled"))
     builder.Services.AddHostedService<OrderProcessingWorker>();
 if (builder.Configuration.GetValue<bool>("Projector:Enabled"))

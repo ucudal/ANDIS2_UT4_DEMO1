@@ -10,9 +10,10 @@ using Ucu.Andis.Common;
 public class ProductsController : ControllerBase
 {
     // Cache-Aside: claves de Redis. La lista completa y cada Product se guardan
-    // por separado, y un cambio invalida las dos.
-    private const string AllProductsKey = "products:all";
-    private static string ProductKey(int id) => $"product:{id}";
+    // por separado, y un cambio invalida las dos. Las usa también la Saga, que
+    // cambia el stock -ver StockReservations.cs-.
+    public const string AllProductsKey = "products:all";
+    public static string ProductKey(int id) => $"product:{id}";
 
     private readonly ProductsDbContext _db;
     private readonly ProductCache _cache;
@@ -34,7 +35,7 @@ public class ProductsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<object>> CreateProduct([FromBody] Product product)
     {
-        var created = new Product { Name = product.Name, Price = product.Price };
+        var created = new Product { Name = product.Name, Price = product.Price, Stock = Math.Max(product.Stock, 0) };
         _db.Products.Add(created);
         await _db.SaveChangesAsync();
         await _cache.InvalidateAsync(AllProductsKey);
@@ -96,6 +97,28 @@ public class ProductsController : ControllerBase
 
         return Ok(new { id = productId, msg = "Product updated" });
     }
+
+    // Saga: fija el stock de un Product, como un ajuste de inventario. Lo usa la
+    // demo de la Saga para ver qué pasa cuando falta stock. PUT /products/{id}
+    // no lo cambia: el stock lo mueven las reservas.
+    [HttpPut("{productId}/stock")]
+    public async Task<ActionResult<object>> SetStock(int productId, [FromBody] StockRequest request)
+    {
+        if (request.Stock < 0)
+            return BadRequest(new { detail = "El stock no puede ser negativo" });
+
+        var updated = await _db.Products
+            .Where(p => p.Id == productId)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.Stock, request.Stock));
+        if (updated == 0)
+            return NotFound(new { detail = "Product not found" });
+
+        await _cache.InvalidateAsync(ProductKey(productId), AllProductsKey);
+        _logger.LogInformation("[SAGA] Stock del Product {ProductId}: {Stock}", productId, request.Stock);
+        return Ok(new { id = productId, stock = request.Stock });
+    }
+
+    public record StockRequest(int Stock);
 
     // Sin Valet Key: el cliente le manda la imagen a Products, que la sube al
     // almacenamiento con su propia clave. Todos los bytes pasan por el gateway y

@@ -1,10 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using MySql.Data.MySqlClient;
+using Ucu.Andis.Common;
 using Ucu.Andis.OrdersService.Models;
 
 namespace Ucu.Andis.OrdersService.Data;
 
-public class OrdersDbContext : DbContext
+public class OrdersDbContext : DbContext, IOutboxDbContext
 {
     public OrdersDbContext(DbContextOptions<OrdersDbContext> options) : base(options) { }
     public DbSet<Order> Orders { get; set; }

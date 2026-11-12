@@ -162,6 +162,12 @@ orders_sql() {
         -e "$1" 2> /dev/null | column -t -s $'\t' | sed 's/^/  /'
 }
 
+# products_sql <consulta>: ejecuta una consulta en la base de Products.
+products_sql() {
+    docker compose exec -T products-db psql -U productsusr -d productsdb -P footer=off \
+        -c "$1" 2> /dev/null | sed 's/^/  /'
+}
+
 # queue_length <cola>: mensajes en una cola de RabbitMQ, esperando o en proceso.
 # queue_consumers <cola>: consumidores conectados a la cola. Se usa rabbitmqctl
 # y no la API de la consola, que actualiza sus números cada 5 segundos.

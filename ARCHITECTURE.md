@@ -35,9 +35,9 @@ servicio usa la tecnología de base de datos que mejor le sirve.
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
 | `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | [MongoDB](https://www.mongodb.com/), documentos | gateway, `orders-service`, `orders-worker`, `orders-projector` | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
-| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre y precio; sus imágenes | [PostgreSQL](https://www.postgresql.org/), relacional; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-worker`, `orders-projector` | RabbitMQ, para publicar `product.updated`; Azurite, para las imágenes |
-| `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/OrdersService/Models/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | [MySQL](https://www.mysql.com/), relacional | gateway | `users-service`, `products-service`, RabbitMQ |
-| `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
+| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre, precio y stock; las [reservas de stock](src/ProductsService/Models/StockReservation.cs) y su [*outbox*](src/Common/OutboxMessage.cs); sus imágenes | [PostgreSQL](https://www.postgresql.org/), relacional; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-projector`; RabbitMQ le entrega mensajes | RabbitMQ, para publicar `product.updated` y los eventos de la [Saga](PATTERNS.md#saga); Azurite, para las imágenes |
+| `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/Common/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | [MySQL](https://www.mysql.com/), relacional | gateway | `users-service`, `products-service`, RabbitMQ |
+| `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service` |
 | `orders-projector` | Comparte la base de `orders-service`; es el único que escribe la vista del detalle | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y [Keycloak](https://www.keycloak.org/) |
 | `products-sidecar` | Nada: autoriza las solicitudes a `products-service` | — | gateway, por HTTPS, y cualquier contenedor de la red | `products-service`; Keycloak, para obtener sus claves públicas |
@@ -164,9 +164,14 @@ Retry, Circuit Breaker y Bulkhead.
 `POST /orders/` guarda la `Order` como `Pending` junto con el evento
 `order.created` en el *outbox*, y responde `202 Accepted` de inmediato, sin
 consultar a `Users` ni a `Products`. El *relay* del *outbox* publica el evento
-en [RabbitMQ](https://www.rabbitmq.com/) un momento después. Una de las réplicas
-de `orders-worker` lo recibe por la cola `orders.process`, verifica que el
-`User` y el `Product` existan, y confirma o rechaza la `Order`.<!--TODO: ídem
+en [RabbitMQ](https://www.rabbitmq.com/) un momento después. `Products` lo
+recibe por la cola `products.stock`, reserva el stock y publica
+`stock.reserved`, o `stock.rejected` si falta stock o el `Product` no existe.
+Una de las réplicas de `orders-worker` recibe la respuesta por la cola
+`orders.process`, verifica que el `User` exista, y confirma o rechaza la
+`Order`. Si la rechaza después de la reserva, `Products` devuelve el stock: es
+una [Saga](PATTERNS.md#saga), con los pasos y las compensaciones en
+[Consistencia de los datos](#consistencia-de-los-datos).<!--TODO: ídem
 anterior sobre relay y outbox-->
 
 ```mermaid
@@ -219,18 +224,19 @@ sequenceDiagram
 
     O->>ODB: relay: lee el outbox
     O->>MQ: relay: publica order.created
-    MQ->>W: entrega order.created
+    MQ->>P: entrega order.created
+    P->>P: reserva el stock y guarda stock.reserved en su outbox
+    P->>MQ: relay: publica stock.reserved
+    MQ->>W: entrega stock.reserved
     W->>U: POST /users/UserService.svc, GetUser
     U-->>W: User o respuesta vacía
-    W->>P: GET /products/{id}
-    P-->>W: Product o 404
-    alt existen los dos
+    alt el User existe
         W->>ODB: evento, estado Confirmed y order.confirmed en el outbox
         W->>MQ: confirma el mensaje
-    else falta alguno
+    else el User no existe
         W->>ODB: evento, estado Rejected y order.rejected en el outbox
         W->>MQ: confirma el mensaje
-    else Users o Products no responden
+    else Users no responde
         W->>MQ: devuelve el mensaje a la cola
     end
 ```
@@ -340,9 +346,9 @@ recién cambiado, tarda en actualizarse.
   una `Order`? ¿Y para que la `Order` quede confirmada?
   <!-- → Para crearla: el gateway, orders-service y orders-db; RabbitMQ no,
   gracias al outbox, y por la entrada HTTPS, también Keycloak. Para que quede
-  confirmada, además: RabbitMQ, al menos una réplica de orders-worker,
-  users-service con users-db, y products-service con products-db -o Redis, si el
-  Product está en la caché-. -->
+  confirmada, además: RabbitMQ, products-service con products-db, para reservar
+  el stock, al menos una réplica de orders-worker, y users-service con
+  users-db. -->
 * La consulta de detalle hace una llamada a `Products` por cada `Order`. ¿Qué
   pasa con un `User` que tiene 100 `Orders`? La vista lo resuelve: ¿qué se
   paga a cambio?
@@ -448,13 +454,80 @@ distintos servicios no coincidan.
   lo verifica: lo hace el *worker* después. Mientras tanto, la `Order` está
   `Pending`; si el `User` no existe, termina `Rejected`. Es consistencia
   eventual: el sistema llega a un estado correcto, pero no de inmediato.
-* **Guardar y publicar es atómico en `Orders`, pero no en `Users` ni en
-  `Products`.** `Orders` guarda el evento en el *outbox* en la misma transacción
-  que el cambio y el *relay* lo publica después: ver [Transactional
-  Outbox](PATTERNS.md#transactional-outbox) en PATTERNS.md. `Users` y `Products` guardan
-  el cambio y después publican: si [RabbitMQ](https://www.rabbitmq.com/) no
-  está, el evento se pierde.<!--TODO: considerar agregar el patrón Saga o
-  Transactional Saga-->
+* **Guardar y publicar es atómico en `Orders` y en la reserva de stock, pero no
+  en `user.updated` ni en `product.updated`.** `Orders` y `Products` guardan el
+  evento en su *outbox* en la misma transacción que el cambio, y el *relay* lo
+  publica después: ver [Transactional Outbox](PATTERNS.md#transactional-outbox)
+  en PATTERNS.md. Para `user.updated` y `product.updated`, `Users` y `Products`
+  guardan el cambio y después publican: si [RabbitMQ](https://www.rabbitmq.com/)
+  no está, el evento se pierde.
+* **Crear una `Order` cambia tres sistemas, y no hay una transacción que los
+  abarque.** `Products` reserva el stock, `Orders` confirma la `Order` y el ERP
+  la factura, cada uno con su base. Si un paso falla después de otro que ya
+  guardó sus cambios, una compensación los deshace: es una
+  [Saga](PATTERNS.md#saga). Mientras tanto, el stock se ve descontado para una
+  `Order` que tal vez no se complete.
+
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    fontSize: 14px
+    background: transparent
+    mainBkg: transparent
+    secondaryColor: transparent
+    tertiaryColor: transparent
+    clusterBkg: transparent
+    clusterBorder: '#006EAF'
+    edgeLabelBackground: transparent
+    primaryTextColor: '#006EAF'
+    primaryBorderColor: '#006EAF'
+    nodeBorder: '#006EAF'
+    textColor: '#006EAF'
+    titleColor: '#006EAF'
+    lineColor: '#006EAF'
+    actorBkg: transparent
+    actorBorder: '#006EAF'
+    actorTextColor: '#006EAF'
+    actorLineColor: '#006EAF'
+    signalColor: '#006EAF'
+    signalTextColor: '#006EAF'
+    labelBoxBkgColor: transparent
+    labelBoxBorderColor: '#006EAF'
+    labelTextColor: '#006EAF'
+    loopTextColor: '#006EAF'
+    useGradient: false
+    dropShadow: false
+---
+sequenceDiagram
+    participant O as orders-service
+    participant P as products-service
+    participant W as orders-worker
+    participant E as ERP
+
+    O->>P: order.created
+    P->>P: descuenta el stock
+    P->>W: stock.reserved
+    alt el User existe
+        W->>E: order.confirmed
+        alt el ERP la factura
+            E->>W: order.invoiced
+        else el ERP la rechaza
+            E->>W: order.invoice-failed
+            W->>W: cancela la Order
+            W->>P: order.cancelled
+            P->>P: devuelve el stock
+        end
+    else el User no existe
+        W->>W: rechaza la Order
+        W->>P: order.rejected
+        P->>P: devuelve el stock
+    end
+```
+
+Todos los mensajes pasan por RabbitMQ, y los del ERP, además, por el
+[Messaging Bridge](PATTERNS.md#messaging-bridge); el diagrama no lo muestra.
 * **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
   el mismo evento, si se cae entre publicar el evento y marcarlo como
   publicado<!--TODO: confirmar cambio de redacción-->. Los suscriptores son
@@ -500,8 +573,9 @@ distintos servicios no coincidan.
   las `Orders` que lo referencian? ¿Quién se entera del borrado y cómo?
   <!-- → Lo más común es no borrarlo, sino marcarlo como discontinuado: las
   Orders siguen apuntando a un Product que existe. Si se borra, Products publica
-  product.deleted; los proyectores mantienen el nombre copiado en la vista, y el
-  worker podría rechazar las Orders pendientes de ese Product. Impedir el
+  product.deleted; los proyectores mantienen el nombre copiado en la vista, y la
+  reserva de stock de una Order nueva lo rechazaría, como a un Product que no
+  existe. Impedir el
   borrado mientras haya Orders obligaría a Products a preguntarle a Orders, y
   eso los acopla. -->
 
@@ -548,6 +622,8 @@ técnica distinta. Sin ella pasaría lo que dice la tabla:
 | --------- | ---------------- | ------- | ----- |
 | Factura del ERP | Un pedido repetido generaría otra factura, con otro número | Identificador determinístico: el número de factura sale del número de pedido | [Messaging Bridge](PATTERNS.md#messaging-bridge) |
 | Confirmación de una `Order` | Dos *workers* confirmarían la misma `Order`, con dos `OrderConfirmed` y dos `order.confirmed` | Transición de estado condicional: un `UPDATE` que solo cambia una `Order` `Pending` | [Competing Consumers para disponibilidad](PATTERNS.md#competing-consumers-para-disponibilidad) |
+| Reserva de stock | Un `order.created` repetido descontaría el stock dos veces | Inserción que falla por una restricción única: la reserva tiene como clave la `Order`, y se inserta en la misma transacción que descuenta el stock | [Saga](PATTERNS.md#saga) |
+| Liberación de stock | Una compensación repetida devolvería el stock dos veces | Transición de estado condicional: un `UPDATE` que solo libera una reserva `Reserved`, y suma el stock solo si cambió una fila | [Saga](PATTERNS.md#saga) |
 | Fila de la vista materializada | Una copia de `order.created` fallaría por la clave primaria, y un estado que llega antes que la fila se perdería | *Upsert*: insertar o actualizar en una sola sentencia | [Materialized View](PATTERNS.md#materialized-view) |
 | Historial de eventos | La misma factura quedaría dos veces | Índice único por `Order` y tipo de evento | [Materialized View](PATTERNS.md#materialized-view) |
 | `POST /orders/` | Un reintento del cliente crearía otra `Order` | Clave de idempotencia, en el encabezado `Idempotency-Key` | [Asynchronous Request-Reply](PATTERNS.md#asynchronous-request-reply) |
@@ -645,7 +721,7 @@ escalar, cada réplica decide por su cuenta:
 * **Circuit Breaker y Bulkhead**, en
   [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs): cada réplica
   cuenta sus propias fallas, abre su propio circuito y tiene sus propios lugares
-  en cada compartimento. Con tres *workers*, el circuito hacia `Products` de uno
+  en cada compartimento. Con tres *workers*, el circuito hacia `Users` de uno
   puede estar abierto y el de otro, todavía cerrado.
 * **Throttling de `Orders`**, en
   [OrdersService/Program.cs](src/OrdersService/Program.cs): 20 consultas de
@@ -879,9 +955,8 @@ solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
   cualquier contenedor, por ejemplo a products-service:8000 para cambiar
   Products sin pasar por el sidecar, o a orders-service con encabezados de
   identidad falsos. Con reglas de red llega solo a lo que necesita -orders-db,
-  RabbitMQ, Users y Products-, pero a Users y a Products con cualquier método.
-  Con TLS mutuo, Users y Products saben que quien llama es orders-worker y
-  pueden permitirle solo leer, y orders-worker ya no puede hacerse pasar por el
+  RabbitMQ y Users-, pero a Users con cualquier método. Con TLS mutuo, Users
+  sabe que quien llama es orders-worker y puede permitirle solo leer, y orders-worker ya no puede hacerse pasar por el
   gateway. Su propia base y su cola siguen expuestas. -->
 * ¿Por qué no alcanzan las reglas de red sin TLS mutuo? ¿Y el TLS mutuo sin
   reglas de red?

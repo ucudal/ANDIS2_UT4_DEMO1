@@ -7,13 +7,16 @@ class OrdersController {
   +CreateOrder(order)
 }
 class OrderProcessingWorker {
-  -ProcessAsync(orderId) : bool
+  -ChangeStatusAsync(db, orderId, from, to, ...)
 }
-class OutboxRelay {
+class "OutboxRelay<TDbContext>" as OutboxRelay {
   #ExecuteAsync(stoppingToken)
   -PublishPendingAsync()
 }
 class OrdersDbContext
+interface IOutboxDbContext {
+  +OutboxMessages
+}
 class OutboxMessage {
   +Id : long
   +RoutingKey : string
@@ -28,10 +31,11 @@ class RabbitMq {
 
 OrdersController --> OrdersDbContext : Order, OrderEvent\ny OutboxMessage
 OrderProcessingWorker --> OrdersDbContext : OrderEvent\ny OutboxMessage
-OutboxRelay --> OrdersDbContext : lee y marca\nlos pendientes
+OutboxRelay --> IOutboxDbContext : lee y marca\nlos pendientes
+OrdersDbContext ..|> IOutboxDbContext
 OutboxRelay --> RabbitMq : publica
 OrdersDbContext --> OutboxMessage : OutboxMessages
 
 note top of OrdersController : no conoce a RabbitMq
-note bottom of OutboxRelay : el único que publica\nlos eventos de Orders
+note bottom of OutboxRelay : el único que publica\nlos eventos de Orders;\nProducts lo usa con su DbContext
 @enduml

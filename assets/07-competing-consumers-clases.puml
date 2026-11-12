@@ -9,7 +9,8 @@ abstract class BackgroundService <<abstract>> {
 class OrderProcessingWorker {
   {static} +OrdersQueue : string
   #ExecuteAsync(stoppingToken)
-  -ProcessAsync(orderId) : bool
+  -ConfirmAsync(orderId) : bool
+  -ChangeStatusAsync(db, orderId, from, to, ...)
 }
 class RabbitMq {
   +GetConnectionAsync() : IConnection
@@ -23,6 +24,6 @@ class OrdersDbContext
 
 OrderProcessingWorker --|> BackgroundService
 OrderProcessingWorker --> RabbitMq : consume orders.process
-OrderProcessingWorker --> Dependencies : pide el User y el Product
+OrderProcessingWorker --> Dependencies : pide el User
 OrderProcessingWorker --> OrdersDbContext : guarda el resultado
 @enduml

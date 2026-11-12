@@ -38,6 +38,7 @@ public static class OrderEventTypes
     public const string OrderConfirmed = "OrderConfirmed";
     public const string OrderRejected = "OrderRejected";
     public const string OrderInvoiced = "OrderInvoiced";
+    public const string OrderCancelled = "OrderCancelled";
 }
 
 public record OrderCreatedData(string UserId, int ProductId, int Quantity);
@@ -47,3 +48,5 @@ public record OrderConfirmedData(string ProcessedBy);
 public record OrderRejectedData(string Reason, string ProcessedBy);
 
 public record OrderInvoicedData(string InvoiceNumber, string IssuedOn);
+
+public record OrderCancelledData(string Reason, string ProcessedBy);

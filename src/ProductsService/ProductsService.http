@@ -26,6 +26,14 @@ Content-Type: application/json
   "price": 1500.00
 }
 
+### Set the stock of a product (Saga: an inventory adjustment)
+PUT {{ProductsService_HostAddress}}/products/1/stock
+Content-Type: application/json
+
+{
+  "stock": 20
+}
+
 ### Cache settings for the demos (Cache-Aside)
 PUT {{ProductsService_HostAddress}}/products/cache
 Content-Type: application/json

@@ -1,11 +1,15 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 
-namespace Ucu.Andis.OrdersService.Models;
+namespace Ucu.Andis.Common;
 
 // Transactional Outbox: un evento que hay que publicar en RabbitMQ. Se guarda
 // en la misma transacción que el cambio que lo origina, así que se guardan los
 // dos o ninguno. OutboxRelay lo publica después y completa PublishedAt.
+//
+// Lo usan Orders, en MySQL, y Products, en PostgreSQL: cada uno tiene su tabla
+// outbox_messages en su propia base.
 [Table("outbox_messages")]
 public class OutboxMessage
 {
@@ -32,4 +36,11 @@ public class OutboxMessage
         RoutingKey = routingKey,
         Payload = JsonSerializer.Serialize(payload)
     };
+}
+
+// El DbContext de un servicio con outbox: OutboxRelay solo necesita la tabla de
+// mensajes.
+public interface IOutboxDbContext
+{
+    DbSet<OutboxMessage> OutboxMessages { get; }
 }

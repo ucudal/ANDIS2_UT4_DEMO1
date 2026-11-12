@@ -13,7 +13,7 @@ class ErpToOrdersBridge {
 }
 class ErpFormat {
   {static} +ToOrderRecord(order) : string
-  {static} +ToOrderInvoiced(record) : OrderInvoiced
+  {static} +ToEvent(record) : (routingKey, event, orderId)
 }
 class LegacyBroker {
   +GetConnectionAsync()

@@ -1,0 +1,57 @@
+@startuml
+!include PlantUML.style
+hide empty members
+hide circle
+left to right direction
+abstract class BackgroundService <<abstract>> {
+  #ExecuteAsync(stoppingToken)
+}
+class StockReservations {
+  {static} +StockQueue : string
+  -ReserveAsync(order)
+  -ReleaseAsync(orderId)
+}
+class OrderProcessingWorker {
+  {static} +OrdersQueue : string
+  -ConfirmAsync(orderId) : bool
+  -RejectAsync(rejected) : bool
+  -CancelAsync(failed) : bool
+  -ChangeStatusAsync(db, orderId, from, to, ...)
+}
+class "OutboxRelay<TDbContext>" as OutboxRelay {
+  -PublishPendingAsync()
+}
+class ProductsDbContext {
+  +Products
+  +StockReservations
+  +OutboxMessages
+}
+class OrdersDbContext {
+  +Orders
+  +OrderEvents
+  +OutboxMessages
+}
+class StockReservation {
+  +OrderId : int
+  +ProductId : int
+  +Quantity : int
+  +Status : string
+  +Reason : string?
+}
+interface IOutboxDbContext {
+  +OutboxMessages
+}
+
+StockReservations --|> BackgroundService
+OrderProcessingWorker --|> BackgroundService
+OutboxRelay --|> BackgroundService
+StockReservations --> ProductsDbContext : stock, reserva\ny evento
+OrderProcessingWorker --> OrdersDbContext : estado, evento\ny mensaje
+ProductsDbContext --> StockReservation : StockReservations
+ProductsDbContext ..|> IOutboxDbContext
+OrdersDbContext ..|> IOutboxDbContext
+OutboxRelay --> IOutboxDbContext : publica los\npendientes
+
+note bottom of StockReservations : order.created, order.rejected\ny order.cancelled
+note bottom of OrderProcessingWorker : stock.reserved, stock.rejected\ny order.invoice-failed
+@enduml

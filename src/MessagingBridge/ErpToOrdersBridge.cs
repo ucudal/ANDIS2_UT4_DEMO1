@@ -4,8 +4,8 @@ using Ucu.Andis.Common;
 namespace MessagingBridge;
 
 // De ActiveMQ a RabbitMQ: cada factura del ERP se publica como un evento
-// order.invoiced en andis.events. Para la aplicación es un evento más: no sabe
-// que viene de otro broker.
+// order.invoiced en andis.events, y cada rechazo como order.invoice-failed. Para
+// la aplicación es un evento más: no sabe que viene de otro broker.
 //
 // Igual que en el otro sentido, confirma el mensaje en ActiveMQ recién después
 // de que RabbitMQ lo recibió.
@@ -53,10 +53,10 @@ public class ErpToOrdersBridge : BackgroundService
             if (await consumer.ReceiveAsync(TimeSpan.FromSeconds(1)) is not ITextMessage message)
                 continue;
 
-            OrderInvoiced invoiced;
+            (string RoutingKey, object Event, int OrderId) translated;
             try
             {
-                invoiced = ErpFormat.ToOrderInvoiced(message.Text);
+                translated = ErpFormat.ToEvent(message.Text);
             }
             catch (FormatException ex)
             {
@@ -65,10 +65,10 @@ public class ErpToOrdersBridge : BackgroundService
                 continue;
             }
 
-            await _rabbitMq.PublishEventAsync(Events.OrderInvoiced, invoiced, stoppingToken);
+            await _rabbitMq.PublishEventAsync(translated.RoutingKey, translated.Event, stoppingToken);
             await message.AcknowledgeAsync();
-            _logger.LogInformation("[MESSAGING BRIDGE] ActiveMQ -> RabbitMQ {RoutingKey}: Order {OrderId}, factura {InvoiceNumber}",
-                Events.OrderInvoiced, invoiced.OrderId, invoiced.InvoiceNumber);
+            _logger.LogInformation("[MESSAGING BRIDGE] ActiveMQ -> RabbitMQ {RoutingKey}: Order {OrderId}, '{Record}'",
+                translated.RoutingKey, translated.OrderId, message.Text);
         }
     }
 }

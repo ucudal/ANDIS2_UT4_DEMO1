@@ -12,6 +12,11 @@ public static class Events
     public const string OrderConfirmed = "order.confirmed";
     public const string OrderRejected = "order.rejected";
     public const string OrderInvoiced = "order.invoiced";
+    public const string OrderInvoiceFailed = "order.invoice-failed";
+    public const string OrderCancelled = "order.cancelled";
+    public const string StockReserved = "stock.reserved";
+    public const string StockRejected = "stock.rejected";
+    public const string StockReleased = "stock.released";
     public const string UserUpdated = "user.updated";
     public const string ProductUpdated = "product.updated";
 }
@@ -32,6 +37,23 @@ public record OrderRejected(int OrderId, string Reason);
 // Messaging Bridge: el ERP facturó una Order. Lo publica el puente; Orders no
 // sabe que viene de otro broker.
 public record OrderInvoiced(int OrderId, string InvoiceNumber, string IssuedOn);
+
+// Saga: el ERP no facturó una Order confirmada. Lo publica el puente; Orders
+// cancela la Order y publica OrderCancelled.
+public record OrderInvoiceFailed(int OrderId, string Reason);
+
+// Saga: la compensación de una Order confirmada que no se pudo completar.
+// Products libera el stock que había reservado.
+public record OrderCancelled(int OrderId, string Reason);
+
+// Saga: Products reservó el stock de una Order, o no pudo porque falta stock o
+// porque el Product no existe. Orders sigue con el paso siguiente.
+public record StockReserved(int OrderId, int ProductId, int Quantity);
+
+public record StockRejected(int OrderId, string Reason);
+
+// Saga: Products devolvió el stock de una Order rechazada o cancelada.
+public record StockReleased(int OrderId, int ProductId, int Quantity);
 
 // Materialized View: OccurredAt es el momento del cambio, según el reloj del
 // servicio que lo publica. Con varios proyectores, dos cambios del

@@ -12,12 +12,14 @@ public class Demo08EventSourcingTests : DemoTest
     public async Task EventsReplayToTheCurrentState()
     {
         var id = await Api.CreateOrderAsync(DemoData.User2, DemoData.Trousers.Id, 3);
-        await Api.WaitProcessedAsync([id]);
+        // Después de confirmarla, el ERP la factura: se espera ese último evento
+        // para que el historial no cambie entre la lectura y la verificación.
+        await Eventually.GetAsync(() => Api.EventTypesAsync(id), t => t.Contains("OrderInvoiced"));
 
         var events = await Api.EventsAsync(id);
         var types = events["events"]!.AsArray().Select(e => e!["type"]!.GetValue<string>());
 
-        Assert.That(types, Is.EqualTo(new[] { "OrderCreated", "OrderConfirmed" }));
+        Assert.That(types, Is.EqualTo(new[] { "OrderCreated", "OrderConfirmed", "OrderInvoiced" }));
         Assert.That(events["replayed_state"]!["status"]!.GetValue<string>(), Is.EqualTo("Confirmed"));
         Assert.That(events["replayed_state"]!["quantity"]!.GetValue<int>(), Is.EqualTo(3));
     }

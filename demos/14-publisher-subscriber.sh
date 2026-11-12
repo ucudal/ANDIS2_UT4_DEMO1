@@ -18,8 +18,8 @@ trap cleanup EXIT
 # Con -t, cada línea trae la hora: se ordenan por hora y no por réplica.
 subscribers_log() {
     sleep 4
-    docker compose logs -t --since "$1" orders-worker orders-projector 2>&1 \
-        | grep -E 'recibió|procesando la orden|vista|actualizado' | sort -t'|' -k2 \
+    docker compose logs -t --since "$1" products-service orders-worker orders-projector 2>&1 \
+        | grep -E 'recibió|Reservadas|procesando la orden|vista|actualizado' | sort -t'|' -k2 \
         | sed -E 's/^([^ ]+) +\| +[0-9TZ:.-]+ +/  \1  /' || true
 }
 
@@ -29,11 +29,12 @@ step "Suscripciones al exchange andis.events: cada cola y las claves que recibe"
 curl -s -u guest:guest 'http://localhost:15672/api/exchanges/%2F/andis.events/bindings/source' \
     | jq '[.[] | {cola: .destination, clave: .routing_key}]' | table
 
-step "Se crea una Order: el evento order.created llega al worker y a los proyectores"
+step "Se crea una Order: order.created llega a Products y a los proyectores"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 id=$(create_order "$BOB" "$PRODUCT")
 echo "  Order $id creada"
 subscribers_log "$since"
+note "Products reserva el stock y publica stock.reserved, que recibe el worker -ver la demo 10-."
 
 step "Products cambia el nombre de un Product y publica product.updated"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)

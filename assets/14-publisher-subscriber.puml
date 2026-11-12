@@ -3,17 +3,23 @@
 rectangle "Orders\nOutboxRelay" as O
 rectangle "Users\nUserService.UpdateUser" as U
 rectangle "Products\nProductsController.UpdateProduct" as P
+rectangle "Products\nOutboxRelay" as PO
 hexagon "Exchange de eventos, tipo topic\nandis.events" as X
 queue "orders.process" as Q1
 queue "orders.details-view" as Q2
+queue "products.stock" as Q3
 rectangle "Procesa la Order\norders-worker" as W
 rectangle "Mantiene la vista\norders-projector" as V
+rectangle "Reserva el stock\nproducts-service" as S
 
-O --> X : order.created\norder.confirmed\norder.rejected
+O --> X : order.created\norder.confirmed\norder.rejected\norder.cancelled
 U --> X : user.updated
 P --> X : product.updated
-X --> Q1 : order.created
+PO --> X : stock.reserved\nstock.rejected\nstock.released
+X --> Q1 : stock.reserved\nstock.rejected\norder.invoice-failed
 X --> Q2 : order.*\nuser.updated\nproduct.updated
 Q1 --> W
 Q2 --> V
+X --> Q3 : order.created\norder.rejected\norder.cancelled
+Q3 --> S
 @enduml

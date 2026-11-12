@@ -10,10 +10,12 @@ namespace MessagingBridge;
 //
 //   PEDIDO  | pedido: 10 | cliente: 24 | artículo: 8 | cantidad: 5
 //   FACTURA | pedido: 10 | factura: 12 | fecha AAAAMMDD: 8
+//   RECHAZO | pedido: 10 | motivo: 30
 public static class ErpFormat
 {
     private const string OrderRecord = "PEDIDO  ";
     private const string InvoiceRecord = "FACTURA ";
+    private const string RejectionRecord = "RECHAZO ";
 
     public static string ToOrderRecord(OrderConfirmed order) =>
         OrderRecord
@@ -22,8 +24,31 @@ public static class ErpFormat
         + order.ProductId.ToString("D8")
         + order.Quantity.ToString("D5");
 
+    // La respuesta del ERP a un pedido, como el evento que corresponde:
+    // order.invoiced o, si el ERP lo rechazó, order.invoice-failed.
+    // FormatException si el registro no es ninguno de los dos.
+    public static (string RoutingKey, object Event, int OrderId) ToEvent(string record)
+    {
+        if (record.StartsWith(RejectionRecord))
+        {
+            var failed = ToOrderInvoiceFailed(record);
+            return (Events.OrderInvoiceFailed, failed, failed.OrderId);
+        }
+
+        var invoiced = ToOrderInvoiced(record);
+        return (Events.OrderInvoiced, invoiced, invoiced.OrderId);
+    }
+
+    private static OrderInvoiceFailed ToOrderInvoiceFailed(string record)
+    {
+        if (record.Length != 48)
+            throw new FormatException($"No es un registro RECHAZO: '{record}'");
+
+        return new OrderInvoiceFailed(int.Parse(record[8..18]), record[18..48].Trim());
+    }
+
     // FormatException si el registro no es una factura válida.
-    public static OrderInvoiced ToOrderInvoiced(string record)
+    private static OrderInvoiced ToOrderInvoiced(string record)
     {
         if (record.Length != 38 || !record.StartsWith(InvoiceRecord))
             throw new FormatException($"No es un registro FACTURA: '{record}'");

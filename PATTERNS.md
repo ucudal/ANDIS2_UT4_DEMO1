@@ -14,6 +14,7 @@
     * [Competing Consumers para disponibilidad](#competing-consumers-para-disponibilidad)
     * [Event Sourcing](#event-sourcing)
     * [Transactional Outbox](#transactional-outbox)
+    * [Saga](#saga)
 * [Demos de rendimiento y procesamiento asíncrono](#demos-de-rendimiento-y-procesamiento-asíncrono)
   * [Qué agrega a las demos de disponibilidad](#qué-agrega-a-las-demos-de-disponibilidad)
   * [Patrones de rendimiento](#patrones-de-rendimiento)
@@ -84,7 +85,7 @@ materializadas.
 
 | Categoría | Patrones | Demo |
 | --------- | -------- | ---- |
-| Disponibilidad | Bulkhead, Circuit Breaker, Competing Consumers, Event Sourcing, Health Endpoint Monitoring, Rate Limiting, Retry, Throttling, Transactional Outbox | 1 |
+| Disponibilidad | Bulkhead, Circuit Breaker, Competing Consumers, Event Sourcing, Health Endpoint Monitoring, Rate Limiting, Retry, Throttling, Transactional Outbox, Saga | 1 |
 | Rendimiento | Cache-Aside, Queue-Based Load Leveling, Competing Consumers, Publisher/Subscriber, Asynchronous Request-Reply, CQRS, Materialized View | 2 |
 | Seguridad | Gatekeeper, Federated Identity, Gateway Offloading, Sidecar, Valet Key | 3 |
 | Facilidad de modificación | Anti-corruption Layer, External Configuration Store, Messaging Bridge, Strangler Fig, Backends for Frontends | 4 |
@@ -109,6 +110,8 @@ Qué se muestra:
 * Historial inmutable de eventos de cada `Order`.
 * Mensajes que no se pierden aunque [RabbitMQ](https://www.rabbitmq.com/) no
   esté disponible.
+* Stock que vuelve cuando una `Order` se rechaza o se cancela después de
+  reservarlo.
 
 Resultado observable: si `Products` se cae, el circuito se abre, `Orders` deja
 de esperar *timeouts* y el detalle devuelve las `Orders` con "no disponible
@@ -119,9 +122,10 @@ sus propias rutas.
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `rabbitmq` | Exchange `andis.events`, donde se publican los eventos, y cola `orders.process` con las `Orders` pendientes de procesar. Consola en <http://localhost:15672> -usr: `guest` pwd: `guest`-. |
+| `rabbitmq` | Exchange `andis.events`, donde se publican los eventos; cola `products.stock`, con las `Orders` que esperan su reserva de stock, y cola `orders.process`, con las que esperan su confirmación. Consola en <http://localhost:15672> -usr: `guest` pwd: `guest`-. |
 | `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`WORKER__ENABLED=true`-. Consume la cola y confirma o rechaza cada `Order`. |
-| Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. Un *worker* verifica que el `User` y el `Product` existan y la pasa a `Confirmed` o `Rejected`. |
+| Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. `Products` reserva el stock; un *worker* verifica que el `User` exista y la pasa a `Confirmed` o `Rejected`. Si el ERP no la factura, pasa a `Cancelled`. Ver [Saga](#saga). |
+| Stock del [`Product`](src/ProductsService/Models/Product.cs) | Las unidades disponibles. `GET /products/{id}` lo muestra y `PUT /products/{id}/stock` lo fija. |
 | Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
 | Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
 | Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
@@ -154,9 +158,11 @@ Cómo ejecutarlos está en [Cómo probar los
 patrones](README.md#cómo-probar-los-patrones), en el README. Los eventos de cada
 patrón también aparecen en los *logs* de [Docker](https://www.docker.com/) de
 `orders-service`, con una etiqueta: `[RETRY]`, `[CIRCUIT BREAKER]`,
-`[BULKHEAD]`, `[THROTTLING]` y `[OUTBOX]`. Los patrones que dependen de la carga
--Circuit Breaker, Bulkhead, Throttling, Rate Limiting y Competing Consumers-
-tienen además un escenario de [k6](https://k6.io/) para verlos en el dashboard.
+`[BULKHEAD]`, `[THROTTLING]` y `[OUTBOX]`. Los de la Saga aparecen en los de
+`products-service` y `orders-worker`, con la etiqueta `[SAGA]`. Los patrones
+que dependen de la carga -Circuit Breaker, Bulkhead, Throttling, Rate Limiting y
+Competing Consumers- tienen además un escenario de [k6](https://k6.io/) para
+verlos en el dashboard.
 
 #### Retry
 
@@ -572,17 +578,18 @@ punto único de falla.
 
 **Implementación:** `POST /orders/` publica el evento `order.created` en el
 exchange `andis.events` de RabbitMQ, a través del [Transactional
-Outbox](#transactional-outbox). La cola `orders.process` está suscripta a ese
-evento -ver [Publisher/Subscriber](#publishersubscriber)-. Tres réplicas de
-`orders-worker` consumen la misma cola; RabbitMQ entrega cada mensaje a una sola
-réplica. Cada réplica toma un mensaje a la vez -`prefetch = 1`- y lo confirma
--*ack*- recién cuando termina; si se cae antes, RabbitMQ entrega el mensaje a
-otra réplica. Si `Users` o `Products` no están disponibles, el *worker* devuelve
-el mensaje a la cola y lo reintenta 5 segundos después. Está en la clase
-`OrderProcessingWorker`, en
+Outbox](#transactional-outbox). `Products` reserva el stock y publica
+`stock.reserved`. La cola `orders.process` está suscripta a ese evento -ver
+[Publisher/Subscriber](#publishersubscriber)- y a los otros que mueven a la
+`Order` en la [Saga](#saga). Tres réplicas de `orders-worker` consumen la misma
+cola; RabbitMQ entrega cada mensaje a una sola réplica. Cada réplica toma un
+mensaje a la vez -`prefetch = 1`- y lo confirma -*ack*- recién cuando termina;
+si se cae antes, RabbitMQ entrega el mensaje a otra réplica. Si `Users` no está
+disponible, el *worker* devuelve el mensaje a la cola y lo reintenta 5 segundos
+después. Está en la clase `OrderProcessingWorker`, en
 [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs):
 el método `ExecuteAsync` se suscribe a la cola y confirma o devuelve cada
-mensaje, y el método `ProcessAsync` procesa la `Order`.
+mensaje, y el método `ConfirmAsync` procesa la `Order`.
 
 **Cómo funciona:**
 
@@ -601,22 +608,21 @@ asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.
 
 ![Clases del worker](assets/07-competing-consumers-clases.svg)
 
-El método `ProcessAsync` de la clase `OrderProcessingWorker`, en
+El método `ConfirmAsync` de la clase `OrderProcessingWorker`, en
 [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
-devuelve `false` cuando `Users` o `Products` no responden: el mensaje vuelve a
-la cola.
+devuelve `false` cuando `Users` no responde: el mensaje vuelve a la cola.
 
 Que las réplicas se repartan la cola no evita que dos procesen la misma `Order`.
-El *outbox* entrega cada mensaje al menos una vez -ver [Transactional
-Outbox](#transactional-outbox)-, y las dos copias de un `order.created` pueden
-llegar a la vez a dos réplicas. Si el *worker* preguntara primero si la `Order`
+El *outbox* de `Products` entrega cada mensaje al menos una vez -ver
+[Transactional Outbox](#transactional-outbox)-, y las dos copias de un
+`stock.reserved` pueden llegar a la vez a dos réplicas. Si el *worker* preguntara primero si la `Order`
 sigue `Pending` y la cambiara después, el código sería así:
 
 ```csharp
 var order = await db.Orders.FindAsync([orderId], cancellationToken);  // pregunta
 if (order.Status != OrderStatus.Pending)
     return true;
-// ... 2 segundos de demora, y las llamadas a Users y a Products ...
+// ... 2 segundos de demora, y la llamada a Users ...
 order.Status = OrderStatus.Confirmed;                                  // cambia
 db.OrderEvents.Add(orderEvent);
 await db.SaveChangesAsync(cancellationToken);
@@ -626,19 +632,19 @@ Entre la pregunta y el cambio pasan más de 2 segundos. Con las dos copias en do
 réplicas a la vez:
 
 1. Las dos ejecutan `FindAsync` y leen la `Order` como `Pending`.
-2. Las dos esperan la demora y las respuestas de `Users` y de `Products`.
+2. Las dos esperan la demora y la respuesta de `Users`.
 3. Las dos ejecutan `SaveChangesAsync`. Quedan dos `OrderConfirmed` en el
    historial de [Event Sourcing](#event-sourcing) y dos `order.confirmed` en el
    *outbox*, que llegan dos veces a los proyectores y al ERP.
 
-Por eso el método `ProcessAsync` junta la pregunta y el cambio en una sola
+Por eso el método `ChangeStatusAsync` junta la pregunta y el cambio en una sola
 sentencia. En el código, el `Where` es la pregunta y el `SetProperty` es el
 cambio:
 
 ```csharp
 var changed = await db.Orders
-    .Where(o => o.Id == orderId && o.Status == OrderStatus.Pending)          // pregunta
-    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, newStatus), ct);   // cambia
+    .Where(o => o.Id == orderId && o.Status == from)                  // pregunta
+    .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, to), ct);   // cambia
 if (changed == 0)
 {
     // Otra réplica ya la procesó: no se agrega ni el evento ni el mensaje.
@@ -663,9 +669,10 @@ copias a la vez:
 3. La segunda deshace su transacción, registra `[COMPETING CONSUMERS] …
    descarta la orden` y no agrega ni el evento ni el mensaje.
 
-La lectura del principio de `ProcessAsync` sigue estando, sin seguimiento de
-cambios -`AsNoTracking`-. No decide nada: solo evita llamar a `Users` y a
-`Products` cuando una copia llega después de que la `Order` ya se procesó. El
+`from` es el estado de origen: `Pending` para confirmar o rechazar, y
+`Confirmed` para cancelar. La lectura del principio de `ConfirmAsync` sigue
+estando, sin seguimiento de cambios -`AsNoTracking`-. No decide nada: solo evita
+llamar a `Users` cuando una copia llega después de que la `Order` ya se procesó. El
 índice único de `order_events` por `Order` y tipo de evento queda como segunda
 barrera. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
@@ -674,8 +681,8 @@ Consumers](demos/07-competing-consumers.sh) crea 9 `Orders`. Cada *worker* tarda
 2 segundos por `Order`, y las 9 se procesan en unos 6 segundos, 3 por réplica.
 Después crea 9 más y detiene una réplica mientras procesa: la `Order` que tenía
 la termina otra réplica. Para ver la cola y sus consumidores, abre la consola de
-RabbitMQ. Dos copias del mismo mensaje procesadas a la vez por dos réplicas se
-ven en la demo [09 de Transactional Outbox](demos/09-transactional-outbox.sh)
+RabbitMQ. Dos copias del mismo `stock.reserved` procesadas a la vez por dos réplicas
+se ven en la demo [09 de Transactional Outbox](demos/09-transactional-outbox.sh)
 -ver [Transactional Outbox](#transactional-outbox)-.
 
 > [!TIP]
@@ -683,7 +690,8 @@ ven en la demo [09 de Transactional Outbox](demos/09-transactional-outbox.sh)
 > Consulta [Background tasks with hosted services in ASP.NET
 > Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/host/hosted-services?view=aspnetcore-10.0)
 > para tener más información sobre `BackgroundService`, la clase base de
-> `OrderProcessingWorker`, `OutboxRelay` y `OrderDetailsProjector`.
+> `OrderProcessingWorker`, `OutboxRelay`, `OrderDetailsProjector` y
+> `StockReservations`.
 
 #### Event Sourcing
 
@@ -691,8 +699,8 @@ ven en la demo [09 de Transactional Outbox](demos/09-transactional-outbox.sh)
 se llegó a él, y una corrupción de ese estado no tiene vuelta atrás.
 
 **Implementación:** cada cambio de una `Order` se guarda como un evento
-inmutable en la tabla `order_events`: `OrderCreated`, `OrderConfirmed` u
-`OrderRejected`. La tabla `orders` es una **proyección**: el estado actual,
+inmutable en la tabla `order_events`: `OrderCreated`, `OrderConfirmed`,
+`OrderRejected`, `OrderInvoiced` u `OrderCancelled`. La tabla `orders` es una **proyección**: el estado actual,
 calculado a partir de los eventos. Cada evento es un `OrderEvent`, creado con el
 método `Create` de esa clase, en
 [OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs); el
@@ -731,25 +739,29 @@ Si se publica primero, queda el mensaje de un cambio que tal vez no se guardó.
 **Implementación:** `POST /orders/` guarda la `Order`, su evento `OrderCreated`
 de Event Sourcing y el mensaje `order.created` en la tabla `outbox_messages`,
 **en la misma transacción**: se guardan los tres o ninguno. El *worker* hace lo
-mismo con `order.confirmed` y `order.rejected`. Ninguno de los dos publica en
-RabbitMQ. Lo hacen el método `CreateOrder` de la clase `OrdersController` y el
-método `ProcessAsync` de la clase `OrderProcessingWorker`, con el método
-`Create` de la clase `OutboxMessage`, en
-[OrdersService/Models/OutboxMessage.cs](src/OrdersService/Models/OutboxMessage.cs).
+mismo con `order.confirmed`, `order.rejected` y `order.cancelled`. Ninguno de
+los dos publica en RabbitMQ. Lo hacen el método `CreateOrder` de la clase
+`OrdersController` y el método `ChangeStatusAsync` de la clase
+`OrderProcessingWorker`, con el método `Create` de la clase `OutboxMessage`, en
+[Common/OutboxMessage.cs](src/Common/OutboxMessage.cs).
 
 El *relay* del *outbox* -el método `PublishPendingAsync` de la clase
-`OutboxRelay`, en
-[OrdersService/Messaging/OutboxRelay.cs](src/OrdersService/Messaging/OutboxRelay.cs)-
-corre en `orders-service`. Cada segundo toma hasta 50 mensajes pendientes, en
+`OutboxRelay`, en [Common/OutboxRelay.cs](src/Common/OutboxRelay.cs)- corre en
+`orders-service`. Cada segundo toma hasta 50 mensajes pendientes, en
 orden, los publica en `andis.events` y les completa la fecha de publicación.
 Publica con confirmación de RabbitMQ: solo marca un mensaje cuando RabbitMQ
 confirmó que lo recibió. Si RabbitMQ no está, los mensajes quedan pendientes y
 se reintentan en la vuelta siguiente. Los toma con `SELECT ... FOR UPDATE SKIP
 LOCKED`: con más de una instancia del *relay*, cada mensaje lo publica una sola.
+`Products` usa la misma clase para los eventos de la [Saga](#saga), con su
+propia tabla `outbox_messages` en [PostgreSQL](https://www.postgresql.org/): la
+clase recibe el `DbContext` de cada servicio, y la sentencia es la misma en
+[MySQL](https://www.mysql.com/) y en PostgreSQL.
 
 La entrega es **al menos una vez**: si el *relay* se cae después de publicar y
 antes de marcar, publica de nuevo el mismo mensaje. Por eso los suscriptores son
-idempotentes, aunque las dos copias lleguen a la vez a réplicas distintas. El
+idempotentes, aunque las dos copias lleguen a la vez a réplicas distintas.
+`Products` reserva el stock una sola vez por `Order` -ver [Saga](#saga)-. El
 *worker* cambia el estado con un `UPDATE` que solo afecta a las `Orders` que
 siguen `Pending`, y descarta la copia si otra réplica ya la procesó -ver
 [Competing Consumers para
@@ -757,18 +769,18 @@ disponibilidad](#competing-consumers-para-disponibilidad)-. Los proyectores de
 la vista materializada escriben cada fila con un *upsert* -ver [Materialized
 View](#materialized-view)-. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
-`Users` y `Products` publican sus eventos directamente, sin *outbox*: si
-RabbitMQ no está, el cambio se guarda y el evento se pierde. `Users` usa
-MongoDB sin réplicas, que no admite transacciones con varios documentos. Quedó
-así a propósito, para comparar; ver [Decisiones abiertas a
+`Users` publica `user.updated` y `Products` publica `product.updated`
+directamente, sin *outbox*: si RabbitMQ no está, el cambio se guarda y el
+evento se pierde. `Users` usa MongoDB sin réplicas, que no admite transacciones
+con varios documentos. Quedó así a propósito, para comparar; ver [Decisiones abiertas a
 discusión](ARCHITECTURE.md#decisiones-abiertas-a-discusión) en ARCHITECTURE.md.
 
 **Cómo funciona:**
 
 ![Secuencia del Transactional Outbox](assets/09-transactional-outbox.svg)
 
-El *worker* guarda `order.confirmed` u `order.rejected` en el *outbox* de la
-misma forma. El recorrido completo está en [Creación de una Order:
+El *worker* guarda `order.confirmed`, `order.rejected` u `order.cancelled` en el
+*outbox* de la misma forma. El recorrido completo está en [Creación de una Order:
 asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.md.
 
 **Código:**
@@ -781,13 +793,15 @@ asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.
 Outbox](demos/09-transactional-outbox.sh) detiene RabbitMQ y crea 5 `Orders`.
 Todas responden `202`; antes del *outbox*, `Orders` respondía `503` y la `Order`
 quedaba `Pending` para siempre. `/health/orders` responde `Degraded`, y los 5
-mensajes esperan en `outbox_messages`. Después duplica el mensaje
-`order.created` de la última `Order`, como si el *relay* lo hubiera publicado
-dos veces. Al levantar RabbitMQ, el *relay* los publica, los *workers* confirman
-las `Orders` y el *outbox* queda vacío. Las dos copias del mensaje duplicado
-llegan a la vez a dos *workers*: los *logs* muestran que uno confirma la `Order`
-y el otro la descarta, y la `Order` tiene un solo `OrderConfirmed` en su
-historial y un solo `order.confirmed` en el *outbox*. En Grafana, el panel
+mensajes esperan en `outbox_messages`. Al levantar RabbitMQ, el *relay* los
+publica, los *workers* confirman las `Orders` y el *outbox* queda vacío.
+Después pone `products-service` en pausa, crea otra `Order` y publica dos veces
+su `stock.reserved`, como si el *relay* de `Products` lo hubiera publicado dos
+veces. Las dos copias llegan a la vez a dos *workers*: los *logs* muestran que
+uno confirma la `Order` y el otro la descarta, y la `Order` tiene un solo
+`OrderConfirmed` en su historial y un solo `order.confirmed` en el *outbox*. Al
+salir de la pausa, `Products` reserva el stock y publica su `stock.reserved`, y
+el *worker* lo ignora porque la `Order` ya no está `Pending`. En Grafana, el panel
 "Outbox de Orders" muestra los pendientes subir y volver a cero.
 
 > [!TIP]
@@ -798,6 +812,134 @@ historial y un solo `order.confirmed` en el *outbox*. En Grafana, el panel
 > el mensaje, y [SQL Queries - EF
 > Core](https://learn.microsoft.com/en-us/ef/core/querying/sql-queries) sobre
 > `FromSqlRaw`, con el que el *relay* lee los mensajes pendientes.
+
+#### Saga
+
+**Problema:** crear una `Order` cambia datos de tres sistemas, cada uno con su
+propia base: `Products` descuenta el stock, `Orders` confirma la `Order` y el
+ERP la factura. No hay una transacción que abarque las tres bases, y un paso
+puede fallar después de que otro ya guardó sus cambios. Sin una forma de
+deshacerlos, queda stock descontado para una `Order` que se rechazó o se
+canceló: el `Product` aparece agotado aunque nadie lo compró.
+
+**Implementación:** una Saga es una secuencia de transacciones locales, una por
+servicio. Cada una guarda sus cambios y publica un evento, que dispara la
+siguiente. Si un paso falla, los anteriores se deshacen con
+**compensaciones**: transacciones que revierten el efecto de las que ya se
+confirmaron, en orden inverso. No es un *rollback*: los cambios estuvieron
+confirmados, y otros pudieron verlos.
+
+| Paso | Participante | Transacción local | Si sale bien | Si falla | Compensación |
+| ---- | ------------ | ----------------- | ------------ | -------- | ------------ |
+| 1 | `Products` | Reserva el stock | `stock.reserved` | `stock.rejected` | Libera la reserva y devuelve el stock, con `order.rejected` u `order.cancelled` |
+| 2 | `Orders`, el *worker* | Verifica el `User` y confirma la `Order` | `order.confirmed` | `order.rejected` | Cancela la `Order`, con `order.invoice-failed` |
+| 3 | El ERP, por el [Messaging Bridge](#messaging-bridge) | Factura la `Order` | `order.invoiced` | `order.invoice-failed` | — |
+
+El ERP no factura pedidos de más de 10 unidades: es la falla que dispara las dos
+compensaciones. La factura es el último paso, así que no tiene compensación.
+
+La Saga es por **coreografía**: nadie la coordina. Cada participante escucha
+los eventos de los otros en su propia cola y reacciona:
+
+* `Products`: la clase `StockReservations`, en
+  [ProductsService/StockReservations.cs](src/ProductsService/StockReservations.cs),
+  escucha la cola `products.stock`. El método `ReserveAsync` reserva el stock y
+  el método `ReleaseAsync` lo libera. Las reservas están en la tabla
+  `stock_reservations` de
+  [ProductsService/pginit/pginit.sql](src/ProductsService/pginit/pginit.sql).
+* `Orders`: la clase `OrderProcessingWorker`, en
+  [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
+  escucha la cola `orders.process`. El método `ConfirmAsync` confirma o rechaza
+  la `Order` después de la reserva, el método `RejectAsync` la rechaza sin
+  reserva y el método `CancelAsync` la cancela.
+* El ERP: el método `ExecuteAsync` de la clase `Erp`, en
+  [LegacyErp/Program.cs](src/LegacyErp/Program.cs), responde con un registro
+  `RECHAZO` en lugar de una `FACTURA`. El método `ToEvent` de la clase
+  `ErpFormat`, en [MessagingBridge/ErpFormat.cs](src/MessagingBridge/ErpFormat.cs),
+  lo traduce a `order.invoice-failed`.
+
+Cada paso guarda su cambio y su evento en una sola transacción, y los publica
+con un [Transactional Outbox](#transactional-outbox). `Products` usa la misma
+clase `OutboxRelay` que `Orders`, en
+[Common/OutboxRelay.cs](src/Common/OutboxRelay.cs). Sin el *outbox*, `Products`
+podría descontar el stock y caerse antes de publicar `stock.reserved`: la
+`Order` quedaría `Pending` para siempre, con el stock descontado.
+
+**Coreografía u orquestación.** La alternativa es un orquestador: un componente
+que le dice a cada participante qué hacer, sabe en qué paso está cada `Order` y
+decide las compensaciones. En
+[Azure](https://azure.microsoft.com/) puede ser [Durable
+Functions](https://learn.microsoft.com/azure/azure-functions/durable/durable-functions-overview),
+y en [AWS](https://aws.amazon.com/), [Step
+Functions](https://aws.amazon.com/step-functions/).
+
+| | Coreografía | Orquestación |
+| - | ----------- | ------------ |
+| Dónde está el flujo | Repartido: cada participante sabe a qué eventos reacciona | En el orquestador |
+| Agregar un paso | Puede cambiar a varios participantes | Cambia el orquestador |
+| Saber en qué paso está una `Order` | Hay que juntar los eventos de todos | Lo sabe el orquestador |
+| Componentes nuevos | Ninguno | El orquestador, que también tiene que estar disponible |
+
+Con tres pasos, la coreografía alcanza. Con más pasos o más ramas, seguir el
+flujo entre los eventos se vuelve difícil, y un orquestador lo ordena.
+
+**Aislamiento.** Una Saga no aísla sus pasos como una transacción: entre la
+reserva y la compensación, otras `Orders` ven el stock descontado, y una de
+ellas puede rechazarse por falta de stock que después vuelve. El catálogo de
+Azure lo llama *lectura sucia* y propone contramedidas. Dos están en la
+aplicación:
+
+* El estado de la reserva funciona como un **bloqueo semántico**: una reserva
+  `Reserved` dice que esas unidades están comprometidas con una `Order` que
+  todavía puede no completarse.
+* Las actualizaciones del stock son **conmutativas**: la reserva resta y la
+  compensación suma, y el resultado no depende del orden en que lleguen las de
+  distintas `Orders`.
+
+**Idempotencia.** Los dos *outbox* y el puente entregan cada mensaje al menos
+una vez, así que cada paso tiene que poder repetirse:
+
+* La reserva tiene como clave la `Order`. Si `order.created` llega dos veces, la
+  segunda inserción falla, y con ella se deshace el descuento del stock, que
+  está en la misma transacción.
+* La liberación es un `UPDATE` que solo cambia una reserva `Reserved`, y el
+  stock se suma solo si cambió una fila. Una copia de `order.rejected` no
+  encuentra nada que liberar.
+* La cancelación es un `UPDATE` que solo cambia una `Order` `Confirmed`, como la
+  confirmación de [Competing Consumers para
+  disponibilidad](#competing-consumers-para-disponibilidad).
+
+Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
+
+**Cómo funciona:**
+
+![Los pasos de la Saga y sus compensaciones](assets/10-saga.svg)
+
+**Código:**
+
+![Clases de la Saga](assets/10-saga-clases.svg)
+
+`PUT /products/{id}/stock` fija el stock de un `Product`, como un ajuste de
+inventario. `PUT /products/{id}` no lo cambia: el stock lo mueven las reservas.
+
+**Cómo verlo:** la demo [10 de Saga](demos/10-saga.sh) fija el stock de un
+`Product` en 20 unidades y crea cuatro `Orders`. La primera tiene stock y
+termina facturada; la segunda pide 50 unidades y `Products` la rechaza sin
+tocar el stock; la tercera es de un `User` que no existe, y el stock baja y
+vuelve con la compensación; la cuarta pide 12 unidades, el ERP la rechaza y la
+`Order` pasa de `Confirmed` a `Cancelled`, con el stock devuelto. Después
+publica otra vez un `order.created` y un `order.rejected`, y el stock no cambia.
+Los *logs* de `products-service` y de `orders-worker` muestran cada paso con la
+etiqueta `[SAGA]`.
+
+> [!TIP]
+>
+> Consulta [Saga distributed transactions
+> pattern](https://learn.microsoft.com/azure/architecture/patterns/saga) en el
+> catálogo de Azure, y [Saga
+> patterns](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/saga.html)
+> en el de AWS, para tener más información sobre la coreografía, la orquestación
+> y las contramedidas para la falta de aislamiento.
 
 ## Demos de rendimiento y procesamiento asíncrono
 
@@ -826,7 +968,7 @@ fila "Rendimiento: caché, CQRS y outbox".
 | ---------- | -------- |
 | `redis` | Caché de `Products`. |
 | `orders-projector` -3 réplicas- | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
-| Exchange `andis.events` | Eventos `order.created`, `order.confirmed`, `order.rejected`, `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
+| Exchange `andis.events` | Eventos de `Orders` -`order.created`, `order.confirmed`, `order.rejected` y `order.cancelled`-, de la [Saga](#saga) en `Products` -`stock.reserved`, `stock.rejected` y `stock.released`-, del ERP -`order.invoiced` y `order.invoice-failed`-, y `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación [SOAP](https://www.w3.org/TR/soap/) `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
 | Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [PostgreSQL](https://www.postgresql.org/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
 
@@ -907,10 +1049,10 @@ apagada y después prendida: la p95 baja de unos 100 ms a unos 3 ms.
 **Problema:** un pico de solicitudes que un servicio procesa en el momento lo
 satura, y satura también a los servicios que llama.
 
-**Implementación:** `POST /orders/` solo guarda la `Order` y responde; el
-trabajo pesado -verificar el `User` y el `Product` con `Users` y `Products`- lo
-hacen los *workers* desde la cola `orders.process`, a su propio ritmo. La cola
-absorbe el pico: `Users` y `Products` reciben como máximo una llamada por
+**Implementación:** `POST /orders/` solo guarda la `Order` y responde.
+`Products` reserva el stock, y el trabajo pesado -verificar el `User` con
+`Users`- lo hacen los *workers* desde la cola `orders.process`, a su propio
+ritmo. La cola absorbe el pico: `Users` recibe como máximo una llamada por
 réplica del *worker*, sin importar cuántas `Orders` lleguen. Ya estaba en las
 demos de disponibilidad, como base de [Competing
 Consumers](#competing-consumers-para-disponibilidad); las demos de rendimiento
@@ -920,8 +1062,8 @@ lo muestra bajo un pico.
 
 ![La cola absorbe un pico de Orders](assets/12-queue-based-load-leveling.svg)
 
-El pico se acumula en la cola, no en `Users` ni en `Products`. El código es el
-de [Competing Consumers](#competing-consumers-para-disponibilidad).
+El pico se acumula en la cola, no en `Users`. El código es el de [Competing
+Consumers](#competing-consumers-para-disponibilidad).
 
 **Cómo verlo:** la demo [12 de Queue-Based Load
 Leveling](demos/12-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
@@ -965,8 +1107,8 @@ distintas:
   ruteo de cada mensaje, por ejemplo `order.created`, pone una copia en cada
   cola enlazada con esa clave. Si ninguna cola está enlazada, el mensaje se
   descarta. En un exchange de tipo *topic*, las claves de los enlaces admiten
-  comodines: `order.*` recibe `order.created`, `order.confirmed` y
-  `order.rejected`.
+  comodines: `order.*` recibe `order.created`, `order.confirmed`,
+  `order.rejected` y los demás eventos de `Orders`.
 * Una **cola** es donde los mensajes esperan hasta que un consumidor los toma.
   Cada mensaje de una cola lo procesa un solo consumidor.
 
@@ -975,10 +1117,11 @@ interesan:
 
 | Cola | Suscriptor | Claves |
 | ---- | ---------- | ------ |
-| `orders.process` | `orders-worker` | `order.created` |
+| `orders.process` | `orders-worker` | `stock.reserved`, `stock.rejected`, `order.invoice-failed` |
 | `orders.details-view` | `orders-projector` | `order.*`, `user.updated`, `product.updated` |
+| `products.stock` | `products-service` | `order.created`, `order.rejected`, `order.cancelled` |
 
-Un mismo `order.created` llega a las dos colas. `Orders` no sabe que existen los
+Un mismo `order.created` llega a `orders.details-view` y a `products.stock`. `Orders` no sabe que existen los
 proyectores: agregarlos no cambió el código que publica. La conexión y la
 publicación están en la clase `RabbitMq`, en
 [Common/RabbitMq.cs](src/Common/RabbitMq.cs): el método `PublishEventAsync`
@@ -1100,7 +1243,7 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
   y `outbox_messages`, en el método `CreateOrder` de la clase
   `OrdersController`, en
   [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs),
-  y en el método `ProcessAsync` de la clase `OrderProcessingWorker`, en
+  y en el método `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en
   [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs).
 * **Consultas:** `GET /orders/user/{userId}/details/view` lee solo la vista
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
@@ -2069,13 +2212,15 @@ MQ](https://aws.amazon.com/amazon-mq/) ofrece ActiveMQ administrado.
 el sistema que no se puede cambiar. Simula la creación de una factura para cada
 orden de compra. No conoce RabbitMQ, ni [JSON](https://www.json.org/), ni la
 aplicación, y no comparte código con ella: solo sabe leer pedidos de la cola
-`ERP.PEDIDOS` de ActiveMQ y escribir facturas en la cola `ERP.FACTURAS`. El
-método `ExecuteAsync` de la clase `Erp` repite este ciclo:
+`ERP.PEDIDOS` de ActiveMQ y escribir sus respuestas en la cola `ERP.FACTURAS`.
+El método `ExecuteAsync` de la clase `Erp` repite este ciclo:
 
 1. Espera un mensaje en `ERP.PEDIDOS`.
 2. Valida que sea un registro de orden de pedido.
-3. Arma la factura con el número de orden, un número de factura y la fecha.
-4. Envía la factura a `ERP.FACTURAS`.
+3. Arma la factura con el número de orden, un número de factura y la fecha. Si
+   el pedido es de más de 10 unidades, arma un rechazo con el motivo: es la
+   falla que dispara las compensaciones de la [Saga](#saga).
+4. Envía la factura o el rechazo a `ERP.FACTURAS`.
 
 Tres detalles del ciclo:
 
@@ -2097,7 +2242,9 @@ Tres detalles del ciclo:
 * **De ActiveMQ a RabbitMQ:** la clase `ErpToOrdersBridge`, en
   [MessagingBridge/ErpToOrdersBridge.cs](src/MessagingBridge/ErpToOrdersBridge.cs),
   lee las facturas y publica `order.invoiced`. El método `ApplyAsync` de la
-  clase `OrderDetailsProjector` la agrega al historial de la `Order`.
+  clase `OrderDetailsProjector` la agrega al historial de la `Order`. Los
+  rechazos los publica como `order.invoice-failed`, y el *worker* cancela la
+  `Order`.
 * **Entrega al menos una vez:** el puente confirma en un broker recién después
   de que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente
   se cae en el medio, el mensaje se repite: el ERP emite la misma factura,
@@ -2122,6 +2269,7 @@ reenvían no conocen los formatos.
 ```text
 PEDIDO  0000000004665f1c2ab4e8d9a0c1f2e3020000000200001
 FACTURA 0000000004F0000000004 20261105
+RECHAZO 0000000007MAS DE 10 UNIDADES
 ```
 
 **Cómo funciona:**

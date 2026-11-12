@@ -1,0 +1,43 @@
+@startuml
+!include PlantUML.style
+hide footbox
+participant "Orders\nOrdersController" as O
+queue "RabbitMQ\nandis.events" as MQ
+participant "Products\nStockReservations" as P
+participant "Worker de Orders\nOrderProcessingWorker" as W
+participant "ERP\npor el Messaging Bridge" as E
+
+O ->> MQ : order.created
+MQ ->> P : order.created
+alt hay stock
+  P ->> P : descuenta el stock\nreserva Reserved
+  P ->> MQ : stock.reserved
+  MQ ->> W : stock.reserved
+  W ->> W : pide el User a Users
+  alt el User existe
+    W ->> MQ : order.confirmed\nla Order queda Confirmed
+    MQ ->> E : order.confirmed
+    alt hasta 10 unidades
+      E ->> MQ : order.invoiced
+    else más de 10 unidades
+      E ->> MQ : order.invoice-failed
+      MQ ->> W : order.invoice-failed
+      W ->> MQ : order.cancelled\nla Order queda Cancelled
+      MQ ->> P : order.cancelled
+      P ->> P : devuelve el stock\nreserva Released
+      P ->> MQ : stock.released
+    end
+  else el User no existe
+    W ->> MQ : order.rejected\nla Order queda Rejected
+    MQ ->> P : order.rejected
+    P ->> P : devuelve el stock\nreserva Released
+    P ->> MQ : stock.released
+  end
+else falta stock o el Product no existe
+  P ->> P : reserva Rejected\nel stock no cambia
+  P ->> MQ : stock.rejected
+  MQ ->> W : stock.rejected
+  W ->> MQ : order.rejected\nla Order queda Rejected
+end
+note over O, E : cada servicio guarda sus cambios y el evento en una sola transacción local,\ny los publica con su outbox
+@enduml

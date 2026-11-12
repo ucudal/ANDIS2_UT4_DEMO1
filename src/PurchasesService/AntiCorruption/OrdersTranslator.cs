@@ -7,7 +7,7 @@ namespace Ucu.Andis.PurchasesService.AntiCorruption;
 public record TranslatedOrder(int Number, string UserId, int Units, bool Confirmed);
 
 // Traduce el modelo de Orders. Orders habla de user_id, product_id y estados
-// Pending, Confirmed y Rejected; Purchases no conoce nada de eso.
+// Pending, Confirmed, Rejected y Cancelled; Purchases no conoce nada de eso.
 public class OrdersTranslator
 {
     private readonly HttpClient _client;
@@ -20,7 +20,7 @@ public class OrdersTranslator
         var orders = await _client.GetFromJsonAsync<List<OrderRecord>>("", cancellationToken) ?? [];
 
         return orders
-            .Where(o => o.ProductId == productId && o.Status != "Rejected")
+            .Where(o => o.ProductId == productId && o.Status is not ("Rejected" or "Cancelled"))
             .Select(o => new TranslatedOrder(o.Id, o.UserId, o.Quantity, o.Status == "Confirmed"))
             .ToList();
     }
