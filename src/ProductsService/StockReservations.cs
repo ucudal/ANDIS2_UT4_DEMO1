@@ -174,6 +174,7 @@ public class StockReservations : BackgroundService
             return;
         }
         await transaction.CommitAsync(cancellationToken);
+        StockMetrics.CountReservation(reserved ? ReservationStatus.Reserved : ReservationStatus.Rejected);
 
         if (reserved)
         {
@@ -217,6 +218,7 @@ public class StockReservations : BackgroundService
             new StockReleased(orderId, reservation.ProductId, reservation.Quantity)));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        StockMetrics.CountReservation(ReservationStatus.Released);
 
         await _cache.InvalidateAsync(ProductsController.ProductKey(reservation.ProductId), ProductsController.AllProductsKey);
         _logger.LogInformation("[SAGA] Liberadas {Quantity} unidades del Product {ProductId} de la Order {OrderId}",

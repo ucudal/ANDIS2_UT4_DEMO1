@@ -41,6 +41,7 @@ builder.Services.AddSingleton<RabbitMq>();
 // por su outbox -ver Common/OutboxRelay.cs-.
 builder.Services.AddHostedService<StockReservations>();
 builder.Services.AddHostedService<OutboxRelay<ProductsDbContext>>();
+builder.Services.AddHostedService<StockMetrics>();
 
 // Health Endpoint Monitoring: el servicio está sano si puede conectarse a su base.
 // Ni Redis ni RabbitMQ entran: Products atiende igual sin ellos.
@@ -48,8 +49,8 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<ProductsDbContext>("products-db");
 
 // Métricas para Prometheus en /metrics -ver Common/Observability.cs-, más los
-// aciertos de la caché, las imágenes y los mensajes del outbox.
-builder.AddObservability(ProductCache.MeterName, ProductImages.MeterName, OutboxRelay.MeterName);
+// aciertos de la caché, las imágenes, los mensajes del outbox y el stock.
+builder.AddObservability(ProductCache.MeterName, ProductImages.MeterName, OutboxRelay.MeterName, StockMetrics.MeterName);
 
 builder.Services.AddControllers();
 
