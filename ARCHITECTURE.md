@@ -5,7 +5,7 @@ analizarla: qué datos tiene cada servicio, cómo se comunican, qué tan disponi
 es cada operación, cómo se mantienen consistentes los datos y qué decisiones
 tienen costos. Cada sección termina con preguntas para el análisis.
 
-Cómo ejecutar la aplicación está en el [README.md](README.md), y los patrones
+Cómo ejecutar la aplicación está en el [README.md](README.md) y los patrones
 que implementa están en [PATTERNS.md](PATTERNS.md).
 
 * [Servicios y datos](#servicios-y-datos)
@@ -42,20 +42,23 @@ servicio usa la tecnología de base de datos que mejor le sirve.
 | `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y [Keycloak](https://www.keycloak.org/) |
 | `products-sidecar` | Nada: autoriza las solicitudes a `products-service` | — | gateway, por HTTPS, y cualquier contenedor de la red | `products-service`; Keycloak, para obtener sus claves públicas |
 | `keycloak` | Las identidades: usuarios, contraseñas y roles | Su propia base, en memoria en modo desarrollo | clientes, para iniciar sesión; gateway, para validar tokens | — |
-<!--TODO: ¿pueden faltar servicios luego de implementar las demás demos?-->
+
+Los componentes que agregan las demos de facilidad de modificación y de
+despliegue están en [Facilidad de modificación](#facilidad-de-modificación) y
+[Facilidad de despliegue](#facilidad-de-despliegue).
 
 Una `Order` guarda el identificador del `User` y el del `Product`, pero no hay
 clave foránea que los relacione, porque están en bases distintas. El
 identificador del `User` es un `ObjectId` de MongoDB, que `Orders` guarda
 como texto; el del `Product`, un entero de PostgreSQL. Nada impide crear una
 `Order` con un identificador que no existe; eso se detecta más tarde, como se
-ve en la sección de consistencia.<!--TODO: agregar link a la sección de consistencia-->
+ve en [Consistencia de los datos](#consistencia-de-los-datos).
 
 `orders-service`, `orders-worker` y `orders-projector` son la misma imagen de
-[Docker](https://www.docker.com/), con el *relay* del *outbox*, el *worker* o el proyector habilitados por
-configuración, y comparten la base de `Orders`.<!--TODO: ver si "relay" está
-explicado en algún lado; lo mismo para "outbox" y "worker"; si está, agregar
-link; si no está, explicarlo.-->
+[Docker](https://www.docker.com/), con el [*relay* del
+*outbox*](PATTERNS.md#transactional-outbox), el
+[*worker*](PATTERNS.md#competing-consumers-para-disponibilidad) o el proyector
+habilitados por configuración; y comparten la base de `Orders`.
 
 **Para analizar:**
 
@@ -77,8 +80,7 @@ link; si no está, explicarlo.-->
   Para un borrado haría falta un evento, como user.deleted, al que Orders
   reaccione. -->
 * `orders-service`, `orders-worker` y `orders-projector` comparten código y
-  base. ¿Son un servicio o tres? ¿Qué criterio usarían para decidirlo? <!--TODO:
-  confirmar que esto esté explicado en algún lado.-->
+  base. ¿Son un servicio o tres? ¿Qué criterio usarían para decidirlo?
   <!-- → Son un servicio con tres procesos. El criterio es la propiedad de los
   datos y el despliegue independiente: comparten la base y la imagen, y un
   cambio en el modelo de Orders obliga a desplegar los tres juntos. Que escalen
@@ -90,9 +92,9 @@ link; si no está, explicarlo.-->
 
 La aplicación usa los dos estilos de comunicación entre servicios: síncrono, con
 [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), y asíncrono, con eventos
-en [RabbitMQ](https://www.rabbitmq.com/). Los eventos se publican en el exchange
-<!--TODO: ver si la diferencia entre "exchange" y "queue" está explicada en algún lado, y vincular a esa explicación; si no está explicado, explicarlo.-->
-`andis.events`, y cada suscriptor recibe los que le interesan en su propia cola.
+en [RabbitMQ](https://www.rabbitmq.com/). Los eventos se publican en el
+[exchange](PATTERNS.md#publishersubscriber) `andis.events`, y cada suscriptor
+recibe los que le interesan en su propia cola.
 
 ### Consulta de detalle: síncrona
 
@@ -154,25 +156,25 @@ sequenceDiagram
     GW-->>C: 200, Orders con nombres
 ```
 
-Cada consulta hace 1 llamada a `Users` y 1 a `Products` por cada `Order`. Si
-`Users` o `Products` no responden, `Orders` devuelve igual las `Orders`, con "no
-disponible" en lugar del nombre: es la degradación que muestran las demos de
-Retry, Circuit Breaker y Bulkhead.
+Cada consulta hace una llamada a `Users` y otra a `Products` por cada `Order`.
+Si `Users` o `Products` no responden, `Orders` devuelve igual las `Orders`, con
+"no disponible" en lugar del nombre: es la degradación que muestran las demos de
+[Retry](PATTERNS.md#retry), [Circuit Breaker](PATTERNS.md#circuit-breaker) y
+[Bulkhead](PATTERNS.md#bulkhead).
 
 ### Creación de una Order: asíncrona
 
 `POST /orders/` guarda la `Order` como `Pending` junto con el evento
-`order.created` en el *outbox*, y responde `202 Accepted` de inmediato, sin
-consultar a `Users` ni a `Products`. El *relay* del *outbox* publica el evento
-en [RabbitMQ](https://www.rabbitmq.com/) un momento después. `Products` lo
-recibe por la cola `products.stock`, reserva el stock y publica
-`stock.reserved`, o `stock.rejected` si falta stock o el `Product` no existe.
-Una de las réplicas de `orders-worker` recibe la respuesta por la cola
-`orders.process`, verifica que el `User` exista, y confirma o rechaza la
-`Order`. Si la rechaza después de la reserva, `Products` devuelve el stock: es
-una [Saga](PATTERNS.md#saga), con los pasos y las compensaciones en
-[Consistencia de los datos](#consistencia-de-los-datos).<!--TODO: ídem
-anterior sobre relay y outbox-->
+`order.created` en el [*outbox*](PATTERNS.md#transactional-outbox), y responde
+`202 Accepted` de inmediato, sin consultar a `Users` ni a `Products`. El *relay*
+del *outbox* publica el evento en [RabbitMQ](https://www.rabbitmq.com/) un
+momento después. `Products` lo recibe por la cola `products.stock`, reserva el
+stock y publica `stock.reserved`, o `stock.rejected` si falta stock o el
+`Product` no existe. Una de las réplicas de `orders-worker` recibe la respuesta
+por la cola `orders.process`, verifica que el `User` exista, y confirma o
+rechaza la `Order`. Si la rechaza después de la reserva, `Products` devuelve el
+stock: es una [Saga](PATTERNS.md#saga), con los pasos y las compensaciones en
+[Consistencia de los datos](#consistencia-de-los-datos).
 
 ```mermaid
 ---
@@ -317,8 +319,8 @@ sequenceDiagram
 ```
 
 La consulta no depende de que `Users` y `Products` respondan, pero puede estar
-atrasada: una `Order` recién creada tarda un momento en aparecer, y un nombre
-recién cambiado, tarda en actualizarse.
+atrasada: una `Order` recién creada tarda un momento en aparecer y un nombre
+recién cambiado tarda en actualizarse.
 
 ### Comparación
 
@@ -372,15 +374,15 @@ recién cambiado, tarda en actualizarse.
 
 Cuando una operación necesita varios componentes a la vez, su disponibilidad es
 el producto de las disponibilidades de esos componentes. Si cada componente está
-disponible el 99,9% del tiempo, unos 43 minutos sin servicio por mes:
+disponible el 99.9% del tiempo, unos 43 minutos sin servicio por mes:
 
 | Operación | Componentes que necesita | Disponibilidad | Sin servicio por mes |
 | --------- | ------------------------ | -------------- | -------------------- |
-| Consultar un `User` | gateway, `users-service`, `users-db` | 99,9% ^ 3 ≈ 99,7% | unas 2 horas |
-| Consulta de detalle completa | gateway, `orders-service`, `orders-db`, `users-service`, `users-db`, `products-service`, `products-db` | 99,9% ^ 7 ≈ 99,3% | unas 5 horas |
-| Consulta de detalle desde la vista | gateway, `orders-service`, `orders-db` | 99,9% ^ 3 ≈ 99,7% | unas 2 horas |
-| Aceptar una `Order` | gateway, `orders-service`, `orders-db` | 99,9% ^ 3 ≈ 99,7% | unas 2 horas |
-| Consulta de detalle desde la vista, por la entrada HTTPS | gateway, `keycloak`, `orders-service`, `orders-db` | 99,9% ^ 4 ≈ 99,6% | unas 3 horas |
+| Consultar un `User` | gateway, `users-service`, `users-db` | $(99.9\%)^3 \approx 99.7\%$ | unas 2 horas |
+| Consulta de detalle completa | gateway, `orders-service`, `orders-db`, `users-service`, `users-db`, `products-service`, `products-db` | $(99.9\%)^7 \approx 99.3\%$ | unas 5 horas |
+| Consulta de detalle desde la vista | gateway, `orders-service`, `orders-db` | $(99.9\%)^3 \approx 99.7\%$ | unas 2 horas |
+| Aceptar una `Order` | gateway, `orders-service`, `orders-db` | $(99.9\%)^3 \approx 99.7\%$ | unas 2 horas |
+| Consulta de detalle desde la vista, por la entrada HTTPS | gateway, `keycloak`, `orders-service`, `orders-db` | $(99.9\%)^4 \approx 99.6\%$ | unas 3 horas |
 
 Cada servicio que se agrega a una cadena síncrona baja la disponibilidad de la
 operación, aunque cada servicio por separado sea muy confiable. La entrada HTTPS
@@ -403,12 +405,14 @@ cadena, y la aplicación usa las tres:
 
 **Para analizar:**
 
-* Hoy hay una sola instancia de cada componente, salvo `orders-worker`. ¿Cuáles
-  son puntos únicos de falla? ¿Cuál sacarían primero de esa lista?
+* Hoy hay una sola instancia de cada componente, salvo `orders-worker` y
+  `orders-projector`, que tienen tres réplicas cada uno. ¿Cuáles son puntos
+  únicos de falla? ¿Cuál sacarían primero de esa lista?
   <!-- → El gateway, Keycloak para la entrada HTTPS, cada servicio, cada base y
   RabbitMQ. Redis no lo es: sin él, Products sigue respondiendo, más lento.
-  orders-projector tampoco del todo: si se cae, la vista se atrasa pero sigue
-  respondiendo. Primero sacaría el gateway, porque todo pasa por él y, como no
+  orders-worker y orders-projector tampoco: si se cae una réplica, las otras
+  siguen consumiendo su cola; pero dependen de orders-db, que es una sola.
+  Primero sacaría el gateway, porque todo pasa por él y, como no
   tiene estado, es fácil de replicar; las bases son más importantes, pero
   replicarlas es más difícil. -->
 * ¿Una respuesta con "no disponible" en lugar del nombre del producto cuenta
@@ -424,7 +428,7 @@ cadena, y la aplicación usa las tres:
   <!-- → products-service deja de ser un eslabón débil: con tres réplicas
   independientes, falla solo si fallan las tres, y su disponibilidad pasa a ser
   casi del 100%. La consulta de detalle completa queda con seis componentes de
-  99,9%, unos 99,4%, y el punto único de falla de Products pasa a ser
+  99.9%, unos 99.4%, y el punto único de falla de Products pasa a ser
   products-db, que sigue siendo una sola instancia. Se puede replicar porque es
   stateless: los Products están en PostgreSQL y la caché en Redis, compartida por
   todas las réplicas. Con una caché en memoria, cada réplica tendría su copia y
@@ -531,12 +535,12 @@ sequenceDiagram
 
 Todos los mensajes pasan por RabbitMQ, y los del ERP, además, por el
 [Messaging Bridge](PATTERNS.md#messaging-bridge); el diagrama no lo muestra.
-* **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces
-  el mismo evento, si se cae entre publicar el evento y marcarlo como
-  publicado<!--TODO: confirmar cambio de redacción-->. Los suscriptores son
-  idempotentes: aplicar el mismo evento dos veces deja el mismo resultado,
-  aunque las dos copias lleguen a la vez a réplicas distintas. Ver
-  [Idempotencia](#idempotencia).
+
+* **Cada evento llega al menos una vez.** El *relay* puede publicar dos veces el
+  mismo evento, si se cae entre publicar el evento y marcarlo como publicado.
+  Los suscriptores son idempotentes: aplicar el mismo evento dos veces deja el
+  mismo resultado, aunque las dos copias lleguen a la vez a réplicas distintas.
+  Ver [Idempotencia](#idempotencia).
 * **Los nombres se piden o se copian.** La consulta síncrona los pide cada vez:
   siempre están al día, pero dependen de que `Users` y `Products` respondan. La
   vista los copia una vez y los actualiza con los eventos: no depende de nadie,
@@ -598,8 +602,8 @@ cuatro razones:
   un corte de red, la vuelve a mandar.
 * El *relay* del [Transactional Outbox](PATTERNS.md#transactional-outbox) y el
   [Messaging Bridge](PATTERNS.md#messaging-bridge) entregan cada mensaje **al
-  menos una vez**: si se caen entre publicar un mensaje y marcarlo, lo publican
-  de nuevo.
+  menos una vez**: si se caen entre publicar un mensaje y marcarlo como
+  publicado, lo publican de nuevo.
 * Con [Competing
   Consumers](PATTERNS.md#competing-consumers-para-disponibilidad), las dos
   copias de un mensaje repetido pueden procesarse **a la vez**, en réplicas
@@ -613,7 +617,7 @@ operación tiene que poder repetirse.
 
 **Depende de lo que hace la operación, no del verbo HTTP.** [RFC
 9110](https://datatracker.ietf.org/doc/html/rfc9110#name-idempotent-methods)
-define `GET`, `PUT` y `DELETE` como idempotentes, y `POST` no. Pero el Retry
+define `GET`, `PUT` y `DELETE` como idempotentes, pero `POST` no. Pero el Retry
 reintenta `GetUser`, que viaja como `POST` porque `Users` usa
 [SOAP](https://www.w3.org/TR/soap/), y es seguro
 porque solo lee. Reintentar `CreateUser`, que también es un `POST`, no lo sería.
@@ -858,10 +862,10 @@ capas que se complementan. La demo implementa una parte de cada una; el resto
 queda afuera porque complicaría levantarla y compararla con las demos
 anteriores.
 
-**La red: desde afuera, solo se llega al gateway.**
+**La red: desde afuera solo se llega al gateway.**
 
 En un centro de datos propio -*on premises*- la red se separa en zonas, con
-VLANs o subredes, y entre una zona y otra hay un firewall que decide quién se
+VLANs o subredes, y entre una zona y otra hay un *firewall* que decide quién se
 conecta con quién:
 
 * **Zona perimetral -DMZ-:** la única que se alcanza desde Internet. Ahí está el
@@ -869,17 +873,17 @@ conecta con quién:
   [TLS](https://datatracker.ietf.org/doc/html/rfc8446) y puede filtrar
   solicitudes con un WAF.
 * **Zona de aplicación:** aquí están los servicios, que son inaccesibles desde
-  Internet: el firewall de esta zona deja entrar solo el tráfico que viene del
-  gateway.
+  Internet: el *firewall* de esta zona deja entrar solamente el tráfico que
+  viene del gateway.
 * **Zona de datos:** aquí están las bases, la caché y el broker de mensajes; el
-  firewall de esta zona solo permite el tráfico que llega de la zona de
+  *firewall* de esta zona solo permite el tráfico que llega de la zona de
   aplicación.
 
-Dentro de cada zona, el firewall de cada servidor -`iptables` o `nftables` en
+Dentro de cada zona, el *firewall* de cada servidor -`iptables` o `nftables` en
 Linux- o una herramienta de segmentación, limita además qué servidores se hablan
-entre sí. El firewall entre zonas y el gateway se complementan: el firewall
-decide quién se puede conectar; el gateway, decide qué hacer con cada solicitud
-que le llega.
+entre sí. El *firewall* entre zonas y el gateway se complementan: el *firewall*
+decide quién se puede conectar, mientras que el gateway decide qué hacer con
+cada solicitud que le llega.
 
 En la nube, las mismas ideas se implementan con los servicios de cada
 proveedor:
@@ -996,11 +1000,11 @@ solo si nadie más puede llegar a `Orders`. No hay TLS entre los servicios.
 
 ## Facilidad de modificación
 
-Cinco cambios que la aplicación absorbe sin tocar su lógica de dominio. Cómo se
-implementó cada uno está en [Demos de facilidad de
+Hay cinco cambios que la aplicación absorbe sin tocar su lógica de dominio; cómo
+se implementó cada uno está en [Demos de facilidad de
 modificación](PATTERNS.md#demos-de-facilidad-de-modificación), en PATTERNS.md.
 
-Cuánto cuesta cada uno, y cómo se midió, está en
+Cuánto cuesta cada uno y cómo se midió, está en
 [Tamaño del cambio](PATTERNS.md#tamaño-del-cambio).
 
 Estos son los cambios que los patrones anticipan, no cualquier cambio: qué queda
@@ -1015,9 +1019,13 @@ afuera de cada uno está en
 | Migrar una ruta del monolito | Una línea en la tabla de la fachada | Los clientes |
 | Cambiar lo que muestra la app móvil | `bff-mobile` | `bff-web` y los servicios |
 
+Para las demos de facilidad de modificación, la aplicación agrega estos
+componentes:
+
 | Componente | Es dueño de | Lo llaman | Llama a |
 | ---------- | ----------- | --------- | ------- |
 | `consul` | La configuración central | `orders-service`, `orders-worker`, `orders-projector`, `products-service` | — |
+| `legacy-broker` | Las colas del ERP, `ERP.PEDIDOS` y `ERP.FACTURAS` | `messaging-bridge`, `legacy-erp` | — |
 | `messaging-bridge` | Nada: reenvía y traduce | [RabbitMQ](https://www.rabbitmq.com/) y [ActiveMQ](https://activemq.apache.org/) le entregan mensajes | RabbitMQ, ActiveMQ |
 | `legacy-erp` | Las facturas | ActiveMQ le entrega mensajes | ActiveMQ |
 | `monolith` | Su propia copia de `Users`, `Products` y `Orders`, en [SQLite](https://www.sqlite.org/) | gateway, por la fachada | — |
@@ -1049,8 +1057,8 @@ afuera de cada uno está en
 
 ## Facilidad de despliegue
 
-Cuatro formas de poner en producción la versión `v2` de `Users`, que conviven
-con la versión `v1`. Cómo se implementó cada una está en [Demos de
+La demo muestra cuatro formas de poner en producción la versión `v2` de `Users`,
+que conviven con la versión `v1`. Cómo se implementó cada una está en [Demos de
 facilidad de despliegue](PATTERNS.md#demos-de-facilidad-de-despliegue), en
 PATTERNS.md.
 
@@ -1059,7 +1067,9 @@ Las cuatro dependen de que cada servicio se pueda desplegar solo: la versión
 demás cambien. Y las cuatro suponen que la versión nueva es compatible con la
 anterior, porque mientras conviven comparten la base y los clientes.
 
-Blue/Green, Rolling Upgrade y Canary Testing tienen dos implementaciones:
+[Blue/Green](PATTERNS.md#bluegreen-deployment), [Rolling
+Upgrade](PATTERNS.md#rolling-upgrade) y [Canary
+Testing](PATTERNS.md#canary-testing) tienen dos implementaciones:
 
 * **Con [Docker Compose](https://docs.docker.com/compose/), a mano:** las demos
   28 a 30. Cada paso es un cambio en el gateway o un contenedor que se levanta o
@@ -1073,12 +1083,11 @@ Blue/Green, Rolling Upgrade y Canary Testing tienen dos implementaciones:
   *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con
   [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/).
 
-La demo de Kubernetes es siempre la de Docker Compose más 4. En Azure, lo mismo
-se hace con [Azure Kubernetes
+En Azure, lo mismo se hace con [Azure Kubernetes
 Service](https://azure.microsoft.com/products/kubernetes-service/) y Argo
 Rollouts, o con las revisiones de [Azure Container
-Apps](https://azure.microsoft.com/products/container-apps/); en AWS, con
-[Amazon EKS](https://aws.amazon.com/eks/) y Argo Rollouts, o con [AWS
+Apps](https://azure.microsoft.com/products/container-apps/); en AWS, con [Amazon
+EKS](https://aws.amazon.com/eks/) y Argo Rollouts, o con [AWS
 CodeDeploy](https://aws.amazon.com/codedeploy/).
 
 | Estrategia | Qué se toca | Qué no se toca | Cómo se vuelve atrás |
@@ -1087,6 +1096,9 @@ CodeDeploy](https://aws.amazon.com/codedeploy/).
 | Rolling Upgrade | Las instancias del grupo, de a una | El destino, que es el grupo | Otro Rolling Upgrade, hacia la versión anterior; con Argo Rollouts, solo, si el análisis falla |
 | Canary Testing | El porcentaje de la versión `v2` | Las dos versiones | El porcentaje vuelve a cero; con Argo Rollouts, solo, si el análisis falla |
 | A/B Testing | El reparto del *flag* en [Unleash](https://www.getunleash.io/) | El gateway, que no sabe del experimento, y el código de `Users` | Se cambia el reparto, sin desplegar |
+
+Para las demos de facilidad de despliegue, la aplicación agrega estos
+componentes:
 
 | Componente | Es dueño de | Lo llaman | Llama a |
 | ---------- | ----------- | --------- | ------- |
@@ -1130,14 +1142,13 @@ CodeDeploy](https://aws.amazon.com/codedeploy/).
 ## Decisiones abiertas a discusión
 
 Algunas decisiones simplifican la demo y no son las que se tomarían en
-producción. Varias se resuelven en las demos siguientes, descritas en
-[PATTERNS.md](PATTERNS.md).
+producción.
 
 | Decisión | Qué se gana | Qué cuesta | Dónde se aborda |
 | -------- | ----------- | ---------- | --------------- |
-| La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway sigue abierta, sin autenticación ni [TLS](https://datatracker.ietf.org/doc/html/rfc8446), junto a la HTTPS | Las demos anteriores funcionan igual, y se compara cada solicitud con y sin los patrones de seguridad | Por HTTP, cualquiera puede crear `Orders` o `Users` sin identificarse | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Federated Identity, Gateway Offloading; en producción quedaría solo la HTTPS |
-| Los endpoints de inyección de fallas son accesibles a través de la entrada HTTP del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, que no los publica por HTTPS |
-| Los puertos de los servicios y de las bases se publican en el host | Se pueden probar sin pasar por el gateway | Cualquiera se saltea los controles del gateway, y puede hacerse pasar por otro usuario mandando los encabezados de identidad | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): Gatekeeper, con `docker-compose.gatekeeper.yaml` |
+| La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway sigue abierta, sin autenticación ni [TLS](https://datatracker.ietf.org/doc/html/rfc8446), junto a la HTTPS | Las demos con HTTP funcionan igual, y se compara cada solicitud con y sin los patrones de seguridad | Por HTTP, cualquiera puede crear `Orders` o `Users` sin identificarse | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): [Federated Identity](PATTERNS.md#federated-identity), [Gateway Offloading](PATTERNS.md#gateway-offloading); en producción quedaría solo la HTTPS |
+| Los endpoints de inyección de fallas son accesibles a través de la entrada HTTP del gateway | Las demos se controlan desde afuera | Cualquiera puede hacer fallar un servicio | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): [Gatekeeper](PATTERNS.md#gatekeeper), que no los publica por HTTPS |
+| Los puertos de los servicios y de las bases se publican en el host | Se pueden probar sin pasar por el gateway | Cualquiera se saltea los controles del gateway, y puede hacerse pasar por otro usuario mandando los encabezados de identidad | [Demos de seguridad](PATTERNS.md#demos-de-seguridad): [Gatekeeper](PATTERNS.md#gatekeeper), con `docker-compose.gatekeeper.yaml` |
 | El gateway valida cada token preguntándole a [Keycloak](https://www.keycloak.org/) | Se entera enseguida si una sesión se cerró | Una llamada a Keycloak por solicitud; si Keycloak no responde, nadie entra | — |
 | Un solo *sidecar*, sin TLS entre los servicios | Menos infraestructura | El tráfico dentro de la red viaja sin cifrar, y `Orders` y `Users` no tienen *sidecar* | — |
 | Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
@@ -1147,7 +1158,7 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Los cambios de nombre se ordenan por la hora de cada contenedor | Varios proyectores, sin numerar los cambios en `Users` ni en `Products` | Si los relojes no están sincronizados, un nombre viejo puede pisar uno nuevo, o uno nuevo puede descartarse | [Materialized View](PATTERNS.md#materialized-view) |
 | Un mensaje que falla siempre vuelve a la cola | Ningún mensaje se descarta por una falla pasajera | Un *poison message* se reintenta para siempre y ocupa a una réplica cada 5 segundos | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
-| Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): External Configuration Store |
+| Configuración en variables de entorno y constantes en el código | No hace falta otro componente | Cambiar un límite exige redesplegar | [Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación): [External Configuration Store](PATTERNS.md#external-configuration-store) |
 | Contraseñas en texto plano en `docker-compose.yaml` y en `andis-realm.json` | Se levanta con un solo comando | Las credenciales de las bases, la clave de [Azurite](https://github.com/Azure/Azurite) y las contraseñas de los usuarios de la demo quedan en el repositorio | — |
 | [Consul](https://developer.hashicorp.com/consul) en modo desarrollo, en un solo nodo y sin persistencia | Arranca con un comando | Si se vuelve a crear el contenedor, se pierden los valores; si se cae, nadie recibe cambios | — |
 | Una sola instancia del puente | Se conserva el orden de los pedidos | Si se cae, los mensajes esperan hasta que vuelva | — |

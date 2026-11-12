@@ -1,0 +1,19 @@
+# La configuración del worker de Orders en el clúster: la misma de orders-worker
+# en docker-compose.yaml. Los nombres de host son los de Docker Compose: el
+# worker usa RabbitMQ, la base de Orders, Users, Products y Consul de Docker
+# Compose, porque el nodo de kind está conectado a esa red -ver la función
+# compose_network de k8s/common.sh-. En el clúster solo corre el worker.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-worker-config
+  namespace: andis
+data:
+  SERVICE_NAME: "orders-worker"
+  CONNECTIONSTRINGS__ORDERSDB: "Server=orders-db;Port=3306;Database=ordersdb;User=ordersusr;Password=Pa55w0rd"
+  USERSSERVICE__BASEURL: "http://users-service:8000/users/UserService.svc"
+  PRODUCTSSERVICE__BASEURL: "http://products-service:8000/products/"
+  RABBITMQ__HOST: "rabbitmq"
+  CONSUL__URL: "http://consul:8500"
+  WORKER__ENABLED: "true"
+  WORKER__PROCESSINGDELAYMS: "2000"

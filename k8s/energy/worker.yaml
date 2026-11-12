@@ -1,0 +1,47 @@
+# El worker de Orders: Competing Consumers sobre la cola orders.process, como
+# orders-worker en Docker Compose, con 3 réplicas fijas. Es la demo 35.
+#
+# Cada réplica reserva 0,25 vCPU, la use o no. Con el modelo de energía de
+# Prometheus -ver k8s/base/prometheus.yaml-, eso es lo que consume una réplica
+# ociosa: la máquina tiene que estar encendida para esa CPU.
+#
+# En las demos 36 y 37, un ScaledObject de KEDA toma el control del número de
+# réplicas: este manifiesto se aplica igual, y KEDA lo cambia.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-worker
+  namespace: andis
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: orders-worker
+  template:
+    metadata:
+      labels:
+        app: orders-worker
+    spec:
+      containers:
+        - name: orders-worker
+          image: orders-service:latest
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: orders-worker-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi

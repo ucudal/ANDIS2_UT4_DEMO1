@@ -1,0 +1,31 @@
+# Procesamiento diferido: la demo 37. El worker solo está encendido dentro de
+# una ventana de tiempo, con 3 réplicas; fuera de ella, 0. Las Orders que llegan
+# fuera de la ventana esperan en la cola orders.process hasta que se abre.
+#
+# La ventana simula las horas en que la energía de la red es más limpia, o más
+# barata. Dura un minuto de cada dos, en los minutos pares, porque cron no tiene
+# unidades menores que un minuto. En producción, la ventana sale de un pronóstico
+# de intensidad de carbono: en AKS, el carbon-aware KEDA operator; en AWS, una
+# regla programada de EventBridge.
+#
+# No hay trigger de la cola: si lo hubiera, KEDA encendería el worker apenas
+# llegara un mensaje, y la ventana no serviría.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: orders-worker
+  namespace: andis
+spec:
+  scaleTargetRef:
+    name: orders-worker
+  minReplicaCount: 0
+  maxReplicaCount: 3
+  pollingInterval: 5
+  cooldownPeriod: 10
+  triggers:
+    - type: cron
+      metadata:
+        timezone: Etc/UTC
+        start: "*/2 * * * *"
+        end: "1-59/2 * * * *"
+        desiredReplicas: "3"

@@ -1,0 +1,29 @@
+# Escalado a cero: la demo 36. KEDA cambia el número de réplicas del worker
+# según el largo de la cola orders.process:
+# - Con la cola vacía, 0 réplicas: no hay nada encendido esperando trabajo.
+# - Con mensajes, una réplica cada 5 mensajes, hasta 6.
+# - Cuando la cola se vacía, espera 30 segundos -cooldownPeriod- y vuelve a 0.
+#
+# Es lo que hacen los servicios serverless: Azure Container Apps escala con
+# KEDA, y AWS Lambda con una cola de SQS como origen de eventos.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: orders-worker
+  namespace: andis
+spec:
+  scaleTargetRef:
+    name: orders-worker
+  minReplicaCount: 0
+  maxReplicaCount: 6
+  pollingInterval: 5
+  cooldownPeriod: 30
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: http
+        queueName: orders.process
+        mode: QueueLength
+        value: "5"
+      authenticationRef:
+        name: rabbitmq

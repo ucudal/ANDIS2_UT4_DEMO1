@@ -69,17 +69,21 @@ crear `Orders` y consultar el detalle de las `Orders` de un `User`. Cada demo
 agrega patrones sobre esta base, así se puede comparar el comportamiento sin
 cambiar la experiencia de uso.
 
-<!-- TODO: Revisar lo siguiente una vez implementadas las demos -->
-Algunos patrones necesitan infraestructura que hoy no está -un broker de
-mensajes, una caché, un proveedor de identidad, un almacenamiento de archivos-.
-Se agregan como contenedores en el `docker-compose.yaml` de la demo que los use.
-No se agregan servicios de dominio nuevos.
+Los patrones agregan componentes sobre esta base: infraestructura -un broker de
+mensajes, una caché, un proveedor de identidad, un almacenamiento de archivos,
+un almacén de configuración-, procesos de `Orders` -el *worker* y el
+proyector-, y servicios que existen para mostrar un patrón -el ERP, el
+monolito, `Purchases` y los BFF-. Todos están en
+[docker-compose.yaml](docker-compose.yaml); qué hace cada uno está en
+[Servicios y datos](ARCHITECTURE.md#servicios-y-datos) y en [Facilidad de
+modificación](ARCHITECTURE.md#facilidad-de-modificación), en ARCHITECTURE.md.
 
-<!-- TODO: Revisar lo siguiente una vez implementadas las demos -->
-La dependencia que más se aprovecha es la de `GET
-/orders/user/{userId}/details`: `Orders` llama de forma sincrónica a `Users` y a
-`Products`. Es el punto natural para mostrar fallas en cascada, cachés y vistas
-materializadas.
+Las dependencias que más se aprovechan son dos. En `GET
+/orders/user/{userId}/details`, `Orders` llama de forma sincrónica a `Users` y a
+`Products`: es el punto natural para mostrar fallas en cascada, cachés y vistas
+materializadas. En `POST /orders/`, `Orders` y `Products` se coordinan con
+eventos: es el punto para mostrar colas, consumidores en competencia, el
+*outbox* y la [Saga](#saga).
 
 ## Cobertura
 

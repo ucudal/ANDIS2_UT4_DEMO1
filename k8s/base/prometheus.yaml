@@ -9,6 +9,10 @@
 # pod_template_hash con un Deployment. Así se separan las métricas de cada
 # versión.
 #
+# Para las demos de eficiencia energética, de la 35 a la 37, lee además el
+# cAdvisor del kubelet: cuánta CPU usa y cuánta reserva cada contenedor. Con eso
+# estima la energía de cada pod -ver las reglas de energy.rules.yml-.
+#
 # Consola: http://localhost:30090, publicado por kind -ver k8s/kind.yaml-.
 apiVersion: v1
 kind: ServiceAccount
@@ -41,6 +45,33 @@ subjects:
     name: prometheus
     namespace: andis
 ---
+# Permiso para encontrar el nodo y leer las métricas de su kubelet, donde está
+# el cAdvisor. Los nodos no son de ningún namespace: hace falta un ClusterRole.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: andis-prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: andis-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: andis-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: andis
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -50,6 +81,8 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 5s
+    rule_files:
+      - /etc/prometheus/energy.rules.yml
     scrape_configs:
       - job_name: users
         kubernetes_sd_configs:
@@ -71,6 +104,51 @@ data:
           - source_labels: [__meta_kubernetes_pod_container_image]
             regex: .*:(.+)
             target_label: version
+      # El cAdvisor del kubelet, en el puerto 10250 del nodo. El kubelet pide
+      # el token de la cuenta de servicio, y su certificado no está firmado
+      # para la IP del nodo: no se verifica.
+      - job_name: cadvisor
+        scheme: https
+        metrics_path: /metrics/cadvisor
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          insecure_skip_verify: true
+        kubernetes_sd_configs:
+          - role: node
+        metric_relabel_configs:
+          # Solo la CPU usada y la reservada, de los contenedores del namespace
+          # andis. container="" es el pod entero o su contenedor pause.
+          - source_labels: [__name__]
+            regex: container_cpu_usage_seconds_total|container_spec_cpu_shares
+            action: keep
+          - source_labels: [namespace, container]
+            regex: andis;.+
+            action: keep
+  # Power Monitor: la energía de cada pod se estima, no se mide. El nodo de kind
+  # no tiene contadores de energía -RAPL ni hwmon-, como pasa en casi cualquier
+  # máquina virtual. Se usa el modelo de Cloud Carbon Footprint:
+  #
+  #   watts = vCPU reservadas × Wmin + vCPU usadas × (Wmax − Wmin)
+  #
+  # Wmin y Wmax son los watts de una vCPU ociosa y al 100%: 0,78 y 3,76 en
+  # Azure, que son los que se usan acá; 0,74 y 3,5 en AWS. Ver
+  # https://www.cloudcarbonfootprint.org/docs/methodology/
+  #
+  # La parte reservada hace que un pod ocioso consuma: la máquina tiene que
+  # estar encendida para la CPU que el pod pidió, aunque no la use. Las vCPU
+  # reservadas salen de los shares del cgroup: 1024 por vCPU.
+  energy.rules.yml: |
+    groups:
+      - name: energy
+        interval: 5s
+        rules:
+          - record: pod:cpu_used:vcpu
+            expr: sum by (pod) (rate(container_cpu_usage_seconds_total{job="cadvisor"}[30s]))
+          - record: pod:cpu_reserved:vcpu
+            expr: sum by (pod) (container_spec_cpu_shares{job="cadvisor"}) / 1024
+          - record: pod:power:watts
+            expr: pod:cpu_reserved:vcpu * 0.78 + on (pod) pod:cpu_used:vcpu * (3.76 - 0.78)
 ---
 apiVersion: apps/v1
 kind: Deployment

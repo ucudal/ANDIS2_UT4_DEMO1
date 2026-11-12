@@ -1,0 +1,22 @@
+# Cómo llega KEDA a RabbitMQ para saber cuántos mensajes tiene la cola
+# orders.process. Usa la API de administración, en el puerto 15672 del RabbitMQ
+# de Docker Compose: cuenta los mensajes listos y también los que un worker está
+# procesando, sin confirmar todavía. Así no apaga un worker que está trabajando.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq
+  namespace: andis
+stringData:
+  host: "http://guest:guest@rabbitmq:15672/"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq
+  namespace: andis
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: rabbitmq
+      key: host

@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Crea el clúster de las demos de despliegue con Kubernetes, de la 32 a la 34, y
-# deja instalado lo que comparten:
+# Crea el clúster de las demos con Kubernetes: las de despliegue, de la 32 a la
+# 34, y las de eficiencia energética, de la 35 a la 37. Deja instalado lo que
+# comparten:
 # - Gateway API y NGINX Gateway Fabric, la entrada de los clientes en el 8092.
 # - Argo Rollouts, que despliega cada versión con una estrategia, y su plugin de
 #   Gateway API, con el que cambia los pesos de una HTTPRoute.
+# - KEDA, que escala el worker de Orders según su cola, o según una ventana de
+#   tiempo.
 # - De k8s/base: la base de Users, su configuración, el Gateway, Prometheus y el
 #   análisis de errores.
-# - Las tres versiones de Users, como imágenes: v1, v2 y v3-bad.
+# - Las tres versiones de Users, como imágenes: v1, v2 y v3-bad, y la imagen de
+#   Orders, que usa el worker.
 #
 # Necesita Docker, kind, kubectl y el plugin kubectl-argo-rollouts. Si el
 # clúster ya existe, solo actualiza lo que haya cambiado. Se borra con
@@ -19,6 +23,7 @@ GATEWAY_API=v1.6.3
 NGINX_GATEWAY_FABRIC=v2.8.0
 ARGO_ROLLOUTS=v1.10.2
 ARGO_GATEWAY_API_PLUGIN=v0.17.0
+KEDA=v2.21.0
 
 step() { printf '\n\033[1m> %s\033[0m\n' "$*"; }
 
@@ -44,6 +49,12 @@ docker build -q -f src/UsersService/Dockerfile -t users-service:v2 --build-arg R
 docker build -q -f src/UsersService/Dockerfile -t users-service:v3-bad \
     --build-arg RELEASE_VERSION=3 --build-arg CHAOS_FAILURE_RATE=0.3 src > /dev/null
 kind load docker-image --name "$CLUSTER" users-service:v1 users-service:v2 users-service:v3-bad
+
+# El worker de las demos 35 a 37 es la misma imagen que orders-worker en Docker
+# Compose.
+step "La imagen de Orders, para el worker"
+docker build -q -f src/OrdersService/Dockerfile -t orders-service:latest src > /dev/null
+kind load docker-image --name "$CLUSTER" orders-service:latest
 
 step "Gateway API $GATEWAY_API y NGINX Gateway Fabric $NGINX_GATEWAY_FABRIC"
 kubectl apply --server-side -f \
@@ -74,11 +85,23 @@ if [[ "$(kubectl -n argo-rollouts get configmap argo-rollouts-config -o jsonpath
 fi
 kubectl -n argo-rollouts rollout status deployment/argo-rollouts --timeout=180s
 
+step "KEDA $KEDA"
+# --server-side, por lo mismo que Argo Rollouts: CRD grandes.
+kubectl apply --server-side -f \
+    "https://github.com/kedacore/keda/releases/download/$KEDA/keda-${KEDA#v}.yaml" > /dev/null
+kubectl -n keda rollout status deployment/keda-operator --timeout=180s
+kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
+
 step "La base de Users, su configuración, el Gateway y Prometheus"
 kubectl apply -f k8s/base/namespace.yaml > /dev/null
 kubectl -n andis create configmap users-db-init --from-file=src/UsersService/mongoinit \
     --dry-run=client -o yaml | kubectl apply -f - > /dev/null
-kubectl apply -f k8s/base > /dev/null
+applied=$(kubectl apply -f k8s/base)
+# Prometheus lee su configuración y sus reglas solo al arrancar: si cambiaron,
+# se reinicia.
+if grep -q '^configmap/prometheus configured' <<< "$applied"; then
+    kubectl -n andis rollout restart deployment/prometheus > /dev/null
+fi
 kubectl -n andis rollout status statefulset/users-db --timeout=180s
 kubectl -n andis rollout status deployment/prometheus --timeout=180s
 kubectl -n andis wait --for=condition=Programmed gateway/andis --timeout=180s
