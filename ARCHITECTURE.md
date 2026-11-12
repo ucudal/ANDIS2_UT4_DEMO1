@@ -735,12 +735,12 @@ en memoria porque compartirlo costaría una llamada remota en cada solicitud. Al
 escalar, cada réplica decide por su cuenta:
 
 * **Circuit Breaker y Bulkhead**, en
-  [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs): cada réplica
+  [Resilience.cs](src/OrdersService/Resilience.cs): cada réplica
   cuenta sus propias fallas, abre su propio circuito y tiene sus propios lugares
   en cada compartimento. Con tres *workers*, el circuito hacia `Users` de uno
   puede estar abierto y el de otro, todavía cerrado.
 * **Throttling de `Orders`**, en
-  [OrdersService/Program.cs](src/OrdersService/Program.cs): 20 consultas de
+  [Program.cs](src/OrdersService/Program.cs): 20 consultas de
   detalle a la vez **por réplica**. Con N réplicas de `orders-service`, el
   límite efectivo es 20 × N.
 * **Throttling del gateway**, con
@@ -772,12 +772,12 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   Tiene código transversal -inyección de fallas, métricas, la respuesta de
   salud- y también los contratos que `Orders` usa para leer las respuestas de
   `Users` y `Products`: los registros `UserDto`, en
-  [Common/UserDto.cs](src/Common/UserDto.cs), y `ProductDto`, en
-  [Common/ProductDto.cs](src/Common/ProductDto.cs). `Products` no usa
+  [UserDto.cs](src/Common/UserDto.cs), y `ProductDto`, en
+  [ProductDto.cs](src/Common/ProductDto.cs). `Products` no usa
   `ProductDto`: tiene su propio modelo. También tiene la conexión con
   [RabbitMQ](https://www.rabbitmq.com/), en la clase `RabbitMq`, y los contratos
   de los eventos, en la clase `Events` y sus registros, en
-  [Common/Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a
+  [Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a
   recompilar y redesplegar los tres servicios.
 * **Los contratos de los eventos.** Los proyectores esperan que
   `product.updated` traiga el identificador y el nombre del `Product`.
@@ -795,7 +795,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   `/users/UserService.svc?wsdl`. `Orders` arma a mano el sobre de `GetUser` y
   lee el [XML](https://www.w3.org/XML/) de la respuesta -ver el método
   `GetUserAsync` de la clase `Dependencies`, en
-  [OrdersService/Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que
+  [Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que
   depende del namespace, del nombre de la operación y de los nombres de los
   elementos. El WSDL documenta el contrato, pero `Orders` no lo usa para generar
   el cliente: un cliente
@@ -912,7 +912,7 @@ proveedor:
   fuera del clúster. Solo se expone el *Gateway* de [Gateway
   API](https://gateway-api.sigs.k8s.io/), que reemplaza al antiguo *ingress
   controller* y cumple el papel del gateway. Las demos de despliegue con
-  Kubernetes lo hacen así: [k8s/base/gateway.yaml](k8s/base/gateway.yaml) es el
+  Kubernetes lo hacen así: [gateway.yaml](k8s/base/gateway.yaml) es el
   único punto de entrada al clúster, y `Users` y su base son `ClusterIP`.
 
 En la demo, [docker-compose.yaml](docker-compose.yaml) publica en el host los

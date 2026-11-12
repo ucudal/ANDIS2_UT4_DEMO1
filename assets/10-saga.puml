@@ -14,7 +14,7 @@ alt hay stock
   P ->> MQ : stock.reserved
   MQ ->> W : stock.reserved
   W ->> W : pide el User a Users
-  alt el User existe
+  alt User existe
     W ->> MQ : order.confirmed\nla Order queda Confirmed
     MQ ->> E : order.confirmed
     alt hasta 10 unidades
@@ -27,7 +27,7 @@ alt hay stock
       P ->> P : devuelve el stock\nreserva Released
       P ->> MQ : stock.released
     end
-  else el User no existe
+  else User no existe
     W ->> MQ : order.rejected\nla Order queda Rejected
     MQ ->> P : order.rejected
     P ->> P : devuelve el stock\nreserva Released
@@ -39,5 +39,5 @@ else falta stock o el Product no existe
   MQ ->> W : stock.rejected
   W ->> MQ : order.rejected\nla Order queda Rejected
 end
-note over O, E : cada servicio guarda sus cambios y el evento en una sola transacción local,\ny los publica con su outbox
+note over O, E : Cada servicio guarda sus cambios y el evento en una\nsola transacción local y los publica con su outbox
 @enduml

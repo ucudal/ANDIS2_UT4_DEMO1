@@ -958,9 +958,12 @@ docker compose exec orders-db mysql --default-character-set=utf8mb4 -u ordersusr
   -e "SELECT id, routing_key, created_at, published_at FROM outbox_messages ORDER BY id DESC LIMIT 10"
 
 # Resultado en Grafana:
-# - "Outbox de Orders": "pendientes" sube a 5 durante los 15 segundos en que
-#   RabbitMQ está detenido y vuelve a 0 cuando se levanta; en ese momento
-#   aparece un pico en "publicados por segundo".
+# - "Outbox de Orders y Products": "pendientes, orders-service" sube a 5
+#   durante los 15 segundos en que RabbitMQ está detenido y vuelve a 0 cuando se
+#   levanta; en ese momento aparece un pico en "publicados por segundo,
+#   orders-service". Las líneas de products-service quedan cerca de 0: Products
+#   no recibe los order.created hasta que RabbitMQ vuelve, y publica sus
+#   stock.reserved enseguida.
 # - "Cola orders.process" y "Cola orders.details-view": las líneas se cortan
 #   mientras RabbitMQ está detenido, porque Prometheus no puede leer sus
 #   métricas.
@@ -988,8 +991,8 @@ echo "$initial"
 curl -s -X PUT http://localhost/products/3/stock -H "Content-Type: application/json" \
   -d '{"stock": 20}' | jq
 
-# Pedir 2 unidades para bob. Products las reserva, el worker confirma la Order y
-# el ERP la factura.
+# Pedir 2 unidades para 'bob'. Products las reserva, el worker confirma la Order
+# y el ERP la factura.
 
 id=$(curl -s -X POST http://localhost/orders/ -H "Content-Type: application/json" \
   -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 2}' | jq .id)
@@ -1018,7 +1021,7 @@ id=$(curl -s -X POST http://localhost/orders/ -H "Content-Type: application/json
 curl -s http://localhost/orders/$id/events | jq -c '.events[] | {type, data}'
 curl -s http://localhost/products/3 | jq .stock
 
-# Pedir 12 unidades para bob. El worker confirma la Order, pero el ERP no
+# Pedir 12 unidades para 'bob'œ. El worker confirma la Order, pero el ERP no
 # factura pedidos de más de 10 unidades: responde con un rechazo, que el puente
 # publica como order.invoice-failed. El worker cancela la Order -ya estaba
 # confirmada, no se puede rechazar- y, con order.cancelled, Products devuelve
@@ -1054,6 +1057,21 @@ curl -s -X PUT http://localhost/products/3/stock -H "Content-Type: application/j
 # compensación lo devuelve. La cuarta pasa de Confirmed a Cancelled, y el stock
 # vuelve. Las copias de los eventos no cambian el stock: la reserva tiene como
 # clave la Order, y la liberación solo cambia una reserva Reserved.
+#
+# Resultado en Grafana, en la fila "Saga: stock y reservas":
+# - "Stock por Product": Zapatos aparece en 20 al fijar el stock y baja a 18
+#   con la primera Order. La segunda no lo mueve. Con la tercera y la cuarta
+#   baja 3 y 12 unidades y vuelve a 18 con cada compensación; cada caída dura
+#   unos pocos segundos, y Prometheus lee cada 5, así que puede verse o no.
+#   Al terminar, el stock vuelve a su valor inicial y la línea desaparece: el
+#   panel muestra solo los Products con menos de 1000 unidades.
+# - "Reservas de stock en el último minuto, por resultado": 3 Reserved, 1
+#   Rejected y 2 Released, las dos compensaciones. Después de publicar las
+#   copias, los números no cambian: ninguna copia reserva ni libera.
+# - "Outbox de Orders y Products": picos en "publicados por segundo" de los dos
+#   servicios, uno por cada evento de la Saga.
+# - "Orders procesadas por segundo, por réplica": los resultados Confirmed,
+#   Rejected y Cancelled de los workers.
 
 # ---------------------------------------------------------------------------
 # Tear down

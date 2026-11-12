@@ -42,6 +42,9 @@ events "$ok"
 reservation "$ok"
 stock
 
+note "Se esperan 10\", para que en Grafana se distingan los casos..."
+sleep 10
+
 step "2. bob pide 50 unidades: Products no tiene stock"
 short=$(create_order "$BOB" $PRODUCT 50)
 wait_processed "$short"
@@ -50,6 +53,9 @@ events "$short"
 reservation "$short"
 stock
 note "Products publicó stock.rejected en lugar de stock.reserved: no hay nada que compensar."
+
+note "Se esperan 10\", para que en Grafana se distingan los casos..."
+sleep 10
 
 step "3. Un User que no existe pide 3 unidades: Orders la rechaza después de la reserva"
 missing=$(create_order 000000000000000000000000 $PRODUCT 3)
@@ -61,6 +67,9 @@ reservation "$missing"
 stock
 note "Products ya había descontado las 3 unidades. Con order.rejected las devolvió:"
 note "es la compensación del primer paso."
+
+note "Se esperan 10\", para que en Grafana se distingan los casos..."
+sleep 10
 
 step "4. bob pide 12 unidades: el ERP no factura pedidos de más de 10"
 erp=$(create_order "$BOB" $PRODUCT 12)
@@ -74,6 +83,9 @@ stock
 note "La Order ya estaba confirmada, así que no se rechaza: se cancela, y con"
 note "order.cancelled Products devuelve el stock. Las compensaciones van en orden"
 note "inverso: el último paso que salió bien se deshace primero."
+
+note "Se esperan 10\", para que en Grafana se distingan los casos..."
+sleep 10
 
 step "Mensajes de la Saga, en orden"
 docker compose logs -t --since 3m products-service orders-worker 2>/dev/null \

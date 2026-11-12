@@ -70,7 +70,7 @@ seguridad](PATTERNS.md#demos-de-seguridad) en PATTERNS.md.
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
 | `GET` | `/users/UserService.svc?wsdl` | Contrato SOAP de `Users` |
-| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un `User`, `CreateUser` crea uno y `UpdateUser` lo cambia y publica `user.updated`; ver [UsersService/UsersService.http](src/UsersService/UsersService.http) |
+| `POST` | `/users/UserService.svc` | Operaciones SOAP de `Users`, según el encabezado `SOAPAction`: `ListUsers` lista los `Users`, `GetUser` obtiene un `User`, `CreateUser` crea uno y `UpdateUser` lo cambia y publica `user.updated`; ver [UsersService.http](src/UsersService/UsersService.http) |
 | `GET` | `/products/` | Lista los `Products` |
 | `GET` | `/products/{id}` | Obtiene un `Product` |
 | `POST` | `/products/` | Crea un `Product` |
@@ -206,9 +206,9 @@ el usuario `admin` y la contraseña `Pa55w0rd`. Los usuarios de la aplicación
 sus conexiones](assets/deployment.svg)](assets/deployment.svg)
 
 Para verlo en tamaño completo y hacer zoom, abrir
-[assets/deployment.svg](assets/deployment.svg) o el diagrama dibujado [desde su
+[deployment.svg](assets/deployment.svg) o el diagrama dibujado [desde su
 fuente](https://www.plantuml.com/plantuml/proxy?fmt=svg&src=https://raw.githubusercontent.com/ucudal/ANDIS2_UT4_DEMO1/main/assets/deployment.puml),
-[assets/deployment.puml](assets/deployment.puml).
+[deployment.puml](assets/deployment.puml).
 
 Cada nodo `«container»` es un contenedor definido en
 [docker-compose.yaml](docker-compose.yaml). Los servicios escuchan en el puerto
@@ -222,36 +222,36 @@ encuentran como `products-service:9000`.
 
 | Patrón | Dónde |
 | ------ | ----- |
-| Retry | `AddRetry` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), para los `HttpClient` hacia `Users` y `Products` |
-| Circuit Breaker | `AddCircuitBreaker` en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs); la degradación está en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
-| Bulkhead | `AddRateLimiter` con un `ConcurrencyLimiter` por dependencia, en el método `AddResilience` de la clase `Resilience`, en [OrdersService/Resilience.cs](src/OrdersService/Resilience.cs) |
-| Throttling | `AddRateLimiter`, política `throttling`, en [OrdersService/Program.cs](src/OrdersService/Program.cs), aplicada en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs); por cliente, en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone) y [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req) para `POST /orders/` |
-| Rate Limiting | Del lado del cliente: la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y [k6/rate-limiting.js](k6/rate-limiting.js) crean `Orders` sin superar el límite del gateway |
+| Retry | `AddRetry` en el método `AddResilience` de la clase `Resilience`, en [Resilience.cs](src/OrdersService/Resilience.cs), para los `HttpClient` hacia `Users` y `Products` |
+| Circuit Breaker | `AddCircuitBreaker` en el método `AddResilience` de la clase `Resilience`, en [Resilience.cs](src/OrdersService/Resilience.cs); la degradación está en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
+| Bulkhead | `AddRateLimiter` con un `ConcurrencyLimiter` por dependencia, en el método `AddResilience` de la clase `Resilience`, en [Resilience.cs](src/OrdersService/Resilience.cs) |
+| Throttling | `AddRateLimiter`, política `throttling`, en [Program.cs](src/OrdersService/Program.cs), aplicada en el método `GetOrdersForUser` de la clase `OrdersController`, en [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs); por cliente, en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone) y [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req) para `POST /orders/` |
+| Rate Limiting | Del lado del cliente: la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y [rate-limiting.js](k6/rate-limiting.js) crean `Orders` sin superar el límite del gateway |
 | Health Endpoint Monitoring | `AddHealthChecks` y `MapHealthChecks` en el `Program.cs` de cada servicio; [`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck) en [docker-compose.yaml](docker-compose.yaml); rutas `/health/*` en `nginx.conf` |
-| Competing Consumers | Los métodos `ExecuteAsync` y `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs), consumen la cola `orders.process`; servicio `orders-worker` con 3 réplicas en [docker-compose.yaml](docker-compose.yaml) |
-| Event Sourcing | La clase `OrderEvent`, en [OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs), y el método `Replay` de la clase `OrderProjection`, en [OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs); tabla `order_events` en [OrdersService/mysqlinit/mysqlinit.sql](src/OrdersService/mysqlinit/mysqlinit.sql) |
-| Transactional Outbox | La clase `OutboxMessage`, en [Common/OutboxMessage.cs](src/Common/OutboxMessage.cs), escrita en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), en el método `ChangeStatusAsync` del *worker* y en la clase `StockReservations` de `Products`; la publica el método `PublishPendingAsync` de la clase `OutboxRelay`, en [Common/OutboxRelay.cs](src/Common/OutboxRelay.cs) |
-| Saga | Los métodos `ReserveAsync` y `ReleaseAsync` de la clase `StockReservations`, en [ProductsService/StockReservations.cs](src/ProductsService/StockReservations.cs); los métodos `ConfirmAsync`, `RejectAsync` y `CancelAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs); el rechazo del ERP en [LegacyErp/Program.cs](src/LegacyErp/Program.cs), traducido por el método `ToEvent` de la clase `ErpFormat`, en [MessagingBridge/ErpFormat.cs](src/MessagingBridge/ErpFormat.cs) |
-| Cache-Aside | Los métodos `GetOrLoadAsync` e `InvalidateAsync` de la clase `ProductCache`, en [ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs), usados en los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
+| Competing Consumers | Los métodos `ExecuteAsync` y `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs), consumen la cola `orders.process`; servicio `orders-worker` con 3 réplicas en [docker-compose.yaml](docker-compose.yaml) |
+| Event Sourcing | La clase `OrderEvent`, en [OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs), y el método `Replay` de la clase `OrderProjection`, en [OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs); tabla `order_events` en [mysqlinit.sql](src/OrdersService/mysqlinit/mysqlinit.sql) |
+| Transactional Outbox | La clase `OutboxMessage`, en [OutboxMessage.cs](src/Common/OutboxMessage.cs), escrita en el método `CreateOrder` de la clase `OrdersController`, en [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), en el método `ChangeStatusAsync` del *worker* y en la clase `StockReservations` de `Products`; la publica el método `PublishPendingAsync` de la clase `OutboxRelay`, en [OutboxRelay.cs](src/Common/OutboxRelay.cs) |
+| Saga | Los métodos `ReserveAsync` y `ReleaseAsync` de la clase `StockReservations`, en [StockReservations.cs](src/ProductsService/StockReservations.cs); los métodos `ConfirmAsync`, `RejectAsync` y `CancelAsync` de la clase `OrderProcessingWorker`, en [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs); el rechazo del ERP en [Program.cs](src/LegacyErp/Program.cs), traducido por el método `ToEvent` de la clase `ErpFormat`, en [ErpFormat.cs](src/MessagingBridge/ErpFormat.cs) |
+| Cache-Aside | Los métodos `GetOrLoadAsync` e `InvalidateAsync` de la clase `ProductCache`, en [ProductCache.cs](src/ProductsService/ProductCache.cs), usados en los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en [ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
 | Queue-Based Load Leveling | `POST /orders/` responde sin procesar la `Order`; la cola `orders.process` absorbe los picos |
-| Publisher/Subscriber | Los métodos `PublishEventAsync` y `DeclareSubscriberQueueAsync` de la clase `RabbitMq`, en [Common/RabbitMq.cs](src/Common/RabbitMq.cs), y los contratos de la clase `Events` y sus registros, en [Common/Events.cs](src/Common/Events.cs); publican `Orders`, `Users` y `Products`; se suscriben `orders-worker`, `orders-projector` y `products-service` |
-| Asynchronous Request-Reply | Los métodos `CreateOrder` y `GetOrderStatus` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
-| CQRS | Comandos en el método `CreateOrder` de la clase `OrdersController`, en [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), y en el método `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs); consultas en el método `GetOrdersForUser` de la clase `OrdersQueriesController`, en [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs) |
-| Materialized View | Tabla `order_details`, mantenida por el método `ApplyAsync` de la clase `OrderDetailsProjector`, en [OrdersService/Messaging/OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs), en `orders-projector` |
-| Federated Identity | [Keycloak](https://www.keycloak.org/), con el realm de [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json); `Orders` decide con los claims del token en el registro `CallerIdentity`, en [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs) |
-| Gateway Offloading | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [TLS](https://datatracker.ietf.org/doc/html/rfc8446), [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request) a Keycloak, los claims con [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js) y [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) |
-| Gatekeeper | La entrada HTTPS de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf): rutas, métodos, tipo y tamaño del cuerpo, y encabezados de identidad; [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de publicar los puertos de los servicios |
-| Sidecar | `products-sidecar` en [docker-compose.yaml](docker-compose.yaml), configurado en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) |
-| Anti-corruption Layer | Las clases `OrdersTranslator`, `UsersTranslator` y `OrdersPurchaseSource`, en [PurchasesService/AntiCorruption](src/PurchasesService/AntiCorruption/); el modelo de `Purchases` está en [PurchasesService/Purchase.cs](src/PurchasesService/Purchase.cs) |
-| External Configuration Store | Las clases `ConsulConfigurationProvider` y `ConsulConfigurationPoller`, en [Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) |
+| Publisher/Subscriber | Los métodos `PublishEventAsync` y `DeclareSubscriberQueueAsync` de la clase `RabbitMq`, en [RabbitMq.cs](src/Common/RabbitMq.cs), y los contratos de la clase `Events` y sus registros, en [Events.cs](src/Common/Events.cs); publican `Orders`, `Users` y `Products`; se suscriben `orders-worker`, `orders-projector` y `products-service` |
+| Asynchronous Request-Reply | Los métodos `CreateOrder` y `GetOrderStatus` de la clase `OrdersController`, en [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs) |
+| CQRS | Comandos en el método `CreateOrder` de la clase `OrdersController`, en [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs), y en el método `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs); consultas en el método `GetOrdersForUser` de la clase `OrdersQueriesController`, en [OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs) |
+| Materialized View | Tabla `order_details`, mantenida por el método `ApplyAsync` de la clase `OrderDetailsProjector`, en [OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs), en `orders-projector` |
+| Federated Identity | [Keycloak](https://www.keycloak.org/), con el realm de [andis-realm.json](src/Keycloak/andis-realm.json); `Orders` decide con los claims del token en el registro `CallerIdentity`, en [CallerIdentity.cs](src/OrdersService/CallerIdentity.cs) |
+| Gateway Offloading | La entrada HTTPS de [nginx.conf](src/ApiGateway/nginxconf/nginx.conf): [TLS](https://datatracker.ietf.org/doc/html/rfc8446), [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request) a Keycloak, los claims con [identity.js](src/ApiGateway/nginxconf/identity.js) y [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) |
+| Gatekeeper | La entrada HTTPS de [nginx.conf](src/ApiGateway/nginxconf/nginx.conf): rutas, métodos, tipo y tamaño del cuerpo, y encabezados de identidad; [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de publicar los puertos de los servicios |
+| Sidecar | `products-sidecar` en [docker-compose.yaml](docker-compose.yaml), configurado en [envoy.yaml](src/ProductsSidecar/envoy.yaml) |
+| Anti-corruption Layer | Las clases `OrdersTranslator`, `UsersTranslator` y `OrdersPurchaseSource`, en [AntiCorruption](src/PurchasesService/AntiCorruption/); el modelo de `Purchases` está en [Purchase.cs](src/PurchasesService/Purchase.cs) |
+| External Configuration Store | Las clases `ConsulConfigurationProvider` y `ConsulConfigurationPoller`, en [ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) |
 | Messaging Bridge | Las clases `OrdersToErpBridge` y `ErpToOrdersBridge`, en [MessagingBridge](src/MessagingBridge/); la traducción está en la clase `ErpFormat` |
-| Strangler Fig | La fachada del puerto 8090 en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf), y el monolito en [Monolith/Program.cs](src/Monolith/Program.cs) |
-| Backends for Frontends | `bff-web` y `bff-mobile`, en [BffWeb/Program.cs](src/BffWeb/Program.cs) y [BffMobile/Program.cs](src/BffMobile/Program.cs), publicados por el gateway en `/web/` y `/mobile/` |
-| Blue/Green Deployment | `users-service` y `users-service-v2` en [docker-compose.yaml](docker-compose.yaml); la entrada de despliegue, en el puerto 8091 de [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con el destino en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf); con [Kubernetes](https://kubernetes.io/), el `Rollout` de [Argo Rollouts](https://argoproj.github.io/rollouts/) en [k8s/blue-green/rollout.yaml](k8s/blue-green/rollout.yaml) |
-| Rolling Upgrade | El alias `users-pool` de `users-service-v2` y las funciones `pool_start_v1` y `pool_replace` de [demos/common.sh](demos/common.sh); [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream) en la entrada de despliegue; con Kubernetes, el Deployment de [k8s/rolling-upgrade/deployment.yaml](k8s/rolling-upgrade/deployment.yaml) y el `Rollout` con análisis de [k8s/rolling-upgrade/rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
-| Canary Testing | [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html#split_clients) en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf), escrito por la función `deploy_canary` de [demos/common.sh](demos/common.sh); el encabezado `X-Version`, en [UsersService/Release.cs](src/UsersService/Release.cs); con Kubernetes, el `Rollout` de [k8s/canary/rollout.yaml](k8s/canary/rollout.yaml), que cambia los pesos de una ruta de [Gateway API](https://gateway-api.sigs.k8s.io/) y decide con el análisis de [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
-| A/B Testing | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs), usada en el método `GetUser` de la clase `UserService`, en [UsersService/Soap/UserService.cs](src/UsersService/Soap/UserService.cs); le pregunta la variante a [OpenFeature](https://openfeature.dev/), con el proveedor de [Unleash](https://www.getunleash.io/) registrado en [UsersService/Program.cs](src/UsersService/Program.cs); el *flag* lo crean las funciones `experiment_start` y `experiment_split` de [demos/common.sh](demos/common.sh) |
-| Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
+| Strangler Fig | La fachada del puerto 8090 en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf), y el monolito en [Program.cs](src/Monolith/Program.cs) |
+| Backends for Frontends | `bff-web`, en su [Program.cs](src/BffWeb/Program.cs), y `bff-mobile`, en su [Program.cs](src/BffMobile/Program.cs), publicados por el gateway en `/web/` y `/mobile/` |
+| Blue/Green Deployment | `users-service` y `users-service-v2` en [docker-compose.yaml](docker-compose.yaml); la entrada de despliegue, en el puerto 8091 de [nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con el destino en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf); con [Kubernetes](https://kubernetes.io/), el `Rollout` de [Argo Rollouts](https://argoproj.github.io/rollouts/) en [rollout.yaml](k8s/blue-green/rollout.yaml) |
+| Rolling Upgrade | El alias `users-pool` de `users-service-v2` y las funciones `pool_start_v1` y `pool_replace` de [common.sh](demos/common.sh); [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream) en la entrada de despliegue; con Kubernetes, el Deployment de [deployment.yaml](k8s/rolling-upgrade/deployment.yaml) y el `Rollout` con análisis de [rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
+| Canary Testing | [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html#split_clients) en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf), escrito por la función `deploy_canary` de [common.sh](demos/common.sh); el encabezado `X-Version`, en [Release.cs](src/UsersService/Release.cs); con Kubernetes, el `Rollout` de [rollout.yaml](k8s/canary/rollout.yaml), que cambia los pesos de una ruta de [Gateway API](https://gateway-api.sigs.k8s.io/) y decide con el análisis de [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
+| A/B Testing | La clase `Experiment`, en [Experiment.cs](src/UsersService/Experiment.cs), usada en el método `GetUser` de la clase `UserService`, en [UserService.cs](src/UsersService/Soap/UserService.cs); le pregunta la variante a [OpenFeature](https://openfeature.dev/), con el proveedor de [Unleash](https://www.getunleash.io/) registrado en [Program.cs](src/UsersService/Program.cs); el *flag* lo crean las funciones `experiment_start` y `experiment_split` de [common.sh](demos/common.sh) |
+| Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
 está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad),
@@ -299,9 +299,9 @@ Mientras corren las pruebas, también se puede mirar:
 
 Los scripts muestran lo que pasa, pero no fallan si un patrón deja de
 funcionar. Para eso están los tests de integración de
-[tests/DemoTests](tests/DemoTests/), con [NUnit](https://nunit.org/): al menos
+[DemoTests](tests/DemoTests/), con [NUnit](https://nunit.org/): al menos
 uno por demo, que hace lo mismo que su script y verifica el resultado. Usan las
-mismas funciones de [demos/common.sh](demos/common.sh) para detener
+mismas funciones de [common.sh](demos/common.sh) para detener
 contenedores, cambiar las rutas del gateway o escalar réplicas.
 
 Necesitan el [SDK de .NET](https://dotnet.microsoft.com/download) 10 y la
@@ -358,7 +358,7 @@ resultados se ven únicamente en la terminal.
 
 Los servicios exponen sus métricas en `GET /metrics`, con [OpenTelemetry](https://opentelemetry.io/) y el
 exporter de [Prometheus](https://prometheus.io/), configurado en el método `AddObservability` de la clase
-`ObservabilityExtensions`, en [Common/Observability.cs](src/Common/Observability.cs). Casi todas las métricas ya
+`ObservabilityExtensions`, en [Observability.cs](src/Common/Observability.cs). Casi todas las métricas ya
 las publican las bibliotecas que usa la aplicación; no hubo que instrumentar el
 código a mano:
 
@@ -369,17 +369,18 @@ código a mano:
 | `resilience_polly_strategy_events_total` | [Polly](https://www.pollydocs.org/) | Retry, Circuit Breaker, Bulkhead y timeouts: cada evento, por dependencia |
 | `resilience_polly_pipeline_duration_milliseconds` | Polly | Duración de cada llamada a `Users` y `Products`, con los reintentos incluidos |
 | `rabbitmq_detailed_queue_*` | [RabbitMQ](https://www.rabbitmq.com/) | Mensajes esperando y en proceso en la cola, y consumidores conectados |
-| `orders_processed_total` | La clase `OrderProcessingWorker`, en [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
-| `outbox_pending`, `outbox_published_total` | La clase `OutboxRelay`, en [Common/OutboxRelay.cs](src/Common/OutboxRelay.cs) | Mensajes del *outbox* que esperan ser publicados, y los publicados, en `orders-service` y en `products-service` |
-| `products_cache_total` | La clase `ProductCache`, en [ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
-| `chaos_failure_rate`, `chaos_delay_seconds` | El método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs) | Las fallas inyectadas, para ver en qué momento empezaron y terminaron |
-| `orders_patterns_enabled` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
-| `service_health` | La clase `HealthMetricsPublisher`, en [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs) | Salud de cada servicio y de cada uno de sus chequeos, la misma que responde `/health`: 0 Unhealthy, 1 Degraded, 2 Healthy |
-| `orders_circuit_state` | El método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
-| `products_images_received_bytes_total`, `products_images_valet_keys_total` | La clase `ProductImages`, en [ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs) | Bytes de imágenes que recibió `Products`, sin Valet Key, y URL firmadas que entregó, por permiso |
+| `orders_processed_total` | La clase `OrderProcessingWorker`, en [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs) | `Orders` procesadas por cada réplica, con su resultado |
+| `outbox_pending`, `outbox_published_total` | La clase `OutboxRelay`, en [OutboxRelay.cs](src/Common/OutboxRelay.cs) | Mensajes del *outbox* que esperan ser publicados, y los publicados, en `orders-service` y en `products-service` |
+| `products_cache_total` | La clase `ProductCache`, en [ProductCache.cs](src/ProductsService/ProductCache.cs) | Lecturas de la caché de `Products`: `hit`, `miss`, `error` o `disabled` |
+| `products_stock`, `products_stock_reservations_total` | La clase `StockMetrics`, en [StockMetrics.cs](src/ProductsService/StockMetrics.cs) | Unidades disponibles de cada `Product`, y las reservas de la Saga por resultado: `Reserved`, `Rejected` o `Released` |
+| `chaos_failure_rate`, `chaos_delay_seconds` | El método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs) | Las fallas inyectadas, para ver en qué momento empezaron y terminaron |
+| `orders_patterns_enabled` | El método `MapPatterns` de la clase `PatternExtensions`, en [Patterns.cs](src/OrdersService/Patterns.cs) | Qué patrones de resiliencia están prendidos en `Orders`: 1 prendido, 0 apagado |
+| `service_health` | La clase `HealthMetricsPublisher`, en [HealthMetrics.cs](src/Common/HealthMetrics.cs) | Salud de cada servicio y de cada uno de sus chequeos, la misma que responde `/health`: 0 Unhealthy, 1 Degraded, 2 Healthy |
+| `orders_circuit_state` | El método `MapPatterns` de la clase `PatternExtensions`, en [Patterns.cs](src/OrdersService/Patterns.cs) | Estado del circuito de cada dependencia de `Orders`: -1 con el Circuit Breaker apagado, 0 cerrado, 1 semiabierto, 2 abierto |
+| `products_images_received_bytes_total`, `products_images_valet_keys_total` | La clase `ProductImages`, en [ProductImages.cs](src/ProductsService/ProductImages.cs) | Bytes de imágenes que recibió `Products`, sin Valet Key, y URL firmadas que entregó, por permiso |
 | `envoy_http_rbac_*`, `envoy_http_jwt_authn_*` | El *sidecar* de `Products` | Solicitudes permitidas y rechazadas por la autorización, y tokens aceptados y rechazados |
-| `users_experiment_total` | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs) | Respuestas de la versión `v2` de `Users` por variante del experimento y por segmento |
-| `config_value` | La clase `ConsulConfigurationPoller`, en [Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) | Valor vigente de cada clave numérica del almacén, en cada proceso |
+| `users_experiment_total` | La clase `Experiment`, en [Experiment.cs](src/UsersService/Experiment.cs) | Respuestas de la versión `v2` de `Users` por variante del experimento y por segmento |
+| `config_value` | La clase `ConsulConfigurationPoller`, en [ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs) | Valor vigente de cada clave numérica del almacén, en cada proceso |
 | `keycloak_user_events_total` | [Keycloak](https://www.keycloak.org/) | Inicios de sesión y validaciones de tokens, con su error si lo hubo |
 | `k6_*` | [k6](https://k6.io/) | La carga generada y lo que ve el cliente: solicitudes por segundo por código HTTP, latencia por endpoint |
 | `k6_strangler_requests_total`, `k6_strangler_details_duration_*` | Los escenarios de k6 | Solicitudes de la fachada por destino, según `X-Served-By`, y latencia del detalle |
@@ -428,8 +429,8 @@ el análisis de Argo Rollouts.
 
 Los últimos nueve necesitan que alguien haga el cambio mientras corren. Los de
 facilidad de modificación se lanzan con
-[demos/load-modifiability.sh](demos/load-modifiability.sh), y los de facilidad de
-despliegue, con [demos/load-deployment.sh](demos/load-deployment.sh). Los dos
+[load-modifiability.sh](demos/load-modifiability.sh), y los de facilidad de
+despliegue, con [load-deployment.sh](demos/load-deployment.sh). Los dos
 marcan cada cambio en el dashboard:
 
 ```bash

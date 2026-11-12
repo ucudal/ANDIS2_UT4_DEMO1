@@ -27,7 +27,7 @@ public record CallerIdentity(string Name, string? UserId, IReadOnlyList<string> 
     public bool IsAdmin => Roles.Contains("admin");
 
     // Puede ver las Orders de un User el propio User, o un admin.
-    public bool CanAccess(string userId) => IsAdmin || UserId == userId;
+    public bool CanAccess(string? userId) => IsAdmin || UserId == userId;
 
     // null si la solicitud es anónima.
     public static CallerIdentity? From(HttpRequest request)

@@ -126,8 +126,8 @@ sus propias rutas.
 | `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`WORKER__ENABLED=true`-. Consume la cola y confirma o rechaza cada `Order`. |
 | Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. `Products` reserva el stock; un *worker* verifica que el `User` exista y la pasa a `Confirmed` o `Rejected`. Si el ERP no la factura, pasa a `Cancelled`. Ver [Saga](#saga). |
 | Stock del [`Product`](src/ProductsService/Models/Product.cs) | Las unidades disponibles. `GET /products/{id}` lo muestra y `PUT /products/{id}/stock` lo fija. |
-| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
-| Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [OrdersService/Patterns.cs](src/OrdersService/Patterns.cs). |
+| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
+| Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [Patterns.cs](src/OrdersService/Patterns.cs). |
 | Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
 
 Ejemplo de inyección de fallas:
@@ -174,7 +174,7 @@ reintentan hasta 3 veces con retroceso exponencial -0,5 segundos, 1 segundo, 2
 segundos, con *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408,
 429, errores de red y *timeouts*; un 404 no se reintenta. Está en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), con
+[Resilience.cs](src/OrdersService/Resilience.cs), con
 `Microsoft.Extensions.Http.Resilience`.
 
 Reintentar solo es seguro si la operación es idempotente: una llamada que falla
@@ -191,7 +191,7 @@ Las esperas crecen: 0,5 segundos, 1 segundo y 2 segundos
 
 **Código:** la estrategia de reintento del *pipeline* de cada dependencia, en el
 método `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). `ShouldHandle`
+[Resilience.cs](src/OrdersService/Resilience.cs). `ShouldHandle`
 decide qué se reintenta; el `patterns.Retry` permite apagarlo en las demos:
 
 ```csharp
@@ -215,7 +215,7 @@ trae algún producto "no disponible"; con reintentos, casi todas traen el nombre
 del producto, porque los reintentos ocultan las fallas. Las que tardan más son
 las que necesitaron reintentos. Los *logs* de Docker de `orders-service`
 muestran cada `[RETRY]` con su demora y su causa; el comando para verlos está en
-[commands/02-availability.azcli](commands/02-availability.azcli).
+[02-availability.azcli](commands/02-availability.azcli).
 
 > [!TIP]
 >
@@ -239,7 +239,7 @@ segundos; después pasa a semiabierto, deja pasar una llamada de prueba y, si
 funciona, se cierra. El detalle de `Orders` no devuelve error: muestra `"no
 disponible [circuito abierto]"` en lugar del nombre: lo arma el método
 `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
 El estado del circuito vive en la memoria de cada proceso: con tres *workers*,
 cada uno tiene sus propios circuitos. Qué estado vive en cada réplica, y qué
@@ -257,7 +257,7 @@ de resiliencia", y el estado es el del panel "Estado del circuito de cada
 dependencia".
 
 **Código:** la estrategia del *pipeline* de cada dependencia, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). Va dentro del
+[Resilience.cs](src/OrdersService/Resilience.cs). Va dentro del
 Retry, así que cada reintento cuenta como una llamada más para el circuito:
 
 ```csharp
@@ -302,11 +302,11 @@ demás funciones.
 
 **Implementación:** un límite de concurrencia por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs). Las llamadas que
+[Resilience.cs](src/OrdersService/Resilience.cs). Las llamadas que
 exceden el límite se rechazan de inmediato. Como cada dependencia tiene su
 propio compartimento, la lentitud de `Products` no afecta las llamadas a
 `Users`. Cada compartimento se dimensiona según su dependencia, al llamar a
-`AddResilience` en [OrdersService/Program.cs](src/OrdersService/Program.cs):
+`AddResilience` en [Program.cs](src/OrdersService/Program.cs):
 `Products` tiene 5 llamadas en curso y 5 en espera; `Users`, que responde rápido
 pero se llama en cada consulta, tiene 20 en curso y 5 en espera. Los
 compartimentos son de cada proceso: `orders-service`, cada *worker* y cada
@@ -324,9 +324,9 @@ lento se llena su compartimento, pero el de `Users` sigue libre.
 
 **Código:** un `ConcurrencyLimiter` por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[OrdersService/Resilience.cs](src/OrdersService/Resilience.cs), y el tamaño de
+[Resilience.cs](src/OrdersService/Resilience.cs), y el tamaño de
 cada compartimento, en las llamadas a `AddResilience` de
-[OrdersService/Program.cs](src/OrdersService/Program.cs):
+[Program.cs](src/OrdersService/Program.cs):
 
 ```csharp
 // Resilience.cs
@@ -371,16 +371,16 @@ sus clientes.
 **Implementación:** `Orders` atiende como máximo 20 consultas de detalle a la
 vez. Las que exceden el límite reciben `503 Service Unavailable` con
 `Retry-After: 2`, en lugar de encolarse. La política `throttling` se define con
-`AddRateLimiter` en [OrdersService/Program.cs](src/OrdersService/Program.cs), y
+`AddRateLimiter` en [Program.cs](src/OrdersService/Program.cs), y
 se aplica con el atributo `[EnableRateLimiting("throttling")]` en el método
 `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
 El gateway también aplica Throttling, pero por cliente: cada IP puede crear como
 máximo 1 `Order` por segundo, con una ráfaga de hasta 5. Lo que excede el límite
 recibe `429 Too Many Requests` sin llegar a `orders-service`; las consultas no
 tienen límite. Está en
-[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
+[nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
 -[`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone)
 y
 [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req)-.
@@ -400,9 +400,9 @@ opuesta: el Bulkhead limita las llamadas que `Orders` hace; el Throttling, las
 solicitudes que `Orders` recibe.
 
 **Código:** la política, con `AddRateLimiter` en
-[OrdersService/Program.cs](src/OrdersService/Program.cs), y el atributo que la
+[Program.cs](src/OrdersService/Program.cs), y el atributo que la
 aplica, en el método `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs):
+[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs):
 
 ```csharp
 // Program.cs
@@ -465,7 +465,7 @@ gateway, con su Throttling por cliente -1 `POST /orders/` por segundo por IP,
 con una ráfaga de 5; ver [Throttling](#throttling)-, y el cliente es un proceso
 por lotes que crea `Orders`:
 la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y
-[k6/rate-limiting.js](k6/rate-limiting.js).
+[rate-limiting.js](k6/rate-limiting.js).
 
 > [!NOTE]
 >
@@ -545,16 +545,16 @@ Cada chequeo es una implementación de `IHealthCheck`, registrada con
 `AddHealthChecks` en el `Program.cs` de cada servicio:
 
 * La clase `RabbitMqHealthCheck`, en
-  [Common/RabbitMq.cs](src/Common/RabbitMq.cs), y la clase `MongoHealthCheck`,
+  [RabbitMq.cs](src/Common/RabbitMq.cs), y la clase `MongoHealthCheck`,
   en
-  [UsersService/Data/MongoHealthCheck.cs](src/UsersService/Data/MongoHealthCheck.cs),
+  [MongoHealthCheck.cs](src/UsersService/Data/MongoHealthCheck.cs),
   implementan el método `CheckHealthAsync`. `Products` y `Orders` chequean su
   base con `AddDbContextCheck`, de [EF Core](https://learn.microsoft.com/ef/core/).
 * El método `WriteJson` de la clase `HealthResponse`, en
-  [Common/HealthResponse.cs](src/Common/HealthResponse.cs), escribe el JSON de
+  [HealthResponse.cs](src/Common/HealthResponse.cs), escribe el JSON de
   `/health`.
 * El método `PublishAsync` de la clase `HealthMetricsPublisher`, en
-  [Common/HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
+  [HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
 
 **Cómo verlo:** la demo [06 de Health Endpoint Monitoring](demos/06-health.sh)
 detiene la base de datos de `Products`. `/health/products` pasa a 503, con el
@@ -587,7 +587,7 @@ mensaje a la vez -`prefetch = 1`- y lo confirma -*ack*- recién cuando termina;
 si se cae antes, RabbitMQ entrega el mensaje a otra réplica. Si `Users` no está
 disponible, el *worker* devuelve el mensaje a la cola y lo reintenta 5 segundos
 después. Está en la clase `OrderProcessingWorker`, en
-[OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs):
+[OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs):
 el método `ExecuteAsync` se suscribe a la cola y confirma o devuelve cada
 mensaje, y el método `ConfirmAsync` procesa la `Order`.
 
@@ -609,7 +609,7 @@ asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.
 ![Clases del worker](assets/07-competing-consumers-clases.svg)
 
 El método `ConfirmAsync` de la clase `OrderProcessingWorker`, en
-[OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
+[OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
 devuelve `false` cuando `Users` no responde: el mensaje vuelve a la cola.
 
 Que las réplicas se repartan la cola no evita que dos procesen la misma `Order`.
@@ -703,9 +703,9 @@ inmutable en la tabla `order_events`: `OrderCreated`, `OrderConfirmed`,
 `OrderRejected`, `OrderInvoiced` u `OrderCancelled`. La tabla `orders` es una **proyección**: el estado actual,
 calculado a partir de los eventos. Cada evento es un `OrderEvent`, creado con el
 método `Create` de esa clase, en
-[OrdersService/Models/OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs); el
+[OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs); el
 método `Replay` de la clase `OrderProjection`, en
-[OrdersService/Models/OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs),
+[OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs),
 los reproduce para obtener el estado.
 
 * `GET /orders/{id}/events` muestra los eventos de una `Order` y el estado que
@@ -743,10 +743,10 @@ mismo con `order.confirmed`, `order.rejected` y `order.cancelled`. Ninguno de
 los dos publica en RabbitMQ. Lo hacen el método `CreateOrder` de la clase
 `OrdersController` y el método `ChangeStatusAsync` de la clase
 `OrderProcessingWorker`, con el método `Create` de la clase `OutboxMessage`, en
-[Common/OutboxMessage.cs](src/Common/OutboxMessage.cs).
+[OutboxMessage.cs](src/Common/OutboxMessage.cs).
 
 El *relay* del *outbox* -el método `PublishPendingAsync` de la clase
-`OutboxRelay`, en [Common/OutboxRelay.cs](src/Common/OutboxRelay.cs)- corre en
+`OutboxRelay`, en [OutboxRelay.cs](src/Common/OutboxRelay.cs)- corre en
 `orders-service`. Cada segundo toma hasta 50 mensajes pendientes, en
 orden, los publica en `andis.events` y les completa la fecha de publicación.
 Publica con confirmación de RabbitMQ: solo marca un mensaje cuando RabbitMQ
@@ -802,7 +802,8 @@ uno confirma la `Order` y el otro la descarta, y la `Order` tiene un solo
 `OrderConfirmed` en su historial y un solo `order.confirmed` en el *outbox*. Al
 salir de la pausa, `Products` reserva el stock y publica su `stock.reserved`, y
 el *worker* lo ignora porque la `Order` ya no está `Pending`. En Grafana, el panel
-"Outbox de Orders" muestra los pendientes subir y volver a cero.
+"Outbox de Orders y Products" muestra los pendientes de `orders-service` subir
+y volver a cero.
 
 > [!TIP]
 >
@@ -823,11 +824,11 @@ deshacerlos, queda stock descontado para una `Order` que se rechazó o se
 canceló: el `Product` aparece agotado aunque nadie lo compró.
 
 **Implementación:** una Saga es una secuencia de transacciones locales, una por
-servicio. Cada una guarda sus cambios y publica un evento, que dispara la
-siguiente. Si un paso falla, los anteriores se deshacen con
-**compensaciones**: transacciones que revierten el efecto de las que ya se
-confirmaron, en orden inverso. No es un *rollback*: los cambios estuvieron
-confirmados, y otros pudieron verlos.
+servicio. Cada transacción guarda sus cambios y publica un evento, que dispara
+la siguiente. Si un paso falla, los anteriores se deshacen con
+**compensaciones**: nuevas transacciones que revierten el efecto de las que ya
+se confirmaron, en orden inverso. No es un *rollback*: los cambios estuvieron
+confirmados, y otros participantes pudieron verlos.
 
 | Paso | Participante | Transacción local | Si sale bien | Si falla | Compensación |
 | ---- | ------------ | ----------------- | ------------ | -------- | ------------ |
@@ -835,35 +836,35 @@ confirmados, y otros pudieron verlos.
 | 2 | `Orders`, el *worker* | Verifica el `User` y confirma la `Order` | `order.confirmed` | `order.rejected` | Cancela la `Order`, con `order.invoice-failed` |
 | 3 | El ERP, por el [Messaging Bridge](#messaging-bridge) | Factura la `Order` | `order.invoiced` | `order.invoice-failed` | — |
 
-El ERP no factura pedidos de más de 10 unidades: es la falla que dispara las dos
-compensaciones. La factura es el último paso, así que no tiene compensación.
+El ERP tiene una regla de negocio -para simualar fallas- por la que no factura
+pedidos de más de 10 unidades: es la falla que dispara las dos compensaciones.
+La factura es el último paso, así que no tiene compensación.
 
 La Saga es por **coreografía**: nadie la coordina. Cada participante escucha
 los eventos de los otros en su propia cola y reacciona:
 
 * `Products`: la clase `StockReservations`, en
-  [ProductsService/StockReservations.cs](src/ProductsService/StockReservations.cs),
-  escucha la cola `products.stock`. El método `ReserveAsync` reserva el stock y
-  el método `ReleaseAsync` lo libera. Las reservas están en la tabla
-  `stock_reservations` de
-  [ProductsService/pginit/pginit.sql](src/ProductsService/pginit/pginit.sql).
+  [StockReservations.cs](src/ProductsService/StockReservations.cs), escucha la
+  cola `products.stock`. El método `ReserveAsync` reserva el stock y el método
+  `ReleaseAsync` lo libera. Las reservas están en la tabla `stock_reservations`
+  de [ProductsService](src/ProductsService/pginit/pginit.sql).
 * `Orders`: la clase `OrderProcessingWorker`, en
-  [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
+  [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
   escucha la cola `orders.process`. El método `ConfirmAsync` confirma o rechaza
   la `Order` después de la reserva, el método `RejectAsync` la rechaza sin
   reserva y el método `CancelAsync` la cancela.
 * El ERP: el método `ExecuteAsync` de la clase `Erp`, en
-  [LegacyErp/Program.cs](src/LegacyErp/Program.cs), responde con un registro
+  [Program.cs](src/LegacyErp/Program.cs), responde con un registro
   `RECHAZO` en lugar de una `FACTURA`. El método `ToEvent` de la clase
-  `ErpFormat`, en [MessagingBridge/ErpFormat.cs](src/MessagingBridge/ErpFormat.cs),
-  lo traduce a `order.invoice-failed`.
+  `ErpFormat`, en [ErpFormat.cs](src/MessagingBridge/ErpFormat.cs), lo traduce a
+  `order.invoice-failed`.
 
 Cada paso guarda su cambio y su evento en una sola transacción, y los publica
 con un [Transactional Outbox](#transactional-outbox). `Products` usa la misma
 clase `OutboxRelay` que `Orders`, en
-[Common/OutboxRelay.cs](src/Common/OutboxRelay.cs). Sin el *outbox*, `Products`
-podría descontar el stock y caerse antes de publicar `stock.reserved`: la
-`Order` quedaría `Pending` para siempre, con el stock descontado.
+[OutboxRelay.cs](src/Common/OutboxRelay.cs). Sin el *outbox*, `Products` podría
+descontar el stock y caerse antes de publicar `stock.reserved`: la `Order`
+quedaría `Pending` para siempre, con el stock descontado.
 
 **Coreografía u orquestación.** La alternativa es un orquestador: un componente
 que le dice a cada participante qué hacer, sabe en qué paso está cada `Order` y
@@ -930,7 +931,11 @@ vuelve con la compensación; la cuarta pide 12 unidades, el ERP la rechaza y la
 `Order` pasa de `Confirmed` a `Cancelled`, con el stock devuelto. Después
 publica otra vez un `order.created` y un `order.rejected`, y el stock no cambia.
 Los *logs* de `products-service` y de `orders-worker` muestran cada paso con la
-etiqueta `[SAGA]`.
+etiqueta `[SAGA]`. En Grafana, en la fila "Saga: stock y reservas", el panel
+"Stock por Product" muestra el stock de Zapatos en 20, después en 18, y la
+caída y la vuelta de cada compensación. El panel "Reservas de stock en el
+último minuto" cuenta las reservas `Reserved`, las `Rejected` y las
+compensaciones `Released`.
 
 > [!TIP]
 >
@@ -957,8 +962,8 @@ Qué se muestra:
 
 Resultado observable: latencias de lectura estables durante el pico, *backlog*
 absorbido por la cola y throughput que crece al agregar *workers*. El pico se
-genera con [k6/load.js](k6/load.js) y
-[k6/load-leveling.js](k6/load-leveling.js), y se compara antes y después de cada
+genera con [load.js](k6/load.js) y
+[load-leveling.js](k6/load-leveling.js), y se compara antes y después de cada
 patrón en el dashboard de [Grafana](https://grafana.com/oss/grafana/), en la
 fila "Rendimiento: caché, CQRS y outbox".
 
@@ -968,7 +973,7 @@ fila "Rendimiento: caché, CQRS y outbox".
 | ---------- | -------- |
 | `redis` | Caché de `Products`. |
 | `orders-projector` -3 réplicas- | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
-| Exchange `andis.events` | Eventos de `Orders` -`order.created`, `order.confirmed`, `order.rejected` y `order.cancelled`-, de la [Saga](#saga) en `Products` -`stock.reserved`, `stock.rejected` y `stock.released`-, del ERP -`order.invoiced` y `order.invoice-failed`-, y `user.updated` y `product.updated`. Los contratos están en [Common/Events.cs](src/Common/Events.cs). |
+| Exchange `andis.events` | Eventos de `Orders` -`order.created`, `order.confirmed`, `order.rejected` y `order.cancelled`-, de la [Saga](#saga) en `Products` -`stock.reserved`, `stock.rejected` y `stock.released`-, del ERP -`order.invoiced` y `order.invoice-failed`-, y `user.updated` y `product.updated`. Los contratos están en [Events.cs](src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación [SOAP](https://www.w3.org/TR/soap/) `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
 | Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [PostgreSQL](https://www.postgresql.org/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
 
@@ -1004,9 +1009,9 @@ Redis no sabe nada de PostgreSQL. Si Redis no responde, `Products` lee PostgreSQ
 directamente; la caché acelera, pero no es una dependencia, y por eso no entra
 en `/health`. Está en los métodos `GetOrLoadAsync` e `InvalidateAsync` de la
 clase `ProductCache`, en
-[ProductsService/ProductCache.cs](src/ProductsService/ProductCache.cs), que usan
+[ProductCache.cs](src/ProductsService/ProductCache.cs), que usan
 los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
-[ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
+[ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
 
 Se borra la clave en lugar de escribir el valor nuevo: así la caché nunca guarda
 un valor que PostgreSQL no tiene. La caché está en Redis y no en la memoria de
@@ -1034,7 +1039,7 @@ base que demora 200 ms y lee el mismo `Product` varias veces: la primera lectura
 demora 200 ms y las siguientes, 2 o 3 ms. Después cambia su nombre: la lectura
 siguiente es un *miss* y trae el nombre nuevo. Con Redis detenido, `Products`
 sigue respondiendo, a la velocidad de PostgreSQL. Bajo carga,
-[k6/cache-aside.js](k6/cache-aside.js) lee 50 veces por segundo con la caché
+[cache-aside.js](k6/cache-aside.js) lee 50 veces por segundo con la caché
 apagada y después prendida: la p95 baja de unos 100 ms a unos 3 ms.
 
 > [!TIP]
@@ -1070,7 +1075,7 @@ Leveling](demos/12-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
 directamente en `orders-service`: el Throttling por cliente del gateway
 rechazaría el pico antes de que llegara a la cola. Todas responden `202` en
 pocos milisegundos; la cola baja de a 3 mensajes cada 2 segundos hasta vaciarse.
-[k6/load-leveling.js](k6/load-leveling.js) envía 10 `POST` por segundo durante
+[load-leveling.js](k6/load-leveling.js) envía 10 `POST` por segundo durante
 10 segundos: la latencia de `create order` se mantiene baja y la cola crece
 durante el pico y se vacía después.
 
@@ -1124,7 +1129,7 @@ interesan:
 Un mismo `order.created` llega a `orders.details-view` y a `products.stock`. `Orders` no sabe que existen los
 proyectores: agregarlos no cambió el código que publica. La conexión y la
 publicación están en la clase `RabbitMq`, en
-[Common/RabbitMq.cs](src/Common/RabbitMq.cs): el método `PublishEventAsync`
+[RabbitMq.cs](src/Common/RabbitMq.cs): el método `PublishEventAsync`
 publica un evento, y el método `DeclareSubscriberQueueAsync` declara la cola de
 un suscriptor con sus claves.
 
@@ -1169,7 +1174,7 @@ responde `200` con el estado mientras la `Order` está `Pending`, también con
 Other` a `/orders/{id}`, y el cliente sigue la redirección para obtener el
 resultado. Está en los métodos `CreateOrder` y `GetOrderStatus` de la clase
 `OrdersController`, en
-[OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
 `POST /orders/` crea una `Order` en cada llamada. Si el cliente no recibe el
 `202`, por un *timeout* o un corte de red, no sabe si la `Order` se creó, y si
@@ -1242,13 +1247,13 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
 * **Comandos:** `POST /orders/` y el *worker* escriben `orders`, `order_events`
   y `outbox_messages`, en el método `CreateOrder` de la clase
   `OrdersController`, en
-  [OrdersService/Controllers/OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs),
+  [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs),
   y en el método `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en
-  [OrdersService/Messaging/OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs).
+  [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs).
 * **Consultas:** `GET /orders/user/{userId}/details/view` lee solo la vista
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
   `GetOrdersForUser` de la clase `OrdersQueriesController`, en
-  [OrdersService/Controllers/OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
+  [OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
   Es una consulta a [MySQL](https://www.mysql.com/), sin llamadas a `Users` ni a
   `Products`, y sin Throttling.
 
@@ -1279,7 +1284,7 @@ La separación se ve en el código: un controlador para los comandos, sobre
 los dos lados. Sin fallas, la síncrona demora unos 100 ms y la vista, 3 ms. Con
 `Products` demorando 300 ms, la síncrona pasa a casi 2 segundos -una llamada por
 `Order`- y la vista no cambia. Después crea una `Order` y consulta enseguida: la
-síncrona ya la tiene, la vista todavía no. Bajo carga, [k6/load.js](k6/load.js)
+síncrona ya la tiene, la vista todavía no. Bajo carga, [load.js](k6/load.js)
 con `-e DETAILS=live` y con `-e DETAILS=view` compara las dos.
 
 #### Materialized View
@@ -1291,7 +1296,7 @@ detalle sale degradado.
 **Implementación:** la tabla `order_details` guarda el detalle de cada `Order`
 con el nombre del cliente y el nombre del producto ya copiados. La mantiene el
 método `ApplyAsync` de la clase `OrderDetailsProjector`, en
-[OrdersService/Messaging/OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs),
+[OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs),
 que corre en `orders-projector` y consume la cola `orders.details-view`:
 
 * `order.created`: el método `AddOrderAsync` busca el nombre del cliente y del
@@ -1433,9 +1438,9 @@ privilegio necesario.
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [Keycloak/andis-realm.json](src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
-| Entrada HTTPS del gateway | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
-| `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al sidecar; la HTTP, directamente a `Products`. Está en [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml). |
+| `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [andis-realm.json](src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
+| Entrada HTTPS del gateway | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
+| `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al sidecar; la HTTP, directamente a `Products`. Está en [envoy.yaml](src/ProductsSidecar/envoy.yaml). |
 | `azurite` | El emulador de [Azure Storage](https://azure.microsoft.com/products/storage/), con las imágenes de los `Products`, en <http://localhost:10000>. |
 | Imágenes de los `Products` | `PUT /products/{id}/image` sube la imagen a través de `Products`; `POST /products/{id}/image/upload-url` entrega una URL firmada para subirla directamente a [Azurite](https://github.com/Azure/Azurite); `GET /products/{id}/image` redirige a una URL firmada para bajarla. |
 | [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) | Deja de publicar en el host los puertos de los servicios y de las bases: la única entrada a los servicios es el gateway. |
@@ -1474,7 +1479,7 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 ### Patrones de seguridad
 
 Cada patrón tiene un script en [demos](demos/), del `18` al `22`, y un paso a
-paso en [commands/04-security.azcli](commands/04-security.azcli) que compara la
+paso en [04-security.azcli](commands/04-security.azcli) que compara la
 misma solicitud por la entrada
 [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la
 HTTPS, con él. Los *logs* de [Docker](https://www.docker.com/) muestran los
@@ -1513,7 +1518,7 @@ correo. Confía en la firma de Keycloak y usa los claims:
 * `Orders` decide con esos claims. Un cliente crea `Orders` solo para él y
   consulta solo las suyas; un admin consulta las de todos, pero no crea
   `Orders`, porque no es cliente. Lo hace con el registro `CallerIdentity`, en
-  [OrdersService/CallerIdentity.cs](src/OrdersService/CallerIdentity.cs), que
+  [CallerIdentity.cs](src/OrdersService/CallerIdentity.cs), que
   usan los métodos `CreateOrder`, `ListOrders`, `GetOrder`, `GetOrderStatus`,
   `GetOrderEvents` y `GetOrdersForUser` de la clase `OrdersController`, y el
   método `GetOrdersForUser` de la clase `OrdersQueriesController`.
@@ -1575,12 +1580,12 @@ cambiar todos los servicios.
 
 **Implementación:** el gateway se hace cargo de esas funciones en la entrada
 HTTPS, en
-[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
 * **TLS:** el gateway termina TLS con su certificado; los servicios siguen
   hablando HTTP dentro de la red de Docker, sin certificados. El certificado es
   autofirmado y se genera al construir la imagen, en
-  [ApiGateway/Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
+  [Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
   privada en el repositorio; en producción lo emitiría una autoridad de
   certificación.
 * **Validación de tokens:** antes de reenviar cada solicitud,
@@ -1588,7 +1593,7 @@ HTTPS, en
   hace una subsolicitud a `/userinfo` de Keycloak con el token. Si Keycloak
   responde 200, la solicitud sigue; si no, el gateway responde 401 y la
   solicitud no llega al servicio. Después, `identity.js`, en
-  [ApiGateway/nginxconf/identity.js](src/ApiGateway/nginxconf/identity.js), lee
+  [identity.js](src/ApiGateway/nginxconf/identity.js), lee
   los claims del token, ya validado, y el gateway se los pasa al servicio en los
   encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
 * **Compresión:** el gateway comprime con
@@ -1608,7 +1613,7 @@ sin preguntarle cada vez, a cambio de no enterarse si se cerró la sesión.
 servicios](assets/19-gateway-offloading.svg)
 
 **Código:** la validación del token, en
-[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
 ```nginx
 auth_request /_auth;
@@ -1652,7 +1657,7 @@ servicio y a sus datos.
 **Implementación:** en la entrada HTTPS, el gateway es el intermediario entre
 los clientes y los servicios, y valida y sanea cada solicitud antes de
 reenviarla, en
-[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
 * **Rutas:** publica solo las de la aplicación. Las de administración -`/chaos`,
   `/patterns`, `/cache`, `/orders/projections/rebuild`- y cualquier otra
@@ -1690,7 +1695,7 @@ docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --
 solicitud](assets/20-gatekeeper.svg)
 
 **Código:** las rutas de `Orders` y el saneamiento de los encabezados, en
-[ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
 ```nginx
 proxy_set_header X-User-Id    $user_id;
@@ -1747,7 +1752,7 @@ service:products-service`](https://docs.docker.com/reference/compose-file/servic
 en [docker-compose.yaml](docker-compose.yaml)-. Para Envoy, `Products` es
 `127.0.0.1:8000`; para los demás contenedores, el sidecar es
 `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
-configura con [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml):
+configura con [envoy.yaml](src/ProductsSidecar/envoy.yaml):
 
 * **Autenticación:** el filtro
   [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
@@ -1781,7 +1786,7 @@ decidir si la deja pasar; y por último `router`, que la envía a `Products`. Si
 un filtro la rechaza, los siguientes no se ejecutan y `Products` no se entera.
 Al terminar, con cualquier resultado, Envoy escribe la línea `[SIDECAR]`.
 
-**Código:** [ProductsSidecar/envoy.yaml](src/ProductsSidecar/envoy.yaml) no es
+**Código:** [envoy.yaml](src/ProductsSidecar/envoy.yaml) no es
 código, sino configuración, que Envoy lee al arrancar. Tiene tres partes:
 
 * El *listener*: dónde escucha Envoy, en el puerto 9000.
@@ -1854,12 +1859,12 @@ también permite una operación sobre un objeto durante un tiempo acotado:
   [Gatekeeper](#gatekeeper) no deja pasar más de 64 KB.
 
 Lo hace la clase `ProductImages`, en
-[ProductsService/ProductImages.cs](src/ProductsService/ProductImages.cs): el
+[ProductImages.cs](src/ProductsService/ProductImages.cs): el
 método `GetUploadKeyAsync` firma la URL de escritura, `GetDownloadKeyAsync` la
 de lectura, y `UploadAsync` sube la imagen sin Valet Key. Los usan los métodos
 `GetImageUploadUrl`, `GetImage` y `UploadImage` de la clase
 `ProductsController`, en
-[ProductsService/Controllers/ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
+[ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
 La firma se calcula con la clave de la cuenta, sin llamar a Azurite, y no
 incluye el host: `Products` llega a Azurite como `azurite:10000`, y la URL que
 entrega dice `localhost:10000`, la dirección que usa el cliente. Como en
@@ -1924,16 +1929,16 @@ note.
 | `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService](src/PurchasesService/). El gateway lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
 | `consul` | El almacén de configuración, con la consola en <http://localhost:8500>. |
 | `legacy-broker` | [ActiveMQ](https://activemq.apache.org/), el broker del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
-| `legacy-erp` | Un ERP simulado, en [LegacyErp/Program.cs](src/LegacyErp/Program.cs). |
+| `legacy-erp` | Un ERP simulado, en [Program.cs](src/LegacyErp/Program.cs). |
 | `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge](src/MessagingBridge/). |
-| `monolith` | El sistema que se reemplaza, en [Monolith/Program.cs](src/Monolith/Program.cs). |
-| Fachada del gateway | `http://localhost:8090`, con la tabla de rutas en [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
+| `monolith` | El sistema que se reemplaza, en [Program.cs](src/Monolith/Program.cs). |
+| Fachada del gateway | `http://localhost:8090`, con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
 | `bff-web` y `bff-mobile` | Un backend para la web y otro para la app móvil, en [BffWeb](src/BffWeb/) y [BffMobile](src/BffMobile/). El gateway los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
 
 ### Patrones de facilidad de modificación
 
 Cada patrón tiene un script en [demos](demos/), del `23` al `27`, y un paso a
-paso en [commands/05-modifiability.azcli](commands/05-modifiability.azcli). Los
+paso en [05-modifiability.azcli](commands/05-modifiability.azcli). Los
 *logs* de [Docker](https://www.docker.com/) muestran los eventos con una
 etiqueta: `[EXTERNAL CONFIG]` en los servicios, `[MESSAGING BRIDGE]` en
 `messaging-bridge` y en `orders-projector`, `[ERP]` en `legacy-erp` y
@@ -1968,11 +1973,11 @@ Los datos están en `Orders`, que habla de `user_id`, `product_id` y estados
 de `Purchases` de la capa que traduce.
 
 * **El modelo:** `Purchase`, en
-  [PurchasesService/Purchase.cs](src/PurchasesService/Purchase.cs), con número,
+  [Purchase.cs](src/PurchasesService/Purchase.cs), con número,
   comprador, unidades y si está confirmada. `Purchases` depende de la interfaz
   `IPurchaseSource`, no de `Orders` ni de `Users`.
 * **La capa:** la carpeta
-  [PurchasesService/AntiCorruption](src/PurchasesService/AntiCorruption/).
+  [AntiCorruption](src/PurchasesService/AntiCorruption/).
   * La clase `OrdersTranslator` lee `GET /orders/`, filtra por `Product`, deja
     afuera las `Orders` rechazadas y traduce el estado.
   * La clase `UsersTranslator` arma el sobre SOAP y lee solo el nombre.
@@ -2082,7 +2087,7 @@ Para la demo local se eligió Consul porque corre en un contenedor, sin cuentas
 ni credenciales, y tiene consola para mostrar los valores en clase.
 
 **Implementación:** el almacén es una fuente más de `IConfiguration`, en
-[Common/ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs):
+[ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs):
 
 * El método `AddExternalConfiguration` de la clase
   `ExternalConfigurationExtensions` agrega al almacén como la última fuente:
@@ -2102,7 +2107,7 @@ que leerla en cada uso, y no guardarla al arrancar. Los valores de la demo:
 | `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | Feature flag: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
 | `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | Feature flag: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 23, para cambiar el modelo de `Orders` |
 | `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de [Redis](https://redis.io/) |
-| `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [OrdersService/Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
+| `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
 
 **Cómo funciona:**
 
@@ -2208,7 +2213,7 @@ Bus](https://azure.microsoft.com/products/service-bus/), y en AWS, [Amazon
 SQS](https://aws.amazon.com/sqs/); [Amazon
 MQ](https://aws.amazon.com/amazon-mq/) ofrece ActiveMQ administrado.
 
-**El ERP simulado:** [LegacyErp/Program.cs](src/LegacyErp/Program.cs) representa
+**El ERP simulado:** [Program.cs](src/LegacyErp/Program.cs) representa
 el sistema que no se puede cambiar. Simula la creación de una factura para cada
 orden de compra. No conoce RabbitMQ, ni [JSON](https://www.json.org/), ni la
 aplicación, y no comparte código con ella: solo sabe leer pedidos de la cola
@@ -2236,11 +2241,11 @@ Tres detalles del ciclo:
 `messaging-bridge`:
 
 * **De RabbitMQ a ActiveMQ:** la clase `OrdersToErpBridge`, en
-  [MessagingBridge/OrdersToErpBridge.cs](src/MessagingBridge/OrdersToErpBridge.cs),
+  [OrdersToErpBridge.cs](src/MessagingBridge/OrdersToErpBridge.cs),
   es un suscriptor más de `order.confirmed`, con su cola `bridge.erp`. `Orders`
   no sabe que existe.
 * **De ActiveMQ a RabbitMQ:** la clase `ErpToOrdersBridge`, en
-  [MessagingBridge/ErpToOrdersBridge.cs](src/MessagingBridge/ErpToOrdersBridge.cs),
+  [ErpToOrdersBridge.cs](src/MessagingBridge/ErpToOrdersBridge.cs),
   lee las facturas y publica `order.invoiced`. El método `ApplyAsync` de la
   clase `OrderDetailsProjector` la agrega al historial de la `Order`. Los
   rechazos los publica como `order.invoice-failed`, y el *worker* cancela la
@@ -2263,7 +2268,7 @@ sin cambiar su contenido. Acá los sistemas además hablan formatos distintos:
 JSON y registros de ancho fijo. Esa traducción es otro patrón, Message
 Translator, de *Enterprise Integration Patterns*, ajeno al programa de la UT4.
 Por eso está aparte, en la clase `ErpFormat`, en
-[MessagingBridge/ErpFormat.cs](src/MessagingBridge/ErpFormat.cs): las clases que
+[ErpFormat.cs](src/MessagingBridge/ErpFormat.cs): las clases que
 reenvían no conocen los formatos.
 
 ```text
@@ -2323,7 +2328,7 @@ factura.
 viejo sigue cambiando mientras se escribe el nuevo, todo el riesgo se concentra
 en el día de la migración, y no hay valor hasta el final.
 
-**El monolito simulado:** [Monolith/Program.cs](src/Monolith/Program.cs)
+**El monolito simulado:** [Program.cs](src/Monolith/Program.cs)
 representa lo que la aplicación habría sido antes de separarse en servicios: un
 solo proceso y una sola base, sin patrones. Ofrece las mismas rutas de los
 microservicios que usa la demo, con los mismos contratos, para que el cliente no
@@ -2352,10 +2357,10 @@ higuera estranguladora, que crece alrededor de un árbol hasta reemplazarlo.
 
 * **La fachada:** un tercer
   [`server`](https://nginx.org/en/docs/http/ngx_http_core_module.html#server) de
-  [ApiGateway/nginxconf/nginx.conf](src/ApiGateway/nginxconf/nginx.conf), en el
+  [nginx.conf](src/ApiGateway/nginxconf/nginx.conf), en el
   puerto 8090. Responde quién atendió en `X-Served-By`.
 * **La tabla de rutas:**
-  [ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf).
+  [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf).
   Migrar una ruta es cambiar una línea y recargar [nginx](https://nginx.org/),
   sin cortar el servicio. Volver atrás es lo mismo.
 
@@ -2369,7 +2374,7 @@ Gateway.
 servicios](assets/26-strangler-fig.svg)
 
 **Código:** la tabla de rutas al principio, en
-[ApiGateway/nginxconf/strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf):
+[strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf):
 
 ```nginx
 set $users_route    monolith:8000;
@@ -2474,10 +2479,10 @@ estado.
 **Implementación:** un backend por cliente, que mantiene el equipo de ese
 cliente.
 
-* **`bff-web`:** [BffWeb/Program.cs](src/BffWeb/Program.cs). Pide las `Orders` a
+* **`bff-web`:** [Program.cs](src/BffWeb/Program.cs). Pide las `Orders` a
   `Orders`, el nombre y el precio de cada `Product` a `Products`, y calcula el
   total.
-* **`bff-mobile`:** [BffMobile/Program.cs](src/BffMobile/Program.cs). Hace una
+* **`bff-mobile`:** [Program.cs](src/BffMobile/Program.cs). Hace una
   sola consulta, el detalle por `User` de `Orders`, y devuelve solo el
   `Product`, el estado y cuántas son.
 * **El gateway:** publica `/web/` y `/mobile/` en la entrada HTTP.
@@ -2498,7 +2503,7 @@ Gateway.
 móvil](assets/27-backends-for-frontends.svg)
 
 **Código:** la respuesta de la app, en
-[BffMobile/Program.cs](src/BffMobile/Program.cs):
+[Program.cs](src/BffMobile/Program.cs):
 
 ```csharp
 return Results.Ok(new
@@ -2549,7 +2554,7 @@ producción irían detrás de la entrada HTTPS, con los patrones de seguridad.
 
 El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes
 ni reinicios. Para mostrarlo,
-[demos/load-modifiability.sh](demos/load-modifiability.sh) lanza un escenario de
+[load-modifiability.sh](demos/load-modifiability.sh) lanza un escenario de
 [k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
 marcado con una línea vertical en el dashboard, con una anotación de
 [Grafana](https://grafana.com/oss/grafana/), para distinguir el antes y el
@@ -2585,7 +2590,7 @@ baja despacio.
 ejecución, pero la facilidad de modificación se mide con otra pregunta: cuánto
 cuesta hacer el cambio. En un escenario de calidad -UT1-, esa es la medida de
 respuesta. Los números salen de
-[demos/measure-change-size.sh](demos/measure-change-size.sh), que se puede
+[measure-change-size.sh](demos/measure-change-size.sh), que se puede
 volver a ejecutar:
 
 ```bash
@@ -2717,14 +2722,14 @@ qué variante la atendió.
 | Componente | Para qué |
 | ---------- | -------- |
 | `users-service-v2` | La versión `v2` de `Users`: la misma imagen que `users-service`, con `RELEASE__VERSION: "2"`, y la misma base. No publica puertos, y tiene el [alias de red](https://docs.docker.com/reference/compose-file/services/#aliases) `users-pool`. Solo lo usan estas demos; `Orders`, `Purchases` y la fachada siguen llamando a `users-service`. |
-| Entrada de despliegue del gateway | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [ApiGateway/nginxconf/deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
-| Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [UsersService/Release.cs](src/UsersService/Release.cs). |
-| El experimento | La clase `Experiment`, en [UsersService/Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
+| Entrada de despliegue del gateway | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
+| Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [Release.cs](src/UsersService/Release.cs). |
+| El experimento | La clase `Experiment`, en [Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
 | `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 31 los levanta sola. |
-| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 32 a 34. Lo crea [demos/k8s-up.sh](demos/k8s-up.sh) y lo borra [demos/k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
-| Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [UsersService/Dockerfile](src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Common/Chaos.cs](src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
-| El *Gateway* del clúster | La entrada de los clientes en el puerto 8092: un *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [k8s/base/gateway.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
-| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el plugin `kubectl argo rollouts`. |
+| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 32 a 34. Lo crea [k8s-up.sh](demos/k8s-up.sh) y lo borra [k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
+| Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [Dockerfile](src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
+| El *Gateway* del clúster | La entrada de los clientes en el puerto 8092: un *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [gateway.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
+| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el plugin `kubectl argo rollouts`. |
 
 La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión
 `v1` con otra configuración y en otros contenedores, para simplificar las demos
@@ -2736,7 +2741,7 @@ de Kubernetes, o un `Rollout` de Argo Rollouts, cuyos pods cambian de imagen.
 ### Patrones de facilidad de despliegue
 
 Cada estrategia tiene un script en [demos](demos/), del `28` al `31`, y un paso
-a paso en [commands/06-deployability.azcli](commands/06-deployability.azcli).
+a paso en [06-deployability.azcli](commands/06-deployability.azcli).
 Blue/Green, Rolling Upgrade y Canary Testing tienen además una versión con
 [Kubernetes](https://kubernetes.io/), del `32` al `34`, análoga a la demo de
 [Docker Compose](https://docs.docker.com/compose/) pero automatizando el
@@ -2756,7 +2761,7 @@ estrategias en Grafana](#las-estrategias-en-grafana).
 Cambiar de estrategia de despliegue -pasar de Blue/Green a Canary, o cambiar la
 configuración de Canary- es reescribir `deployment-routes.conf` en el contenedor
 del gateway y recargar [nginx](https://nginx.org/), sin cortar el servicio. La
-función `deploy_routes` de [demos/common.sh](demos/common.sh) lo hace en los
+función `deploy_routes` de [common.sh](demos/common.sh) lo hace en los
 scripts; el archivo del repositorio no cambia.
 
 Las cuatro estrategias de despliegue facilitan el mismo tipo de despliegue: una
@@ -2870,9 +2875,9 @@ despliegue.
 
 | Qué | Dónde |
 | --- | ----- |
-| El `Rollout` y su estrategia | [k8s/blue-green/rollout.yaml](k8s/blue-green/rollout.yaml) |
-| `users-active` y `users-preview` | [k8s/blue-green/services.yaml](k8s/blue-green/services.yaml) |
-| Las rutas de los clientes y de la prueba previa | [k8s/blue-green/httproute.yaml](k8s/blue-green/httproute.yaml) |
+| El `Rollout` y su estrategia | [rollout.yaml](k8s/blue-green/rollout.yaml) |
+| `users-active` y `users-preview` | [services.yaml](k8s/blue-green/services.yaml) |
+| Las rutas de los clientes y de la prueba previa | [httproute.yaml](k8s/blue-green/httproute.yaml) |
 
 ```yaml
 strategy:
@@ -2965,7 +2970,7 @@ En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
 `v2`](assets/29-rolling-upgrade.svg)
 
 **Código:** un paso, en la función `pool_replace` de
-[demos/common.sh](demos/common.sh):
+[common.sh](demos/common.sh):
 
 ```bash
 docker compose up -d --no-deps --scale users-service-v2="$1" --wait users-service-v2
@@ -3038,11 +3043,11 @@ Rollouts](https://argoproj.github.io/rollouts/).
 
 | Qué | Dónde |
 | --- | ----- |
-| El Deployment | [k8s/rolling-upgrade/deployment.yaml](k8s/rolling-upgrade/deployment.yaml) |
-| El `Rollout`, con los pasos y el análisis | [k8s/rolling-upgrade/rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
-| El Service y la ruta, para los dos | [k8s/rolling-upgrade/service.yaml](k8s/rolling-upgrade/service.yaml) |
-| El análisis, que comparten las demos 33 y 34 | [k8s/base/analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
-| Prometheus del clúster | [k8s/base/prometheus.yaml](k8s/base/prometheus.yaml) |
+| El Deployment | [deployment.yaml](k8s/rolling-upgrade/deployment.yaml) |
+| El `Rollout`, con los pasos y el análisis | [rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
+| El Service y la ruta, para los dos | [service.yaml](k8s/rolling-upgrade/service.yaml) |
+| El análisis, que comparten las demos 33 y 34 | [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
+| Prometheus del clúster | [prometheus.yaml](k8s/base/prometheus.yaml) |
 
 Los pasos del `Rollout`: sin un router que reparta el tráfico, `setWeight` es la
 fracción de los pods con la versión nueva: de 3 pods, 33 es 1 y 66 son 2.
@@ -3197,10 +3202,10 @@ análisis después de cada paso.
 
 | Qué | Dónde |
 | --- | ----- |
-| El `Rollout`, con los pasos y el análisis | [k8s/canary/rollout.yaml](k8s/canary/rollout.yaml) |
-| `users-stable` y `users-canary` | [k8s/canary/services.yaml](k8s/canary/services.yaml) |
-| La ruta con los pesos | [k8s/canary/httproute.yaml](k8s/canary/httproute.yaml) |
-| El permiso del plugin para cambiar la ruta | [k8s/base/argo-rollouts-gateway-api.yaml](k8s/base/argo-rollouts-gateway-api.yaml) |
+| El `Rollout`, con los pasos y el análisis | [rollout.yaml](k8s/canary/rollout.yaml) |
+| `users-stable` y `users-canary` | [services.yaml](k8s/canary/services.yaml) |
+| La ruta con los pesos | [httproute.yaml](k8s/canary/httproute.yaml) |
+| El permiso del plugin para cambiar la ruta | [argo-rollouts-gateway-api.yaml](k8s/base/argo-rollouts-gateway-api.yaml) |
 
 ```yaml
 strategy:
@@ -3298,8 +3303,8 @@ Canary decide qué versión atiende; A/B, qué variante ve cada `User` dentro de
 una versión.
 
 Es también un ejemplo de facilidad de modificación: la clase `Experiment` solo
-depende de OpenFeature. El único lugar que sabe de Unleash es
-[UsersService/Program.cs](src/UsersService/Program.cs), que registra el
+depende de OpenFeature. El único lugar que sabe de Unleash es el
+[Program.cs](src/UsersService/Program.cs) de `Users`, que registra el
 proveedor. Cambiar Unleash por otro servicio de *feature flags* es cambiar ese
 registro y el paquete del proveedor, sin tocar `Experiment`.
 
@@ -3357,7 +3362,7 @@ user.DisplayName = variant == "B" ? $"{user.Name} <{user.Email}>" : user.Name;
 ```
 
 El registro del proveedor, en
-[UsersService/Program.cs](src/UsersService/Program.cs). Solo se registra si está
+[Program.cs](src/UsersService/Program.cs). Solo se registra si está
 configurado `Unleash:Url`, como en la versión `v2`:
 
 ```csharp
@@ -3371,7 +3376,7 @@ await Api.Instance.SetProviderAsync(new UnleashProvider(new UnleashSettings
 ```
 
 El feature flag y sus estrategias los crean las funciones `experiment_start` y
-`experiment_split` de [demos/common.sh](demos/common.sh), con la API de
+`experiment_split` de [common.sh](demos/common.sh), con la API de
 administración de Unleash.
 
 **Cómo verlo:** la demo [31 de A/B Testing](demos/31-ab-testing.sh) levanta

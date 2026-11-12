@@ -66,7 +66,8 @@ public class Experiment
 
         user.DisplayName = variant == "B" ? $"{user.Name} <{user.Email}>" : user.Name;
 
-        context?.Response.Headers.Append(VariantHeader, variant);
+        if (context is not null)
+            context.Response.Headers.Append(VariantHeader, variant);
         Shown.Add(1, new KeyValuePair<string, object?>("variant", variant),
             new KeyValuePair<string, object?>("segment", string.IsNullOrEmpty(segment) ? "ninguno" : segment));
     }
