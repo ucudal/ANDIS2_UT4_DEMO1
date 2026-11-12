@@ -428,8 +428,11 @@ cadena, y la aplicación usa las tres:
   products-db, que sigue siendo una sola instancia. Se puede replicar porque es
   stateless: los Products están en PostgreSQL y la caché en Redis, compartida por
   todas las réplicas. Con una caché en memoria, cada réplica tendría su copia y
-  una invalidación llegaría a una sola. Los ajustes de chaos y de la caché sí
-  quedan en cada réplica: un PUT cambiaría una sola. -->
+  una invalidación llegaría a una sola. La reserva de stock también admite
+  varias réplicas, como el worker de Orders. Lo que hoy lo impide es el
+  sidecar, que comparte la red de su única réplica: cada réplica necesitaría el
+  suyo. Los ajustes de chaos y de la caché sí quedan en cada réplica: un PUT
+  cambiaría una sola. -->
 * El gateway le pregunta a Keycloak por cada solicitud HTTPS, y el *sidecar*
   verifica la firma del token con las claves públicas de Keycloak, sin
   preguntarle. ¿Qué gana y qué pierde cada uno? ¿Cómo quedaría la tabla si el
@@ -688,7 +691,7 @@ se describe más abajo:
 | `orders-worker` | 3 | MySQL y la cola `orders.process` |
 | `orders-projector` | 3 | MySQL, `order_details`, y la cola `orders.details-view` |
 | `users-service` y `users-service-v2` | 1 de cada versión | [MongoDB](https://www.mongodb.com/); la variante de cada `User`, en [Unleash](https://www.getunleash.io/) |
-| `products-service` | 1 | [PostgreSQL](https://www.postgresql.org/), la caché en [Redis](https://redis.io/) y las imágenes en [Azurite](https://github.com/Azure/Azurite) |
+| `products-service` | 1, por el *sidecar* | [PostgreSQL](https://www.postgresql.org/): `products`, `stock_reservations` y `outbox_messages`; la cola `products.stock`; la caché en [Redis](https://redis.io/) y las imágenes en [Azurite](https://github.com/Azure/Azurite) |
 | `bff-web` y `bff-mobile` | 1 | No tienen: llaman a los servicios en cada solicitud |
 | `api-gateway` | 1 | Las sesiones, en [Keycloak](https://www.keycloak.org/); el límite de `POST /orders/` por cliente, en su memoria |
 | `messaging-bridge` | 1 | RabbitMQ y [ActiveMQ](https://activemq.apache.org/); tiene una sola instancia para conservar el orden de los pedidos |
@@ -705,8 +708,21 @@ con una solución más directa y más simple, y cómo se resolvió en la aplicac
 | Identidad | Una sesión guardada en la memoria de una instancia obligaría a mandar todas las solicitudes de un usuario a esa instancia | El token de Keycloak viaja en cada solicitud, y ninguna instancia guarda la sesión | [Federated Identity](PATTERNS.md#federated-identity) |
 | *Relay* del *outbox* | Con dos instancias que leyeran los mensajes pendientes, las dos publicarían los mismos | `SELECT ... FOR UPDATE SKIP LOCKED`: cada mensaje lo toma una sola instancia | [Transactional Outbox](PATTERNS.md#transactional-outbox) |
 | *Worker* | Preguntaba si la `Order` seguía `Pending` y después la cambiaba: dos copias del mismo mensaje en dos réplicas a la vez la confirmaban dos veces | Un `UPDATE` condicional cambia el estado solo si la `Order` sigue `Pending` | [Competing Consumers para disponibilidad](PATTERNS.md#competing-consumers-para-disponibilidad) |
+| Reserva de stock | Con el stock reservado en la memoria de cada réplica, o preguntando primero si la `Order` ya tenía reserva, dos copias de `order.created` en dos réplicas descontarían el stock dos veces | El stock está en PostgreSQL; la reserva tiene como clave la `Order` y se inserta en la misma transacción que el descuento | [Saga](PATTERNS.md#saga) |
 | Proyectores | Un proyector cuyo resultado dependa de procesar los eventos en orden | *Upserts*, un estado que solo avanza, un índice único y la fecha de cada nombre | [Materialized View](PATTERNS.md#materialized-view) |
 | Claves de `Idempotency-Key` | En un diccionario en memoria, un reintento que llegara a otra réplica crearía una segunda `Order`, y un reinicio borraría las claves | La tabla `idempotency_keys`, en la misma transacción que la `Order` | [Asynchronous Request-Reply](PATTERNS.md#asynchronous-request-reply) |
+
+**Una réplica por el *sidecar*.** `products-service` guarda todo su estado
+afuera, y su *relay* y su consumidor de la [Saga](PATTERNS.md#saga) ya admiten
+varias réplicas, como los de `Orders`. Lo que lo deja en una sola réplica es el
+[Sidecar](PATTERNS.md#sidecar): `products-sidecar` comparte el espacio de red
+de `products-service` -`network_mode` en
+[docker-compose.yaml](docker-compose.yaml)- y le habla en `127.0.0.1:8000`. Un
+*sidecar* acompaña a una sola réplica. Para tener varias, cada réplica
+necesitaría su propio [Envoy](https://www.envoyproxy.io/), y el gateway
+tendría que repartir las solicitudes entre los pares de servicio y *sidecar*.
+En [Kubernetes](https://kubernetes.io/) es lo que hace un pod con dos
+contenedores: cada réplica del pod trae su *sidecar*.
 
 ***Stateless* no alcanza.** Los proyectores no guardan nada en memoria, y aun
 así no se podían escalar mientras su resultado dependía del orden de los
@@ -1126,7 +1142,8 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 | Un solo *sidecar*, sin TLS entre los servicios | Menos infraestructura | El tráfico dentro de la red viaja sin cifrar, y `Orders` y `Users` no tienen *sidecar* | — |
 | Keycloak en modo desarrollo | Arranca con un comando y sin base propia | Si se vuelve a crear el contenedor, se pierden las sesiones y los cambios hechos en la consola | — |
 | Conviven la consulta de detalle síncrona y la que lee la vista | Se comparan los dos enfoques con los mismos datos | Dos implementaciones de la misma consulta, que pueden responder distinto | — |
-| `Users` y `Products` publican sus eventos sin *outbox* | Simplicidad; en `Users`, [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones con varios documentos | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | — |
+| `Users` publica `user.updated` y `Products` publica `product.updated` sin *outbox* | Simplicidad; en `Users`, [MongoDB](https://www.mongodb.com/) sin réplicas no tiene transacciones con varios documentos, así que el cambio y el mensaje no se pueden guardar juntos en colecciones distintas | Si [RabbitMQ](https://www.rabbitmq.com/) no está, el evento se pierde y la vista queda con el nombre anterior | `Products` ya tiene un *outbox* para los eventos de la [Saga](PATTERNS.md#saga) |
+| `products-service` tiene una sola réplica | Un solo *sidecar*, que comparte su red | `Products` es un punto único de falla y no escala con la carga | Ver [Stateless y estado por réplica](#stateless-y-estado-por-réplica) |
 | Los cambios de nombre se ordenan por la hora de cada contenedor | Varios proyectores, sin numerar los cambios en `Users` ni en `Products` | Si los relojes no están sincronizados, un nombre viejo puede pisar uno nuevo, o uno nuevo puede descartarse | [Materialized View](PATTERNS.md#materialized-view) |
 | Un mensaje que falla siempre vuelve a la cola | Ningún mensaje se descarta por una falla pasajera | Un *poison message* se reintenta para siempre y ocupa a una réplica cada 5 segundos | — |
 | El cliente consulta el estado de la `Order` cada tanto | No necesita exponer un endpoint propio | Consultas que no traen novedades | — |
@@ -1147,13 +1164,29 @@ producción. Varias se resuelven en las demos siguientes, descritas en
 * Elijan una decisión de la tabla y escriban un registro de decisión de
   arquitectura -ADR-: contexto, decisión, alternativas consideradas y
   consecuencias.
-  <!-- → Por ejemplo, para "Users y Products publican sus eventos sin outbox":
-  contexto, eventos que se pierden si RabbitMQ no está y una vista que queda
+  <!-- → Por ejemplo, para "Users y Products publican sin outbox": contexto,
+  eventos que se pierden si RabbitMQ no está y una vista que queda
   desactualizada; decisión, publicar después de guardar, sin outbox;
-  alternativas, outbox en PostgreSQL, MongoDB con réplicas para tener
-  transacciones, o captura de cambios de la base con Debezium; consecuencias,
-  simplicidad a cambio de eventos perdidos y una vista que hay que reparar a
-  mano. -->
+  alternativas, en Products el outbox que ya usa la Saga, en Users MongoDB con
+  réplicas para tener transacciones, o captura de cambios de la base con
+  Debezium; consecuencias, simplicidad a cambio de eventos perdidos y una vista
+  que hay que reparar a mano. -->
+* `Users` guarda los `Users` en MongoDB sin réplicas, que no tiene
+  transacciones con varios documentos. ¿Cómo podría publicar `user.updated` con
+  un *outbox* igual? ¿Y para tener varias réplicas de `products-service`?
+  <!-- → Para Users hay dos caminos. Uno es un replica set de MongoDB, aunque
+  sea de un solo nodo: admite transacciones con varios documentos, y el cambio
+  y el mensaje se guardan juntos en dos colecciones, como en Orders y Products;
+  también habilita los change streams, que avisan de cada cambio sin un relay
+  que consulte. El otro no necesita réplicas: guardar el mensaje pendiente en
+  el mismo documento del User, porque MongoDB actualiza un documento de forma
+  atómica; el relay busca los Users con mensajes pendientes, los publica y los
+  quita con una actualización condicional. Para Products, cada réplica necesita
+  su propio sidecar: varios pares de products-service y Envoy detrás del
+  gateway, o un pod con los dos contenedores en Kubernetes. Lo demás ya
+  funciona con varias réplicas: el estado está en PostgreSQL y Redis, el relay
+  toma los mensajes con SKIP LOCKED y la reserva repetida falla por la clave
+  primaria. Los ajustes de chaos y de la caché quedarían en cada réplica. -->
 * ¿Qué decisión de la tabla cambiarían primero si la aplicación fuera a
   producción? ¿Por qué?
   <!-- → No hay una única respuesta; importa la justificación. Una razonable:

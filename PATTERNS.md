@@ -867,8 +867,8 @@ podría descontar el stock y caerse antes de publicar `stock.reserved`: la
 
 **Coreografía u orquestación.** La alternativa es un orquestador: un componente
 que le dice a cada participante qué hacer, sabe en qué paso está cada `Order` y
-decide las compensaciones. En
-[Azure](https://azure.microsoft.com/) puede ser [Durable
+decide las compensaciones. En [Azure](https://azure.microsoft.com/) puede ser
+[Durable
 Functions](https://learn.microsoft.com/azure/azure-functions/durable/durable-functions-overview),
 y en [AWS](https://aws.amazon.com/), [Step
 Functions](https://aws.amazon.com/step-functions/).
