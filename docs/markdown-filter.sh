@@ -16,6 +16,10 @@
 # En los avisos de GitHub, como > [!TIP], la línea > vacía que sigue al tipo
 # GitHub la ignora, pero Doxygen la muestra como un renglón vacío al principio
 # del recuadro. El filtro la quita.
+#
+# Doxygen convierte en enlace toda URL, aunque esté en código en línea, como
+# `http://localhost`; GitHub no. El filtro le antepone %, que Doxygen no
+# muestra, para que quede como código.
 perl -0777 -pe '
   my @parts = split /(^```[^\n]*\n.*?^```[^\n]*$)/ms;
   for my $i (0 .. $#parts) {
@@ -25,7 +29,7 @@ perl -0777 -pe '
       $parts[$i] =~ s/^(> \[!\w+\]\n)>[ \t]*\n/$1/mg;
       my @spans = split /(`[^`\n]*`)/, $parts[$i];
       for my $j (0 .. $#spans) {
-        next if $j % 2;
+        if ($j % 2) { $spans[$j] =~ s{(?<!%)(https?://)}{%$1}g; next; }
         $spans[$j] =~ s/\$([^\s\$](?:[^\$\n]*[^\s\$])?)\$/\\f\$$1\\f\$/g;
         $spans[$j] =~ s/(?<![\w\/%(.\[])((?:ARCHITECTURE|PATTERNS|README)\.md)(?![\w)#])/%$1/g;
         $spans[$j] =~ s{\]\(README\.md(#[^)\s]+)?\)}{](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/README.md$1)}g;
