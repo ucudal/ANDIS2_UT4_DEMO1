@@ -24,6 +24,7 @@ note "Aplicando el worker de k8s/energy en el clúster, con 3 réplicas fijas, c
 energy_setup
 wait_replicas 3
 wait_rate
+wait_idle
 worker_line
 idle=$(worker_watts)
 

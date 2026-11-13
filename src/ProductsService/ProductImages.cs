@@ -2,18 +2,22 @@ using System.Diagnostics.Metrics;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 
-namespace ProductsService;
+namespace Ucu.Andis.ProductsService;
 
-// Valet Key: las imágenes de los Products se guardan en un almacenamiento de
-// blobs -Azurite, el emulador de Azure Storage-. Products tiene la clave de la
-// cuenta, pero no la entrega: le da al cliente una URL firmada -una SAS, Shared
-// Access Signature- que permite una sola operación, sobre un solo blob, durante
-// 2 minutos como máximo. Con esa URL, el cliente sube o baja la imagen
-// directamente del almacenamiento, y los bytes no pasan por Products ni por el
-// gateway.
-//
-// Para comparar, Products también acepta la imagen él mismo y la sube con su
-// clave: es la forma sin Valet Key.
+/// <summary>
+/// Representa el almacenamiento de las imágenes de los Products.
+/// </summary>
+/// <remarks>
+/// Valet Key: las imágenes se guardan en un almacenamiento de blobs -Azurite, el
+/// emulador de Azure Storage-. Products tiene la clave de la cuenta, pero no la
+/// entrega: le da al cliente una URL firmada -una SAS, Shared Access Signature- que
+/// permite una sola operación, sobre un solo blob, durante 2 minutos como máximo.
+/// Con esa URL, el cliente sube o baja la imagen directamente del almacenamiento, y
+/// los bytes no pasan por Products ni por el gateway.
+///
+/// Para comparar, Products también acepta la imagen él mismo y la sube con su
+/// clave: es la forma sin Valet Key.
+/// </remarks>
 public class ProductImages
 {
     public const string MeterName = "Ucu.Andis.ProductImages";
@@ -47,9 +51,14 @@ public class ProductImages
         _logger = logger;
     }
 
-    // Las métricas arrancan en 0: si aparecieran recién con la primera imagen,
-    // Prometheus no vería ese primer aumento. Se llama cuando ya arrancó la
-    // aplicación: antes, OpenTelemetry todavía no registra las mediciones.
+    /// <summary>
+    /// Inicia las métricas en 0.
+    /// </summary>
+    /// <remarks>
+    /// Si aparecieran recién con la primera imagen, Prometheus no vería ese primer
+    /// aumento. Se llama cuando ya arrancó la aplicación: antes, OpenTelemetry todavía
+    /// no registra las mediciones.
+    /// </remarks>
     public static void StartMetrics()
     {
         ReceivedBytes.Add(0);
@@ -57,8 +66,13 @@ public class ProductImages
         IssuedKeys.Add(0, new KeyValuePair<string, object?>("permission", "read"));
     }
 
-    // Sin Valet Key: Products recibe todos los bytes de la imagen y los sube
-    // él mismo. Los guarda en memoria mientras tanto.
+    /// <summary>
+    /// Sube la imagen de un Product que recibió Products.
+    /// </summary>
+    /// <remarks>
+    /// Sin Valet Key: Products recibe todos los bytes de la imagen y los sube él mismo.
+    /// Los guarda en memoria mientras tanto.
+    /// </remarks>
     public async Task<long> UploadAsync(int productId, Stream content, string contentType, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);
@@ -79,16 +93,25 @@ public class ProductImages
         return buffer.Length;
     }
 
-    // Con Valet Key: una URL para crear o reemplazar la imagen del Product, y
-    // nada más. No sirve para leerla, ni para otro blob, ni después de vencer.
-    // El cliente puede pedir que venza antes de los 2 minutos, nunca después.
+    /// <summary>
+    /// Devuelve una URL para crear o reemplazar la imagen del Product, y nada más.
+    /// </summary>
+    /// <remarks>
+    /// Con Valet Key: no sirve para leerla, ni para otro blob, ni después de vencer. El
+    /// cliente puede pedir que venza antes de los 2 minutos, nunca después.
+    /// </remarks>
     public async Task<(Uri Url, DateTimeOffset ExpiresOn)> GetUploadKeyAsync(int productId, TimeSpan lifetime, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);
         return IssueKey(productId, BlobSasPermissions.Create | BlobSasPermissions.Write, "write", lifetime);
     }
 
-    // Con Valet Key: una URL para leer la imagen del Product, o null si no tiene.
+    /// <summary>
+    /// Devuelve una URL para leer la imagen del Product, o <c>null</c> si no tiene.
+    /// </summary>
+    /// <remarks>
+    /// Con Valet Key.
+    /// </remarks>
     public async Task<(Uri Url, DateTimeOffset ExpiresOn)?> GetDownloadKeyAsync(int productId, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);

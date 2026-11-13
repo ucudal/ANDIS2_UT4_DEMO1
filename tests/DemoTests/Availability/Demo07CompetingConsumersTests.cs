@@ -2,8 +2,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 07: las réplicas de orders-worker se reparten las Orders, y si una se
-// detiene, las demás procesan lo que quedó.
+/// <summary>
+/// Contiene las pruebas de la demo 07: las réplicas de <c>orders-worker</c> se
+/// reparten las Orders, y si una se detiene, las demás procesan lo que quedó.
+/// </summary>
 public class Demo07CompetingConsumersTests : DemoTest
 {
     [Test]

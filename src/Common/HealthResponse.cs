@@ -5,8 +5,11 @@ namespace Ucu.Andis.Common;
 
 public static class HealthResponse
 {
-    // Escribe el resultado de los health checks como JSON, con el estado de
-    // cada chequeo, en lugar del texto plano "Healthy"/"Unhealthy" por defecto.
+    /// <summary>
+    /// Escribe el resultado de los health checks como JSON, con el estado de
+    /// cada chequeo, en lugar del texto plano "Healthy"/"Unhealthy" por
+    /// defecto.
+    /// </summary>
     public static Task WriteJson(HttpContext context, HealthReport report) =>
         context.Response.WriteAsJsonAsync(new
         {

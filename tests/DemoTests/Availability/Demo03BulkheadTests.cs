@@ -2,8 +2,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 03: con Products lento, el Bulkhead limita cuántas llamadas le hace
-// Orders a la vez y rechaza las que exceden su cupo.
+/// <summary>
+/// Contiene las pruebas de la demo 03: con Products lento, el Bulkhead limita
+/// cuántas llamadas le hace Orders a la vez y rechaza las que exceden su cupo.
+/// </summary>
 public class Demo03BulkheadTests : DemoTest
 {
     [Test]
@@ -29,7 +31,10 @@ public class Demo03BulkheadTests : DemoTest
         return responses.SelectMany(r => r.Rows).Select(r => r!["product_name"]!.GetValue<string>()).ToList();
     }
 
-    // Abre las conexiones antes de la prueba, como warm_up en demos/common.sh.
+    /// <summary>
+    /// Abre las conexiones antes de la prueba, como <c>warm_up</c> en
+    /// <c>demos/common.sh</c>.
+    /// </summary>
     internal static async Task WarmUpAsync()
     {
         for (var i = 0; i < 3; i++)

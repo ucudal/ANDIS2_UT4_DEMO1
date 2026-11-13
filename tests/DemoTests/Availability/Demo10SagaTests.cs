@@ -2,10 +2,12 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 10: Products reserva el stock de cada Order, Orders verifica el User y
-// la confirma, y el ERP la factura. Si un paso falla después de la reserva, la
-// compensación devuelve el stock. Las copias de los eventos no lo cambian dos
-// veces.
+/// <summary>
+/// Contiene las pruebas de la demo 10: Products reserva el stock de cada Order,
+/// Orders verifica el User y la confirma, y el ERP la factura. Si un paso falla
+/// después de la reserva, la compensación devuelve el stock. Las copias de los
+/// eventos no lo cambian dos veces.
+/// </summary>
 public class Demo10SagaTests : DemoTest
 {
     private const int Stock = 20;
@@ -19,9 +21,14 @@ public class Demo10SagaTests : DemoTest
         await Api.SetStockAsync(Product, Stock);
     }
 
-    // Si un test termina antes que la Saga, una compensación que llega después
-    // devolvería unidades al stock del test siguiente: se espera a que no
-    // quede ninguna Order Pending, y a que se publiquen sus eventos.
+    /// <summary>
+    /// Espera a que termine la Saga antes del test siguiente.
+    /// </summary>
+    /// <remarks>
+    /// Si un test termina antes que la Saga, una compensación que llega después
+    /// devolvería unidades al stock del test siguiente: se espera a que no quede
+    /// ninguna Order <c>OrdersService.Models.OrderStatus.Pending</c>, y a que se publiquen sus eventos.
+    /// </remarks>
     [TearDown]
     public async Task RestoreStockAsync()
     {

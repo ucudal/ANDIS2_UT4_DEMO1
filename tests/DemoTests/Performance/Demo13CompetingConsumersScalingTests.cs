@@ -5,8 +5,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 13: con el doble de réplicas de orders-worker, las mismas Orders se
-// procesan en menos tiempo, sin cambiar el código.
+/// <summary>
+/// Contiene las pruebas de la demo 13: con el doble de réplicas de
+/// <c>orders-worker</c>, las mismas Orders se procesan en menos tiempo, sin cambiar
+/// el código.
+/// </summary>
 [Category(TestEnvironment.Disruptive)]
 public class Demo13CompetingConsumersScalingTests : DemoTest
 {

@@ -2,12 +2,19 @@ using System.Text.Json.Serialization;
 
 namespace Ucu.Andis.PurchasesService.AntiCorruption;
 
-// Una Order ya traducida: lo que Purchases necesita de ella, todavía con el id del
-// User, que se traduce aparte.
+/// <summary>
+/// Representa una Order ya traducida: lo que Purchases necesita de ella, todavía
+/// con el id del User, que se traduce aparte.
+/// </summary>
 public record TranslatedOrder(int Number, string UserId, int Units, bool Confirmed);
 
-// Traduce el modelo de Orders. Orders habla de user_id, product_id y estados
-// Pending, Confirmed, Rejected y Cancelled; Purchases no conoce nada de eso.
+/// <summary>
+/// Representa el traductor del modelo de Orders.
+/// </summary>
+/// <remarks>
+/// Orders habla de <c>user_id</c>, <c>product_id</c> y estados <c>OrdersService.Models.OrderStatus.Pending</c>, <c>OrdersService.Models.OrderStatus.Confirmed</c>,
+/// <c>OrdersService.Models.OrderStatus.Rejected</c> y <c>OrdersService.Models.OrderStatus.Cancelled</c>; Purchases no conoce nada de eso.
+/// </remarks>
 public class OrdersTranslator
 {
     private readonly HttpClient _client;

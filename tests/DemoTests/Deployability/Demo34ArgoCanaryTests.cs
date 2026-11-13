@@ -3,8 +3,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 34: Canary con Argo Rollouts. Argo sube el peso de la versión nueva
-// mientras el análisis mide pocos errores, y aborta si mide demasiados.
+/// <summary>
+/// Contiene las pruebas de la demo 34: Canary con Argo Rollouts. Argo sube el peso
+/// de la versión nueva mientras el análisis mide pocos errores, y aborta si mide
+/// demasiados.
+/// </summary>
 public class Demo34ArgoCanaryTests : KubernetesTest
 {
     [TearDown]

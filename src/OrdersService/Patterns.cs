@@ -4,18 +4,22 @@ using Polly.CircuitBreaker;
 
 namespace Ucu.Andis.OrdersService;
 
-// Prende y apaga cada patrón de resiliencia de Orders en tiempo de ejecución,
-// sin reiniciar, igual que el chaos. Sirve para que cada demo muestre un solo
-// patrón: en la de Retry no actúa el Circuit Breaker, en la de Throttling no
-// actúa el Bulkhead, etc.
-//
-//   PUT    /orders/patterns  {"retry": true, "circuitBreaker": false, "bulkhead": false, "throttling": false}
-//   GET    /orders/patterns
-//   DELETE /orders/patterns  -vuelve a prender todos-
-//
-// Cada proceso tiene sus propios ajustes: cambian los de orders-service, que es
-// el que arma la consulta de detalle, y no los de orders-worker ni los de
-// orders-projector.
+/// <summary>
+/// Representa los ajustes que prenden y apagan cada patrón de resiliencia de Orders
+/// en tiempo de ejecución, sin reiniciar, igual que el chaos.
+/// </summary>
+/// <remarks>
+/// Sirve para que cada demo muestre un solo patrón: en la de Retry no actúa el
+/// Circuit Breaker, en la de Throttling no actúa el Bulkhead, etc.
+/// <code>
+/// PUT    /orders/patterns  {"retry": true, "circuitBreaker": false, "bulkhead": false, "throttling": false}
+/// GET    /orders/patterns
+/// DELETE /orders/patterns  -vuelve a prender todos-
+/// </code>
+/// Cada proceso tiene sus propios ajustes: cambian los de <c>orders-service</c>,
+/// que es el que arma la consulta de detalle, y no los de <c>orders-worker</c> ni
+/// los de <c>orders-projector</c>.
+/// </remarks>
 public class PatternSettings
 {
     public const string MeterName = "Ucu.Andis.Patterns";
@@ -28,11 +32,16 @@ public class PatternSettings
     private readonly List<CircuitBreakerManualControl> _circuits = [];
     private readonly Dictionary<string, CircuitBreakerStateProvider> _circuitStates = [];
 
-    // El circuito de cada dependencia se registra acá para poder cerrarlo al
-    // prender o apagar el patrón. Al apagarlo, porque si quedó abierto por una
-    // demo anterior, no volvería a dejar pasar las llamadas. Al prenderlo,
-    // porque mientras estuvo apagado contó como exitosa cada llamada, y esas
-    // llamadas impedirían que se abra: cerrarlo borra lo contado.
+    /// <summary>
+    /// Registra el circuito de una dependencia, para poder cerrarlo al prender o
+    /// apagar el patrón.
+    /// </summary>
+    /// <remarks>
+    /// Al apagarlo, porque si quedó abierto por una demo anterior, no volvería a dejar
+    /// pasar las llamadas. Al prenderlo, porque mientras estuvo apagado contó como
+    /// exitosa cada llamada, y esas llamadas impedirían que se abra: cerrarlo borra lo
+    /// contado.
+    /// </remarks>
     public CircuitBreakerManualControl RegisterCircuit()
     {
         var control = new CircuitBreakerManualControl();
@@ -41,7 +50,9 @@ public class PatternSettings
         return control;
     }
 
-    // El estado del circuito de cada dependencia, para mostrarlo en Grafana.
+    /// <summary>
+    /// Registra el estado del circuito de una dependencia, para mostrarlo en Grafana.
+    /// </summary>
     public CircuitBreakerStateProvider RegisterCircuitState(string dependency)
     {
         var state = new CircuitBreakerStateProvider();

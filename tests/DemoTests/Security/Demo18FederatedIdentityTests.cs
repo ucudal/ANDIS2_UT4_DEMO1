@@ -5,8 +5,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 18: por HTTPS, el User sale del token de Keycloak y no del cuerpo; cada
-// uno ve solo sus Orders, el rol admin ve todas, y un token alterado no entra.
+/// <summary>
+/// Contiene las pruebas de la demo 18: por HTTPS, el User sale del token de
+/// Keycloak y no del cuerpo; cada uno ve solo sus Orders, el rol admin ve todas, y
+/// un token alterado no entra.
+/// </summary>
 public class Demo18FederatedIdentityTests : DemoTest
 {
     [Test]

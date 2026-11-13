@@ -4,8 +4,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 08: los eventos de una Order son la fuente de verdad; la tabla orders se
-// borra y se reconstruye a partir de ellos.
+/// <summary>
+/// Contiene las pruebas de la demo 08: los eventos de una Order son la fuente de
+/// verdad; la tabla <c>orders</c> se borra y se reconstruye a partir de ellos.
+/// </summary>
 public class Demo08EventSourcingTests : DemoTest
 {
     [Test]

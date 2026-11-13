@@ -1,9 +1,14 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace ProductsService.Models;
+namespace Ucu.Andis.ProductsService.Models;
 
-// Saga: el stock que Products reservó para una Order. Hay una por Order -es la
-// clave primaria-, así que una reserva repetida falla -ver pginit.sql-.
+/// <summary>
+/// Representa el stock que Products reservó para una Order.
+/// </summary>
+/// <remarks>
+/// Saga: hay una por Order -es la clave primaria-, así que una reserva repetida
+/// falla -ver <c>pginit.sql</c>-.
+/// </remarks>
 [Table("stock_reservations")]
 public class StockReservation
 {
@@ -19,7 +24,9 @@ public class StockReservation
     [Column("status")]
     public string Status { get; set; } = ReservationStatus.Reserved;
 
-    // Por qué se rechazó, si se rechazó.
+    /// <summary>
+    /// Obtiene o establece por qué se rechazó la reserva, si se rechazó.
+    /// </summary>
     [Column("reason")]
     public string? Reason { get; set; }
 

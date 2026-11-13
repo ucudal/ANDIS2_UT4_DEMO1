@@ -2,9 +2,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 09: con RabbitMQ detenido, Orders sigue aceptando Orders: los mensajes
-// esperan en el outbox y se publican cuando vuelve. Un mensaje publicado dos
-// veces produce una sola confirmación.
+/// <summary>
+/// Contiene las pruebas de la demo 09: con RabbitMQ detenido, Orders sigue
+/// aceptando Orders: los mensajes esperan en el outbox y se publican cuando vuelve.
+/// Un mensaje publicado dos veces produce una sola confirmación.
+/// </summary>
 [Category(TestEnvironment.Disruptive)]
 public class Demo09TransactionalOutboxTests : DemoTest
 {
@@ -35,8 +37,13 @@ public class Demo09TransactionalOutboxTests : DemoTest
         Assert.That(pending, Is.EqualTo(0));
     }
 
-    // Products en pausa: la Order queda Pending, y las dos copias de
-    // stock.reserved llegan a la vez a dos workers antes que la reserva real.
+    /// <summary>
+    /// Verifica que un mensaje duplicado confirme la Order una sola vez.
+    /// </summary>
+    /// <remarks>
+    /// Con Products en pausa, la Order queda <c>OrdersService.Models.OrderStatus.Pending</c>, y las dos copias de
+    /// <c>stock.reserved</c> llegan a la vez a dos workers antes que la reserva real.
+    /// </remarks>
     [Test]
     public async Task ADuplicatedMessageConfirmsTheOrderOnce()
     {

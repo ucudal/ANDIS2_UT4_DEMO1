@@ -5,9 +5,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 20: por HTTPS, el gateway rechaza las rutas de administración, los ids
-// mal formados, los métodos y cuerpos que no corresponden y los encabezados de
-// identidad falsos, sin llegar a los servicios.
+/// <summary>
+/// Contiene las pruebas de la demo 20: por HTTPS, el gateway rechaza las rutas de
+/// administración, los ids mal formados, los métodos y cuerpos que no corresponden y
+/// los encabezados de identidad falsos, sin llegar a los servicios.
+/// </summary>
 public class Demo20GatekeeperTests : DemoTest
 {
     [TestCase("/orders/chaos", HttpStatusCode.OK)]

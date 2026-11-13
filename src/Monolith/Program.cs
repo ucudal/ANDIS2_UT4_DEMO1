@@ -1,17 +1,7 @@
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Runtime.Serialization;
-using System.ServiceModel;
 using Microsoft.EntityFrameworkCore;
 using SoapCore;
+using Ucu.Andis.Monolith;
 
-// Strangler Fig: el sistema que se quiere reemplazar. Un solo proceso y una sola
-// base de datos con Users, Products y Orders, con los mismos contratos que los
-// microservicios, para que un cliente no note quién le responde. No tiene
-// patrones: es lo que la aplicación habría sido antes de separarse en servicios.
-//
-// La base es un archivo SQLite dentro del contenedor, con los mismos datos
-// iniciales que los microservicios, ids incluidos: al recrear el contenedor
-// vuelve a ese estado.
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<MonolithDb>(options => options.UseSqlite("Data Source=/tmp/monolith.db"));
 builder.Services.AddSoapCore();
@@ -86,63 +76,17 @@ app.MapGet("/orders/user/{userId}/details", async (string userId, MonolithDb db)
 
 app.Run();
 
-public class MonolithDb : DbContext
-{
-    public MonolithDb(DbContextOptions<MonolithDb> options) : base(options) { }
-    public DbSet<User> Users => Set<User>();
-    public DbSet<Product> Products => Set<Product>();
-    public DbSet<Order> Orders => Set<Order>();
-}
-
-[DataContract(Namespace = "http://ucu.edu.uy/andis/users")]
-public class User
-{
-    [DataMember] public string Id { get; set; } = string.Empty;
-    [DataMember] public string Name { get; set; } = string.Empty;
-    [DataMember] public string Email { get; set; } = string.Empty;
-}
-
-public class Product
-{
-    public int Id { get; set; }
-    public string? Name { get; set; }
-    public double Price { get; set; }
-}
-
-public class Order
-{
-    public int Id { get; set; }
-    public string UserId { get; set; } = string.Empty;
-    public int ProductId { get; set; }
-    public int Quantity { get; set; }
-    public string Status { get; set; } = "Confirmed";
-}
-
-// El mismo contrato SOAP que Users.
-[ServiceContract(Namespace = "http://ucu.edu.uy/andis/users")]
-public interface IUserService
-{
-    [OperationContract] Task<User?> GetUser(string id);
-    [OperationContract] Task<User[]> ListUsers();
-    [OperationContract] Task<User> UpdateUser(string id, string name, string email);
-}
-
-public class UserService : IUserService
-{
-    private readonly MonolithDb _db;
-
-    public UserService(MonolithDb db) => _db = db;
-
-    public async Task<User?> GetUser(string id) => await _db.Users.FindAsync(id);
-
-    public Task<User[]> ListUsers() => _db.Users.ToArrayAsync();
-
-    public async Task<User> UpdateUser(string id, string name, string email)
-    {
-        var user = await _db.Users.FindAsync(id) ?? throw new FaultException($"No existe el User {id}");
-        user.Name = name;
-        user.Email = email;
-        await _db.SaveChangesAsync();
-        return user;
-    }
-}
+/// <summary>
+/// Representa el monolito, el sistema que se quiere reemplazar con Strangler Fig.
+/// </summary>
+/// <remarks>
+/// Un solo proceso y una sola base de datos con Users, Products y Orders, con los
+/// mismos contratos que los microservicios, para que un cliente no note quién le
+/// responde. No tiene patrones: es lo que la aplicación habría sido antes de
+/// separarse en servicios.
+///
+/// La base es un archivo SQLite dentro del contenedor, con los mismos datos
+/// iniciales que los microservicios, ids incluidos: al recrear el contenedor vuelve
+/// a ese estado.
+/// </remarks>
+partial class Program { }

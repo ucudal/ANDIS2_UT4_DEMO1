@@ -2,8 +2,13 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// La base de los tests de las demos que corren en Kubernetes. Si el clúster de
-// ./demos/k8s-up.sh no está, los tests se ignoran en lugar de fallar.
+/// <summary>
+/// Representa la base de los tests de las demos que corren en Kubernetes.
+/// </summary>
+/// <remarks>
+/// Si el clúster de <c>./demos/k8s-up.sh</c> no está, los tests se ignoran en lugar
+/// de fallar.
+/// </remarks>
 [Category(TestEnvironment.Kubernetes)]
 public abstract class KubernetesTest
 {
@@ -18,8 +23,13 @@ public abstract class KubernetesTest
     protected static Task<Shell.Result> KubernetesAsync(string commands) =>
         Shell.KubernetesAsync(commands, TimeSpan.FromMinutes(10));
 
-    // Aplica una estrategia de k8s/ y espera a que la versión v1 responda de
-    // forma estable: los pods de un test anterior pueden seguir terminando.
+    /// <summary>
+    /// Aplica una estrategia de <c>k8s/</c> y espera a que la versión v1 responda de
+    /// forma estable.
+    /// </summary>
+    /// <remarks>
+    /// Los pods de un test anterior pueden seguir terminando.
+    /// </remarks>
     protected static async Task ApplyStrategyAsync(string strategy)
     {
         await KubernetesAsync($"strategy_apply {strategy}");

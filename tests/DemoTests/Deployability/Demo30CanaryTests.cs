@@ -3,8 +3,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 30: una fracción de las solicitudes va a la versión v2. Si la v2 falla,
-// el error lo ve solo esa fracción, y volver atrás es mandar todo a la v1.
+/// <summary>
+/// Contiene las pruebas de la demo 30: una fracción de las solicitudes va a la
+/// versión v2. Si la v2 falla, el error lo ve solo esa fracción, y volver atrás es
+/// mandar todo a la v1.
+/// </summary>
 public class Demo30CanaryTests : DemoTest
 {
     [TearDown]

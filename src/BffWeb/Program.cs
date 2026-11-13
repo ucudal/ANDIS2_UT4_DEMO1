@@ -1,9 +1,5 @@
-using System.Text.Json.Serialization;
+using Ucu.Andis.BffWeb;
 
-// Backends for Frontends: el backend de la web. La web muestra una tabla con cada
-// Order de un User, con el precio de cada Product y el total. Este servicio arma
-// exactamente esa respuesta; la app móvil tiene su propio backend, en BffMobile.
-// Lo mantiene el equipo de la web, y cambia al ritmo de la web.
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpClient("Orders", client =>
@@ -46,13 +42,13 @@ app.MapGet("/web/orders/user/{userId}", async (string userId, IHttpClientFactory
 
 app.Run();
 
-record OrderRecord(
-    [property: JsonPropertyName("id")] int Id,
-    [property: JsonPropertyName("user_id")] string UserId,
-    [property: JsonPropertyName("product_id")] int ProductId,
-    [property: JsonPropertyName("quantity")] int Quantity,
-    [property: JsonPropertyName("status")] string Status);
-
-record ProductRecord(
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("price")] double Price);
+/// <summary>
+/// Representa el backend de la web, de Backends for Frontends.
+/// </summary>
+/// <remarks>
+/// La web muestra una tabla con cada Order de un User, con el precio de cada
+/// Product y el total. Este servicio arma exactamente esa respuesta; la app móvil
+/// tiene su propio backend, en BffMobile. Lo mantiene el equipo de la web, y
+/// cambia al ritmo de la web.
+/// </remarks>
+partial class Program { }

@@ -2,9 +2,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 16: la consulta de detalle llama a Users y a Products; la de la vista
-// lee solo su tabla. Responden lo mismo, pero la vista no depende de la demora
-// de los demás, a cambio de consistencia eventual.
+/// <summary>
+/// Contiene las pruebas de la demo 16: la consulta de detalle llama a Users y a
+/// Products; la de la vista lee solo su tabla. Responden lo mismo, pero la vista no
+/// depende de la demora de los demás, a cambio de consistencia eventual.
+/// </summary>
 public class Demo16CqrsTests : DemoTest
 {
     [Test]

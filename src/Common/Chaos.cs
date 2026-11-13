@@ -8,25 +8,36 @@ using Microsoft.Extensions.Logging;
 
 namespace Ucu.Andis.Common;
 
-// Inyección de fallas para la demo: permite que un servicio falle o responda
-// lento a propósito, para ver cómo reaccionan los patrones de resiliencia de
-// quien lo llama. Se configura en tiempo de ejecución, sin reiniciar:
-//
-//   PUT    {prefijo}/chaos  {"failureRate": 0.5, "delayMs": 1000}
-//   GET    {prefijo}/chaos
-//   DELETE {prefijo}/chaos  -vuelve a la normalidad-
-//
-// Los valores iniciales salen de la configuración, Chaos:FailureRate y
-// Chaos:DelayMs -por variable de entorno, CHAOS__FAILURERATE y CHAOS__DELAYMS-.
-// Sin valor, son 0: el servicio arranca sin fallas. Las demos de Kubernetes, de
-// la 32 a la 34, construyen con ellos una versión de Users que falla desde que
-// arranca, para ver cómo se detecta y se vuelve atrás.
+/// <summary>
+/// Representa los ajustes de la inyección de fallas para la demo, que permite
+/// que un servicio falle o responda lento a propósito.
+/// </summary>
+/// <remarks>
+/// Sirve para ver cómo reaccionan los patrones de resiliencia de quien llama al
+/// servicio. Se configura en tiempo de ejecución, sin reiniciar:
+/// <code>
+/// PUT    {prefijo}/chaos  {"failureRate": 0.5, "delayMs": 1000}
+/// GET    {prefijo}/chaos
+/// DELETE {prefijo}/chaos  -vuelve a la normalidad-
+/// </code>
+/// Los valores iniciales salen de la configuración, <c>Chaos:FailureRate</c> y
+/// <c>Chaos:DelayMs</c> -por variable de entorno, <c>CHAOS__FAILURERATE</c> y
+/// <c>CHAOS__DELAYMS</c>-. Sin valor, son 0: el servicio arranca sin fallas.
+/// Las demos de Kubernetes, de la 32 a la 34, construyen con ellos una versión
+/// de Users que falla desde que arranca, para ver cómo se detecta y se vuelve
+/// atrás.
+/// </remarks>
 public class ChaosSettings
 {
-    // Fracción de solicitudes que responden 503, entre 0 y 1.
+    /// <summary>
+    /// Obtiene o establece la fracción de solicitudes que responden 503, entre
+    /// 0 y 1.
+    /// </summary>
     public double FailureRate { get; set; }
 
-    // Demora agregada a cada solicitud, en milisegundos.
+    /// <summary>
+    /// Obtiene o establece la demora agregada a cada solicitud, en milisegundos.
+    /// </summary>
     public int DelayMs { get; set; }
 }
 

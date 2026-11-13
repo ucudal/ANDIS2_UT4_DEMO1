@@ -12,24 +12,36 @@ using Microsoft.Extensions.Logging;
 
 namespace Ucu.Andis.Common;
 
-// External Configuration Store: los valores que cambian entre entornos o con el
-// tiempo -URL, límites, feature flags- están en un almacén central, Consul KV,
-// en lugar de estar en la imagen o en las variables de entorno de cada
-// contenedor. Cada proceso los lee al arrancar y los vuelve a leer cada 2
-// segundos: cambiar un valor no obliga a redesplegar ni a reiniciar.
-//
-// El almacén es una fuente más de IConfiguration, la última que se agrega: gana
-// sobre appsettings.json y las variables de entorno, que quedan como valores
-// por defecto. El código que lee la configuración no sabe de dónde viene el
-// valor. Tiene que leerla en cada uso, y no guardarla al arrancar.
-//
-// La clave andis/Orders/MaxQuantity de Consul es Orders:MaxQuantity en
-// IConfiguration.
+/// <summary>
+/// Proporciona los métodos que agregan el External Configuration Store a la
+/// configuración de un proceso.
+/// </summary>
+/// <remarks>
+/// Los valores que cambian entre entornos o con el tiempo -URL, límites,
+/// feature flags- están en un almacén central, Consul KV, en lugar de estar en
+/// la imagen o en las variables de entorno de cada contenedor. Cada proceso los
+/// lee al arrancar y los vuelve a leer cada 2 segundos: cambiar un valor no
+/// obliga a redesplegar ni a reiniciar.
+///
+/// El almacén es una fuente más de <c>IConfiguration</c>, la última que se
+/// agrega: gana sobre <c>appsettings.json</c> y las variables de entorno, que
+/// quedan como valores por defecto. El código que lee la configuración no sabe
+/// de dónde viene el valor. Tiene que leerla en cada uso, y no guardarla al
+/// arrancar.
+///
+/// La clave <c>andis/Orders/MaxQuantity</c> de Consul es
+/// <c>Orders:MaxQuantity</c> en <c>IConfiguration</c>.
+/// </remarks>
 public static class ExternalConfigurationExtensions
 {
     public const string MeterName = "Ucu.Andis.ExternalConfiguration";
 
-    // Sin Consul:Url el proceso usa solo su configuración local.
+    /// <summary>
+    /// Agrega Consul como fuente de configuración.
+    /// </summary>
+    /// <remarks>
+    /// Sin <c>Consul:Url</c> el proceso usa solo su configuración local.
+    /// </remarks>
     public static WebApplicationBuilder AddExternalConfiguration(this WebApplicationBuilder builder)
     {
         if (builder.Configuration["Consul:Url"] is not { Length: > 0 } url)
@@ -63,9 +75,14 @@ public class ConsulConfigurationProvider : ConfigurationProvider
         _client = new HttpClient { BaseAddress = new Uri(url), Timeout = TimeSpan.FromSeconds(2) };
     }
 
-    // La primera lectura, al arrancar. Si Consul no responde, el proceso arranca
-    // igual, con sus valores por defecto: el almacén no puede ser una dependencia
-    // sin la cual nada arranca.
+    /// <summary>
+    /// Lee el almacén por primera vez, al arrancar.
+    /// </summary>
+    /// <remarks>
+    /// Si Consul no responde, el proceso arranca igual, con sus valores por
+    /// defecto: el almacén no puede ser una dependencia sin la cual nada
+    /// arranca.
+    /// </remarks>
     public override void Load()
     {
         try
@@ -78,8 +95,13 @@ public class ConsulConfigurationProvider : ConfigurationProvider
         }
     }
 
-    // Los valores que son números o booleanos, para publicarlos como métrica. Los
-    // demás, como una URL, no se pueden graficar.
+    /// <summary>
+    /// Devuelve los valores que son números o booleanos, para publicarlos como
+    /// métrica.
+    /// </summary>
+    /// <remarks>
+    /// Los demás, como una URL, no se pueden graficar.
+    /// </remarks>
     public IEnumerable<KeyValuePair<string, double>> NumericValues()
     {
         foreach (var (key, value) in Data)
@@ -91,8 +113,13 @@ public class ConsulConfigurationProvider : ConfigurationProvider
         }
     }
 
-    // Devuelve las claves que cambiaron. Si Consul no responde, lanza una
-    // excepción y Data no se toca: se siguen usando los últimos valores leídos.
+    /// <summary>
+    /// Vuelve a leer el almacén y devuelve las claves que cambiaron.
+    /// </summary>
+    /// <remarks>
+    /// Si Consul no responde, lanza una excepción y <c>Data</c> no se toca: se
+    /// siguen usando los últimos valores leídos.
+    /// </remarks>
     public async Task<IReadOnlyList<string>> RefreshAsync(CancellationToken cancellationToken)
     {
         var current = await ReadAsync(cancellationToken);
@@ -131,9 +158,14 @@ public class ConsulConfigurationProvider : ConfigurationProvider
     private record ConsulEntry([property: JsonPropertyName("Key")] string Key, [property: JsonPropertyName("Value")] string? Value);
 }
 
-// Vuelve a leer el almacén cada 2 segundos. Es polling: alcanza para una demo y
-// es fácil de seguir. Consul también ofrece consultas bloqueantes, que responden
-// apenas cambia un valor.
+/// <summary>
+/// Representa el servicio en segundo plano que vuelve a leer el almacén cada 2
+/// segundos.
+/// </summary>
+/// <remarks>
+/// Es polling: alcanza para una demo y es fácil de seguir. Consul también
+/// ofrece consultas bloqueantes, que responden apenas cambia un valor.
+/// </remarks>
 public class ConsulConfigurationPoller : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(2);

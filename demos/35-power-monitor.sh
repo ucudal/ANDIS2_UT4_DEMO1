@@ -29,6 +29,9 @@ annotate "Power Monitor: 3 réplicas ociosas" energía
 step "El worker sin trabajo"
 wait_rate
 power_table
+note "Al arrancar, cada pod usa más CPU que ocioso."
+wait_idle
+power_table
 idle=$(worker_watts)
 reserved=$(printf '%.2f' "$(promql 'sum(pod:cpu_reserved:vcpu{pod=~"orders-worker-.*"}) * 0.78')")
 note "Ocioso, el worker consume unos $idle W. De esos, $reserved W son de la CPU reservada:"
@@ -41,8 +44,9 @@ ids=$(burst "$ORDERS")
 watch_worker 120 "$ids"
 echo "  Procesadas en $((SECONDS - started))\""
 power_table
-note "La potencia sube poco: procesar una Order es casi todo esperar a Users y a"
-note "Products. Lo que más pesa sigue siendo la CPU reservada."
+note "La potencia se duplica, pero solo mientras se vacía la cola: procesar una Order"
+note "es casi todo esperar a Users y a Products. La CPU reservada, en cambio, se"
+note "consume haya o no Orders."
 
 step "El worker vuelve a estar ocioso"
 annotate "Power Monitor: de nuevo ocioso" energía

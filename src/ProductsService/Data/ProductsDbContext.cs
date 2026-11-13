@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using ProductsService.Models;
+using Ucu.Andis.ProductsService.Models;
 using Ucu.Andis.Common;
 
-namespace ProductsService.Data;
+namespace Ucu.Andis.ProductsService.Data;
 
 public class ProductsDbContext : DbContext, IOutboxDbContext
 {
@@ -15,9 +15,13 @@ public class ProductsDbContext : DbContext, IOutboxDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.Entity<StockReservation>().HasKey(r => r.OrderId);
 
-    // Idempotencia: indica si la excepción es una violación de clave primaria o
-    // de índice único -en PostgreSQL, el código 23505-. EF Core envuelve el
-    // error en una DbUpdateException.
+    /// <summary>
+    /// Indica si la excepción es una violación de clave primaria o de índice único.
+    /// </summary>
+    /// <remarks>
+    /// Idempotencia: en PostgreSQL, es el código 23505. EF Core envuelve el error en
+    /// una <c>DbUpdateException</c>.
+    /// </remarks>
     public static bool IsDuplicateKey(Exception ex)
     {
         for (var e = ex; e is not null; e = e.InnerException)

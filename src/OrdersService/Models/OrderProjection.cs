@@ -2,8 +2,13 @@ using System.Text.Json;
 
 namespace Ucu.Andis.OrdersService.Models;
 
-// Reconstruye el estado de una orden reproduciendo sus eventos en orden.
-// Es lo que permite recuperar la tabla orders si se pierde o se corrompe.
+/// <summary>
+/// Proporciona la reconstrucción del estado de una orden reproduciendo sus eventos
+/// en orden.
+/// </summary>
+/// <remarks>
+/// Es lo que permite recuperar la tabla <c>orders</c> si se pierde o se corrompe.
+/// </remarks>
 public static class OrderProjection
 {
     public static Order? Replay(IEnumerable<OrderEvent> events)

@@ -1,16 +1,22 @@
 using Ucu.Andis.Common;
 
-namespace MessagingBridge;
+namespace Ucu.Andis.MessagingBridge;
 
-// El traductor entre los contratos de la aplicación y los registros del ERP, de
-// ancho fijo. En el catálogo de Azure, el Messaging Bridge reenvía los mensajes
-// sin cambiarlos; acá los dos sistemas además hablan formatos distintos, y este
-// otro patrón -Message Translator, en Enterprise Integration Patterns- se
-// agrega aparte: el reenvío no sabe nada de los formatos.
-//
-//   PEDIDO  | pedido: 10 | cliente: 24 | artículo: 8 | cantidad: 5
-//   FACTURA | pedido: 10 | factura: 12 | fecha AAAAMMDD: 8
-//   RECHAZO | pedido: 10 | motivo: 30
+/// <summary>
+/// Proporciona el traductor entre los contratos de la aplicación y los registros
+/// del ERP, de ancho fijo.
+/// </summary>
+/// <remarks>
+/// En el catálogo de Azure, el Messaging Bridge reenvía los mensajes sin
+/// cambiarlos; acá los dos sistemas además hablan formatos distintos, y este otro
+/// patrón -Message Translator, en Enterprise Integration Patterns- se agrega
+/// aparte: el reenvío no sabe nada de los formatos.
+/// <code>
+/// PEDIDO  | pedido: 10 | cliente: 24 | artículo: 8 | cantidad: 5
+/// FACTURA | pedido: 10 | factura: 12 | fecha AAAAMMDD: 8
+/// RECHAZO | pedido: 10 | motivo: 30
+/// </code>
+/// </remarks>
 public static class ErpFormat
 {
     private const string OrderRecord = "PEDIDO  ";
@@ -24,9 +30,13 @@ public static class ErpFormat
         + order.ProductId.ToString("D8")
         + order.Quantity.ToString("D5");
 
-    // La respuesta del ERP a un pedido, como el evento que corresponde:
-    // order.invoiced o, si el ERP lo rechazó, order.invoice-failed.
-    // FormatException si el registro no es ninguno de los dos.
+    /// <summary>
+    /// Convierte la respuesta del ERP a un pedido en el evento que corresponde:
+    /// <c>order.invoiced</c> o, si el ERP lo rechazó, <c>order.invoice-failed</c>.
+    /// </summary>
+    /// <remarks>
+    /// Lanza <c>FormatException</c> si el registro no es ninguno de los dos.
+    /// </remarks>
     public static (string RoutingKey, object Event, int OrderId) ToEvent(string record)
     {
         if (record.StartsWith(RejectionRecord))

@@ -1,7 +1,7 @@
 using System.ServiceModel;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using UsersService.Models;
+using Ucu.Andis.Users.Models;
 
 using Ucu.Andis.Common;
 

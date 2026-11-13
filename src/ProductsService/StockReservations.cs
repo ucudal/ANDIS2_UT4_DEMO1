@@ -1,29 +1,37 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using ProductsService.Data;
-using ProductsService.Models;
+using Ucu.Andis.ProductsService.Data;
+using Ucu.Andis.ProductsService.Controllers;
+using Ucu.Andis.ProductsService.Models;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Ucu.Andis.Common;
 
-namespace ProductsService;
+namespace Ucu.Andis.ProductsService;
 
-// Saga: el paso de Products en la coreografía. Escucha los eventos de Orders en
-// su propia cola, products.stock, y responde con los suyos:
-//
-// - order.created: reserva el stock y publica stock.reserved, o stock.rejected
-//   si falta stock o el Product no existe.
-// - order.rejected y order.cancelled: la compensación. Libera la reserva de esa
-//   Order, si la hay, y publica stock.released.
-//
-// Transactional Outbox: el stock, la reserva y el evento se guardan en una sola
-// transacción de PostgreSQL, y OutboxRelay publica el evento después. Sin el
-// outbox, Products podría descontar el stock y caerse antes de publicar: la
-// Order quedaría Pending para siempre, con el stock descontado.
-//
-// Idempotencia: RabbitMQ y los outbox entregan cada mensaje al menos una vez.
-// Una reserva repetida falla por la clave primaria, y una liberación repetida no
-// encuentra una reserva que liberar -ver ReserveAsync y ReleaseAsync-.
+/// <summary>
+/// Representa el paso de Products en la coreografía de la Saga.
+/// </summary>
+/// <remarks>
+/// Escucha los eventos de Orders en su propia cola, <c>products.stock</c>, y
+/// responde con los suyos:
+/// <ul>
+/// <li><c>order.created</c>: reserva el stock y publica <c>stock.reserved</c>, o
+/// <c>stock.rejected</c> si falta stock o el Product no existe.</li>
+/// <li><c>order.rejected</c> y <c>order.cancelled</c>: la compensación. Libera la
+/// reserva de esa Order, si la hay, y publica <c>stock.released</c>.</li>
+/// </ul>
+///
+/// Transactional Outbox: el stock, la reserva y el evento se guardan en una sola
+/// transacción de PostgreSQL, y <c>Common.OutboxRelay</c> publica el evento después. Sin
+/// el outbox, Products podría descontar el stock y caerse antes de publicar: la
+/// Order quedaría <c>OrdersService.Models.OrderStatus.Pending</c> para siempre, con el stock descontado.
+///
+/// Idempotencia: RabbitMQ y los outbox entregan cada mensaje al menos una vez. Una
+/// reserva repetida falla por la clave primaria, y una liberación repetida no
+/// encuentra una reserva que liberar -ver <c>ReserveAsync</c> y
+/// <c>ReleaseAsync</c>-.
+/// </remarks>
 public class StockReservations : BackgroundService
 {
     public const string StockQueue = "products.stock";

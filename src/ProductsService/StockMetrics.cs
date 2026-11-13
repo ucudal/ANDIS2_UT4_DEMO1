@@ -1,15 +1,20 @@
 using System.Diagnostics.Metrics;
 using Microsoft.EntityFrameworkCore;
-using ProductsService.Data;
-using ProductsService.Models;
+using Ucu.Andis.ProductsService.Data;
+using Ucu.Andis.ProductsService.Models;
 
-namespace ProductsService;
+namespace Ucu.Andis.ProductsService;
 
-// Saga: el stock de cada Product y las reservas, como métricas para Grafana.
-// El stock lo cambian las reservas, las compensaciones y los ajustes, y vive en
-// PostgreSQL. La métrica se lee cuando Prometheus la pide, y no puede esperar
-// una consulta a la base: este servicio la lee cada 2 segundos y guarda el
-// último valor.
+/// <summary>
+/// Representa el servicio en segundo plano que publica el stock de cada Product y
+/// las reservas como métricas para Grafana.
+/// </summary>
+/// <remarks>
+/// Saga: el stock lo cambian las reservas, las compensaciones y los ajustes, y vive
+/// en PostgreSQL. La métrica se lee cuando Prometheus la pide, y no puede esperar
+/// una consulta a la base: este servicio la lee cada 2 segundos y guarda el último
+/// valor.
+/// </remarks>
 public class StockMetrics : BackgroundService
 {
     public const string MeterName = "Ucu.Andis.ProductsStock";

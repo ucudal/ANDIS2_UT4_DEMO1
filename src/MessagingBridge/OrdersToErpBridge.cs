@@ -5,15 +5,20 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Ucu.Andis.Common;
 
-namespace MessagingBridge;
+namespace Ucu.Andis.MessagingBridge;
 
-// De RabbitMQ a ActiveMQ: cada Order confirmada pasa a la cola del ERP. El
-// puente es un suscriptor más de andis.events, y Orders no sabe que existe.
-//
-// Confirma el mensaje en RabbitMQ recién después de que ActiveMQ lo recibió. Si
-// ActiveMQ no está, el mensaje vuelve a la cola bridge.erp y espera ahí: no se
-// pierde. A cambio, la entrega es al menos una vez: si el puente se cae entre el
-// envío y la confirmación, el ERP recibe el pedido dos veces.
+/// <summary>
+/// Representa el puente de RabbitMQ a ActiveMQ.
+/// </summary>
+/// <remarks>
+/// Cada Order confirmada pasa a la cola del ERP. El puente es un suscriptor más de
+/// <c>andis.events</c>, y Orders no sabe que existe.
+///
+/// Confirma el mensaje en RabbitMQ recién después de que ActiveMQ lo recibió. Si
+/// ActiveMQ no está, el mensaje vuelve a la cola <c>bridge.erp</c> y espera ahí: no
+/// se pierde. A cambio, la entrega es al menos una vez: si el puente se cae entre
+/// el envío y la confirmación, el ERP recibe el pedido dos veces.
+/// </remarks>
 public class OrdersToErpBridge : BackgroundService
 {
     public const string BridgeQueue = "bridge.erp";

@@ -3,8 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 01: con Products fallando en el 30% de las solicitudes, el Retry esconde
-// las fallas transitorias.
+/// <summary>
+/// Contiene las pruebas de la demo 01: con Products fallando en el 30% de las
+/// solicitudes, el Retry esconde las fallas transitorias.
+/// </summary>
 public class Demo01RetryTests : DemoTest
 {
     [Test]

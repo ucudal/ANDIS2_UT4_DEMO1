@@ -2,8 +2,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.EnergyEfficiency;
 
-// Demo 36: con la cola vacía, KEDA deja el worker en 0 réplicas; cuando llegan
-// Orders, lo enciende, las procesa y lo vuelve a apagar.
+/// <summary>
+/// Contiene las pruebas de la demo 36: con la cola vacía, KEDA deja el worker en 0
+/// réplicas; cuando llegan Orders, lo enciende, las procesa y lo vuelve a apagar.
+/// </summary>
 public class Demo36ScaleToZeroTests : EnergyTest
 {
     [Test]

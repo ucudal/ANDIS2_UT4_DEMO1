@@ -57,8 +57,8 @@ docker compose up -d --wait
 # solo agrega los dos contenedores nuevos.
 docker compose --profile observability up -d --wait
 
-# Abrir en el navegador el dashboard de Grafana. Los paneles de estas demos están
-# en la fila "Eficiencia energética":
+# Abrir en el navegador el dashboard de Grafana. Los paneles de estas demos
+# están en la fila "Eficiencia energética":
 #
 #    http://localhost:3000
 #
@@ -66,6 +66,14 @@ docker compose --profile observability up -d --wait
 # pod:power:watts-:
 #
 #    http://localhost:30090
+#
+# En estas demos la carga es la propia demo: cada script marca sus pasos con
+# una línea vertical en los paneles, con la etiqueta energía. Al final de cada
+# demo, además, './demos/load-energy.sh' corre el worker bajo carga: tres picos
+# de 30 Orders, cada 4 minutos, con el worker ocioso entre uno y otro. Cada
+# corrida dura 10 minutos: hay que esperar a que termine para ver la energía.
+# Con el rango de Grafana en 10 minutos, el panel "Energía estimada del worker
+# en el período" muestra la de toda la corrida.
 
 # ---------------------------------------------------------------------------
 # Preparar el worker del clúster
@@ -82,12 +90,14 @@ docker network connect $network andis-control-plane
 # con el del clúster por la cola orders.process
 docker compose up -d --no-deps --scale orders-worker=0 orders-worker
 
-# Aplicar la configuración del worker -los nombres de host son los de Docker
-# Compose- y el Deployment, con 3 réplicas que reservan 0.25 vCPU cada una
+# Aplicar la configuración del orders-worker de Kubernetes -los nombres de host
+# son los de Docker Compose- y el Deployment, con 3 réplicas que reservan 0.25
+# vCPU cada una
 kubectl apply -f k8s/energy/worker-config.yaml -f k8s/energy/worker.yaml
 kubectl rollout status deployment/orders-worker -n andis
 
-# Los 3 consumidores de orders.process ahora son los pods del clúster
+# Los 3 consumidores de orders.process ahora son los pods del clúster de
+# Kubernetes
 docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
 
 # Guardar en una variable la consulta de la potencia de cada pod del worker, en
@@ -100,14 +110,16 @@ power='pod:power:watts{pod=~"orders-worker-.*"}'
 # Antes de reducir el consumo hay que medirlo. Prometheus estima la potencia de
 # cada pod del worker, ocioso y procesando un pico.
 
-# Esperar unos 30 segundos después de aplicar el worker: cAdvisor actualiza la
-# CPU de cada contenedor cada 10 a 15 segundos, y Prometheus necesita dos
-# muestras para calcular la que usa. Ver la potencia de cada pod ocioso: unos
-# 0.35 W, de los que 0.195 W son de la CPU reservada -0.25 vCPU × 0.78 W-
+# Esperar 2 o 3 minutos después de aplicar el worker. cAdvisor actualiza la CPU
+# de cada contenedor cada 10 a 15 segundos, y Prometheus necesita dos muestras
+# para calcular la que usa; además, al arrancar cada pod usa más CPU, y la CPU
+# usada se calcula sobre un minuto: en los primeros minutos la potencia es
+# mayor. Ver la potencia de cada pod ocioso que reporta Prometheus: unos 0.22 W,
+# de los que 0.195 W son de la CPU reservada -0.25 vCPU × 0.78 W-
 curl -s http://localhost:30090/api/v1/query --data-urlencode "query=$power" \
   | jq -r '.data.result[] | "\(.metric.pod)  \(.value[1] | tonumber * 100 | round / 100) W"'
 
-# La potencia de las 3 réplicas juntas: alrededor de 1.1 W
+# La potencia de las 3 réplicas juntas: alrededor de 0.67 W
 curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)" \
   | jq -r '.data.result[0].value[1]'
 
@@ -119,8 +131,11 @@ for i in $(seq 30); do
 done
 
 # Mientras se vacía la cola, repetir la consulta de la potencia de las 3
-# réplicas: sube poco, a 1.3 o 1.4 W. Procesar una Order es casi todo esperar a
-# Users y a Products; lo que más pesa sigue siendo la CPU reservada
+# réplicas: se duplica, a ~0.4 W cada una, ~1.3 W en total, pero solo mientras
+# se vacía la cola. Procesar una Order es casi todo esperar a Users y a
+# Products; la CPU reservada, en cambio, se consume haya o no Orders
+curl -s http://localhost:30090/api/v1/query --data-urlencode "query=$power" \
+  | jq -r '.data.result[] | "\(.metric.pod)  \(.value[1] | tonumber * 100 | round / 100) W"'
 curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)" \
   | jq -r '.data.result[0].value[1]'
 
@@ -129,6 +144,20 @@ curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)"
 # de "Preparar el worker del clúster"
 
 ./demos/35-power-monitor.sh
+
+# Resultado en Grafana:
+# - "Réplicas del worker en el clúster": 3 durante toda la demo.
+# - "Cola orders.process": sube con el pico y se vacía en alrededor de un
+#   minuto.
+# - "Potencia estimada del worker, por pod": una línea por pod, más alta al
+#   arrancar, que baja a unos 0.22 W; con el pico sube a unos 0.4 W y vuelve a
+#   0.22 W, sin bajar nunca de ahí.
+
+# Bajo carga, con 3 réplicas fijas. Resultado en Grafana:
+# - "Potencia estimada del worker, por pod": un piso de unos 0.22 W por pod que
+#   no baja nunca, con un salto en cada pico.
+# - "Energía estimada del worker en el período": unos 460 J.
+./demos/load-energy.sh fixed
 
 # ---------------------------------------------------------------------------
 # Demo 36: Escalado a cero
@@ -146,7 +175,7 @@ kubectl apply -f k8s/energy/rabbitmq-auth.yaml -f k8s/energy/scaledobject-queue.
 # terminal, donde está definida la variable 'power'
 kubectl get deployment orders-worker -n andis --watch
 
-# Sin réplicas no hay potencia: la consulta no devuelve nada
+# Sin réplicas no hay potencia: la consulta a Prometheus no devuelve nada
 curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)" \
   | jq -r '.data.result[0].value[1] // "0"'
 
@@ -164,10 +193,11 @@ done
 # Kubernetes, que usa como métrica el largo de la cola
 kubectl get scaledobject,hpa -n andis
 
-# La energía del worker en los últimos 2 minutos, en joules: la potencia de cada
-# muestra, cada 5 segundos, por 5. El escalado a cero no consume nada entre
-# picos, pero cada pod nuevo usa mucha CPU al arrancar: conviene si el worker
-# pasa ocioso más de unos 100 segundos entre un pico y otro
+# Consultar a Prometheus la energía del worker en los últimos 2 minutos, en
+# joules: la potencia de cada muestra, cada 5 segundos, por 5. El escalado a
+# cero no consume nada entre picos, pero cada pod nuevo usa mucha CPU al
+# arrancar: conviene si el worker pasa ocioso más de unos 100 segundos entre un
+# pico y otro
 curl -s http://localhost:30090/api/v1/query \
   --data-urlencode "query=sum_over_time(sum($power)[2m:5s]) * 5" \
   | jq -r '.data.result[0].value[1]'
@@ -181,6 +211,23 @@ kubectl scale deployment orders-worker -n andis --replicas=3
 # de "Preparar el worker del clúster"
 
 ./demos/36-scale-to-zero.sh
+
+# Resultado en Grafana:
+# - "Réplicas del worker en el clúster": baja a 0 al aplicar el ScaledObject;
+#   con el pico sube a 4 o 6, y 30 segundos después de vaciarse la cola vuelve
+#   a 0.
+# - "Cola orders.process": sube con el pico y se vacía con las réplicas que
+#   enciende KEDA.
+# - "Potencia estimada del worker, por pod": sin líneas mientras no hay
+#   réplicas, y un salto al arrancar cada pod.
+
+# Bajo carga, con KEDA según la cola. Resultado en Grafana:
+# - "Réplicas del worker en el clúster": 0 entre picos, y hasta 6 en cada uno.
+# - "Potencia estimada del worker, por pod": solo durante los picos, con un
+#   salto al arrancar cada pod.
+# - "Energía estimada del worker en el período": unos 316 J, un 31% menos que
+#   con 3 réplicas fijas.
+./demos/load-energy.sh queue
 
 # ---------------------------------------------------------------------------
 # Demo 37: Procesamiento diferido
@@ -251,19 +298,22 @@ curl -s -X DELETE http://localhost:8500/v1/kv/andis/Energy/WindowOpen
 
 ./demos/37-deferred-processing.sh
 
-# ---------------------------------------------------------------------------
-# Las tres configuraciones bajo carga
-# ---------------------------------------------------------------------------
-# Tres picos de 30 Orders, cada 4 minutos, con el worker ocioso entre uno y
-# otro. Cada corrida dura 10 minutos: hay que esperar a que termine para
-# comparar la energía. Con el rango de Grafana en 10 minutos, el panel "Energía
-# estimada del worker en el período" muestra la de toda la corrida. Cada pico,
-# cada cambio de réplicas y cada apertura de la ventana quedan marcados en el
-# dashboard. Con window, el script abre la ventana un minuto de cada dos.
+# Resultado en Grafana:
+# - "Réplicas del worker en el clúster": 0 con la ventana cerrada, 3 mientras
+#   está abierta.
+# - "Cola orders.process": los mensajes esperan mientras la ventana está
+#   cerrada y se vacían al abrirla.
+# - "Potencia estimada del worker, por pod": solo mientras la ventana está
+#   abierta.
 
-./demos/load-energy.sh fixed     # 3 réplicas fijas, como en la demo 35
-./demos/load-energy.sh queue     # KEDA según la cola, como en la demo 36
-./demos/load-energy.sh window    # KEDA según la ventana, como en la demo 37
+# Bajo carga, con KEDA según la ventana. El script abre la ventana un minuto de
+# cada dos. Resultado en Grafana:
+# - "Réplicas del worker en el clúster": 3 mientras la ventana está abierta, 0
+#   mientras está cerrada.
+# - "Cola orders.process": crece fuera de la ventana y se vacía dentro.
+# - "Energía estimada del worker en el período": unos 332 J, un 28% menos que
+#   con 3 réplicas fijas, casi lo mismo que con KEDA según la cola.
+./demos/load-energy.sh window
 
 # ---------------------------------------------------------------------------
 # Dejar todo como estaba

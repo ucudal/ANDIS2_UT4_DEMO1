@@ -5,7 +5,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 06: el endpoint de salud de Products refleja el estado de su base.
+/// <summary>
+/// Contiene las pruebas de la demo 06: el endpoint de salud de Products refleja el
+/// estado de su base.
+/// </summary>
 [Category(TestEnvironment.Disruptive)]
 public class Demo06HealthTests : DemoTest
 {

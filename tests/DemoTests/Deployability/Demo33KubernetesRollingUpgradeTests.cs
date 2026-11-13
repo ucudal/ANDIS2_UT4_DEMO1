@@ -3,9 +3,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 33: un Deployment de Kubernetes reemplaza los pods de a uno, pero
-// despliega igual una versión con errores; un Rollout de Argo, con análisis, la
-// detecta y vuelve atrás solo.
+/// <summary>
+/// Contiene las pruebas de la demo 33: un Deployment de Kubernetes reemplaza los
+/// pods de a uno, pero despliega igual una versión con errores; un Rollout de Argo,
+/// con análisis, la detecta y vuelve atrás solo.
+/// </summary>
 public class Demo33KubernetesRollingUpgradeTests : KubernetesTest
 {
     [TearDown]

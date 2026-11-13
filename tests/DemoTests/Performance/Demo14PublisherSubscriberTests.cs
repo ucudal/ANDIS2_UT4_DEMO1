@@ -3,8 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 14: cada suscriptor tiene su propia cola en el exchange andis.events y
-// recibe solo los eventos a los que se suscribió.
+/// <summary>
+/// Contiene las pruebas de la demo 14: cada suscriptor tiene su propia cola en el
+/// exchange <c>andis.events</c> y recibe solo los eventos a los que se suscribió.
+/// </summary>
 public class Demo14PublisherSubscriberTests : DemoTest
 {
     [TearDown]

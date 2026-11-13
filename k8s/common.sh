@@ -233,6 +233,17 @@ wait_rate() {
     sleep 35
 }
 
+# wait_idle: espera a que los pods del worker terminen de arrancar. Al arrancar,
+# cada uno usa más CPU, y la CPU usada se calcula sobre un minuto: tarda 2 o 3
+# minutos en bajar a la de un pod ocioso, menos de 0.02 vCPU por pod.
+wait_idle() {
+    note "Esperando a que los pods terminen de arrancar, unos 2 o 3 minutos..."
+    until [ "$(promql 'sum(pod:cpu_used:vcpu{pod=~"orders-worker-.*"}) < bool 0.05')" = 1 ]; do
+        worker_line
+        sleep 10
+    done
+}
+
 # window_open: si la ventana de la demo 37 está abierta, según el endpoint que
 # consulta KEDA -ver k8s/energy/scaledobject-window.yaml-.
 window_open() { [ "$(curl -s "$ORDERS_DIRECT/energy/window" | jq -r .open)" = true ]; }

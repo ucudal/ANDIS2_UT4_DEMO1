@@ -2,9 +2,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 17: la vista materializada tiene los nombres copiados, así que responde
-// aunque Products falle; los proyectores toleran eventos que llegan a la vez y
-// desordenados.
+/// <summary>
+/// Contiene las pruebas de la demo 17: la vista materializada tiene los nombres
+/// copiados, así que responde aunque Products falle; los proyectores toleran
+/// eventos que llegan a la vez y desordenados.
+/// </summary>
 public class Demo17MaterializedViewTests : DemoTest
 {
     [TearDown]

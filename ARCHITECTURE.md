@@ -35,9 +35,9 @@ servicio usa la tecnología de base de datos que mejor le sirve.
 
 | Servicio | Es dueño de | Base | Lo llaman | Llama a |
 | -------- | ----------- | ---- | --------- | ------- |
-| `users-service` | [`Users`](src/UsersService/Models/Users.cs): nombre y correo | [MongoDB](https://www.mongodb.com/), documentos | gateway, `orders-service`, `orders-worker`, `orders-projector` | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
-| `products-service` | [`Products`](src/ProductsService/Models/Product.cs): nombre, precio y stock; las [reservas de stock](src/ProductsService/Models/StockReservation.cs) y su [*outbox*](src/Common/OutboxMessage.cs); sus imágenes | [PostgreSQL](https://www.postgresql.org/), relacional; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-projector`; RabbitMQ le entrega mensajes | RabbitMQ, para publicar `product.updated` y los eventos de la [Saga](PATTERNS.md#saga); Azurite, para las imágenes |
-| `orders-service` | [`Orders`](src/OrdersService/Models/Order.cs), sus [eventos](src/OrdersService/Models/OrderEvent.cs), el [*outbox*](src/Common/OutboxMessage.cs) y la [vista del detalle](src/OrdersService/Models/OrderDetails.cs) | [MySQL](https://www.mysql.com/), relacional | gateway | `users-service`, `products-service`, RabbitMQ |
+| `users-service` | [`Users`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Models/Users.cs): nombre y correo | [MongoDB](https://www.mongodb.com/), documentos | gateway, `orders-service`, `orders-worker`, `orders-projector` | [RabbitMQ](https://www.rabbitmq.com/), para publicar `user.updated` |
+| `products-service` | [`Products`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/Models/Product.cs): nombre, precio y stock; las [reservas de stock](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/Models/StockReservation.cs) y su [*outbox*](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/OutboxMessage.cs); sus imágenes | [PostgreSQL](https://www.postgresql.org/), relacional; [Redis](https://redis.io/) como caché; [Azurite](https://github.com/Azure/Azurite) para las imágenes | gateway, directamente o a través del *sidecar*, `orders-service`, `orders-projector`; RabbitMQ le entrega mensajes | RabbitMQ, para publicar `product.updated` y los eventos de la [Saga](PATTERNS.md#saga); Azurite, para las imágenes |
+| `orders-service` | [`Orders`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/Order.cs), sus [eventos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/OrderEvent.cs), el [*outbox*](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/OutboxMessage.cs) y la [vista del detalle](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/OrderDetails.cs) | [MySQL](https://www.mysql.com/), relacional | gateway | `users-service`, `products-service`, RabbitMQ |
 | `orders-worker` | Comparte la base de `orders-service` | MySQL | RabbitMQ le entrega mensajes | `users-service` |
 | `orders-projector` | Comparte la base de `orders-service`; es el único que escribe la vista del detalle | MySQL | RabbitMQ le entrega mensajes | `users-service`, `products-service` |
 | `api-gateway` | Nada: enruta y, en la entrada HTTPS, controla cada solicitud | — | clientes | los tres servicios, el *sidecar* de `Products` y [Keycloak](https://www.keycloak.org/) |
@@ -726,7 +726,7 @@ afuera, y su *relay* y su consumidor de la [Saga](PATTERNS.md#saga) ya admiten
 varias réplicas, como los de `Orders`. Lo que lo deja en una sola réplica es el
 [Sidecar](PATTERNS.md#sidecar): `products-sidecar` comparte el espacio de red
 de `products-service` -`network_mode` en
-[docker-compose.yaml](docker-compose.yaml)- y le habla en `127.0.0.1:8000`. Un
+[docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml)- y le habla en `127.0.0.1:8000`. Un
 *sidecar* acompaña a una sola réplica. Para tener varias, cada réplica
 necesitaría su propio [Envoy](https://www.envoyproxy.io/), y el gateway
 tendría que repartir las solicitudes entre los pares de servicio y *sidecar*.
@@ -744,12 +744,12 @@ en memoria porque compartirlo costaría una llamada remota en cada solicitud. Al
 escalar, cada réplica decide por su cuenta:
 
 * **Circuit Breaker y Bulkhead**, en
-  [Resilience.cs](src/OrdersService/Resilience.cs): cada réplica
+  [Resilience.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Resilience.cs): cada réplica
   cuenta sus propias fallas, abre su propio circuito y tiene sus propios lugares
   en cada compartimento. Con tres *workers*, el circuito hacia `Users` de uno
   puede estar abierto y el de otro, todavía cerrado.
 * **Throttling de `Orders`**, en
-  [Program.cs](src/OrdersService/Program.cs): 20 consultas de
+  [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Program.cs): 20 consultas de
   detalle a la vez **por réplica**. Con N réplicas de `orders-service`, el
   límite efectivo es 20 × N.
 * **Throttling del gateway**, con
@@ -777,16 +777,16 @@ propósito evita esas llamadas, a cambio de límites aproximados.
 Los microservicios buscan que cada servicio se pueda cambiar y desplegar sin
 coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
 
-* **La biblioteca [Common](src/Common/).** Los tres servicios la referencian.
+* **La biblioteca [Common](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/Common).** Los tres servicios la referencian.
   Tiene código transversal -inyección de fallas, métricas, la respuesta de
   salud- y también los contratos que `Orders` usa para leer las respuestas de
   `Users` y `Products`: los registros `UserDto`, en
-  [UserDto.cs](src/Common/UserDto.cs), y `ProductDto`, en
-  [ProductDto.cs](src/Common/ProductDto.cs). `Products` no usa
+  [UserDto.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/UserDto.cs), y `ProductDto`, en
+  [ProductDto.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/ProductDto.cs). `Products` no usa
   `ProductDto`: tiene su propio modelo. También tiene la conexión con
   [RabbitMQ](https://www.rabbitmq.com/), en la clase `RabbitMq`, y los contratos
   de los eventos, en la clase `Events` y sus registros, en
-  [Events.cs](src/Common/Events.cs). Un cambio en `Common` obliga a
+  [Events.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/Events.cs). Un cambio en `Common` obliga a
   recompilar y redesplegar los tres servicios.
 * **Los contratos de los eventos.** Los proyectores esperan que
   `product.updated` traiga el identificador y el nombre del `Product`.
@@ -804,7 +804,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   `/users/UserService.svc?wsdl`. `Orders` arma a mano el sobre de `GetUser` y
   lee el [XML](https://www.w3.org/XML/) de la respuesta -ver el método
   `GetUserAsync` de la clase `Dependencies`, en
-  [Dependencies.cs](src/OrdersService/Dependencies.cs)-, así que
+  [Dependencies.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Dependencies.cs)-, así que
   depende del namespace, del nombre de la operación y de los nombres de los
   elementos. El WSDL documenta el contrato, pero `Orders` no lo usa para generar
   el cliente: un cliente
@@ -813,7 +813,7 @@ coordinar con los demás. Hay varios lugares donde esta aplicación se acopla:
   SOAP 1.1 afecta a los patrones: todo SOAP Fault viaja como HTTP 500, que el
   Retry y el Circuit Breaker tratan como falla transitoria. Por eso `GetUser`
   responde sin resultado -y no con un Fault- cuando el `User` no existe.
-* **El orden de arranque.** En [docker-compose.yaml](docker-compose.yaml),
+* **El orden de arranque.** En [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml),
   `orders-service` no arranca hasta que `users-service` y `products-service`
   están sanos, aunque puede funcionar sin ellos. `users-service` y
   `products-service` esperan a que arranque RabbitMQ, pero no a que esté sano:
@@ -921,13 +921,13 @@ proveedor:
   fuera del clúster. Solo se expone el *Gateway* de [Gateway
   API](https://gateway-api.sigs.k8s.io/), que reemplaza al antiguo *ingress
   controller* y cumple el papel del gateway. Las demos de despliegue con
-  Kubernetes lo hacen así: [gateway.yaml](k8s/base/gateway.yaml) es el
+  Kubernetes lo hacen así: [gateway.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/gateway.yaml) es el
   único punto de entrada al clúster, y `Users` y su base son `ClusterIP`.
 
-En la demo, [docker-compose.yaml](docker-compose.yaml) publica en el host los
+En la demo, [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml) publica en el host los
 puertos de los servicios y de las bases, para probarlos directamente y para las
 demos que los usan.
-[docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) muestra el
+[docker-compose.gatekeeper.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.gatekeeper.yaml) muestra el
 efecto de dejar de publicarlos. Dentro de la red de
 [Docker](https://www.docker.com/) no hay reglas: cualquier contenedor llega a
 cualquier otro.

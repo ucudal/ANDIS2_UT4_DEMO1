@@ -6,14 +6,21 @@ using System.Text.Json.Nodes;
 
 namespace Ucu.Andis.DemoTests.Support;
 
-// La entrada HTTPS del gateway y los tokens de Keycloak, como load_gateway_cert,
-// token y tamper en demos/common.sh.
+/// <summary>
+/// Proporciona la entrada HTTPS del gateway y los tokens de Keycloak, como
+/// <c>load_gateway_cert</c>, <c>token</c> y <c>tamper</c> en
+/// <c>demos/common.sh</c>.
+/// </summary>
 public static class Identity
 {
     private static HttpClient? _https;
 
-    // Un cliente que confía solo en el certificado autofirmado del gateway: lo
-    // lee del contenedor, como hacen las demos, en lugar de aceptar cualquiera.
+    /// <summary>
+    /// Crea un cliente que confía solo en el certificado autofirmado del gateway.
+    /// </summary>
+    /// <remarks>
+    /// Lo lee del contenedor, como hacen las demos, en lugar de aceptar cualquiera.
+    /// </remarks>
     public static async Task<HttpClient> HttpsAsync()
     {
         if (_https is not null)
@@ -30,8 +37,13 @@ public static class Identity
         return _https = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
     }
 
-    // Inicia sesión en Keycloak con el usuario y la contraseña, y devuelve el
-    // token de acceso. Los usuarios son alice, bob y carol.
+    /// <summary>
+    /// Inicia sesión en Keycloak con el usuario y la contraseña, y devuelve el token de
+    /// acceso.
+    /// </summary>
+    /// <remarks>
+    /// Los usuarios son alice, bob y carol.
+    /// </remarks>
     public static async Task<string> TokenAsync(string user)
     {
         using var response = await Api.Http.PostAsync($"{DemoData.Keycloak}/realms/andis/protocol/openid-connect/token",
@@ -50,8 +62,10 @@ public static class Identity
     public static JsonObject Claims(string token) =>
         JsonNode.Parse(Base64UrlDecode(token.Split('.')[1]))!.AsObject();
 
-    // Cambia los claims del token sin volver a firmarlo, como haría alguien que
-    // quiere hacerse pasar por otro.
+    /// <summary>
+    /// Cambia los claims del token sin volver a firmarlo, como haría alguien que quiere
+    /// hacerse pasar por otro.
+    /// </summary>
     public static string Tamper(string token, Action<JsonObject> change)
     {
         var parts = token.Split('.');

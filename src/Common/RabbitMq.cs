@@ -6,12 +6,17 @@ using RabbitMQ.Client;
 
 namespace Ucu.Andis.Common;
 
-// Conexión compartida con RabbitMQ. La conexión se crea la primera vez que se
-// necesita y se reutiliza; los canales se crean por operación.
-//
-// Si RabbitMQ se reinicia, la conexión se recupera sola, junto con los
-// consumidores, las colas y los enlaces: no hay que reemplazarla. Reemplazarla
-// dejaría a los consumidores en la conexión vieja, sin recibir más mensajes.
+/// <summary>
+/// Representa la conexión compartida con RabbitMQ.
+/// </summary>
+/// <remarks>
+/// La conexión se crea la primera vez que se necesita y se reutiliza; los
+/// canales se crean por operación.
+///
+/// Si RabbitMQ se reinicia, la conexión se recupera sola, junto con los
+/// consumidores, las colas y los enlaces: no hay que reemplazarla. Reemplazarla
+/// dejaría a los consumidores en la conexión vieja, sin recibir más mensajes.
+/// </remarks>
 public class RabbitMq : IAsyncDisposable
 {
     private readonly ConnectionFactory _factory;
@@ -47,14 +52,23 @@ public class RabbitMq : IAsyncDisposable
         }
     }
 
-    // Publisher/Subscriber: el exchange donde se publican todos los eventos.
-    // Durable, para que sobreviva a un reinicio de RabbitMQ.
+    /// <summary>
+    /// Declara el exchange donde se publican todos los eventos.
+    /// </summary>
+    /// <remarks>
+    /// Publisher/Subscriber: el exchange es durable, para que sobreviva a un
+    /// reinicio de RabbitMQ.
+    /// </remarks>
     public static Task DeclareEventsExchangeAsync(IChannel channel, CancellationToken cancellationToken = default) =>
         channel.ExchangeDeclareAsync(Events.Exchange, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: cancellationToken);
 
-    // Declara la cola de un suscriptor y la enlaza con cada clave de ruteo. Una
-    // clave puede tener comodines: "order.*" recibe order.created,
-    // order.confirmed y order.rejected.
+    /// <summary>
+    /// Declara la cola de un suscriptor y la enlaza con cada clave de ruteo.
+    /// </summary>
+    /// <remarks>
+    /// Una clave puede tener comodines: <c>order.*</c> recibe <c>order.created</c>,
+    /// <c>order.confirmed</c> y <c>order.rejected</c>.
+    /// </remarks>
     public static async Task DeclareSubscriberQueueAsync(IChannel channel, string queue, string[] routingKeys, CancellationToken cancellationToken = default)
     {
         await DeclareEventsExchangeAsync(channel, cancellationToken);
@@ -66,10 +80,14 @@ public class RabbitMq : IAsyncDisposable
     public Task PublishEventAsync<T>(string routingKey, T payload, CancellationToken cancellationToken = default) =>
         PublishEventAsync(routingKey, JsonSerializer.Serialize(payload), cancellationToken);
 
-    // Publica un evento ya serializado en JSON. Con las confirmaciones del
-    // publicador habilitadas, BasicPublishAsync termina recién cuando RabbitMQ
-    // confirma que recibió el mensaje, y lanza una excepción si no lo recibió:
-    // quien publica sabe si el evento llegó.
+    /// <summary>
+    /// Publica un evento ya serializado en JSON.
+    /// </summary>
+    /// <remarks>
+    /// Con las confirmaciones del publicador habilitadas, <c>BasicPublishAsync</c>
+    /// termina recién cuando RabbitMQ confirma que recibió el mensaje, y lanza una
+    /// excepción si no lo recibió: quien publica sabe si el evento llegó.
+    /// </remarks>
     public async Task PublishEventAsync(string routingKey, string json, CancellationToken cancellationToken = default)
     {
         var connection = await GetConnectionAsync(cancellationToken);
@@ -100,9 +118,15 @@ public class RabbitMqHealthCheck : IHealthCheck
         _rabbitMq = rabbitMq;
     }
 
-    // Si RabbitMQ no responde, el resultado es el failureStatus con el que se
-    // registró el chequeo: Unhealthy por defecto, o Degraded para un servicio
-    // que puede seguir atendiendo sin RabbitMQ -ver el Program.cs de Orders-.
+    /// <summary>
+    /// Verifica que RabbitMQ responda.
+    /// </summary>
+    /// <remarks>
+    /// Si RabbitMQ no responde, el resultado es el <c>failureStatus</c> con el
+    /// que se registró el chequeo: Unhealthy por defecto, o Degraded para un
+    /// servicio que puede seguir atendiendo sin RabbitMQ -ver el
+    /// <c>Program.cs</c> de Orders-.
+    /// </remarks>
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         try

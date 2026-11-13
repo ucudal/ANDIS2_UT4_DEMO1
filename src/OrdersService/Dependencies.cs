@@ -10,12 +10,20 @@ using Ucu.Andis.Common;
 
 namespace Ucu.Andis.OrdersService;
 
-// Resultado de llamar a Usuarios o Productos. Distingue tres casos:
-// - Value: la dependencia respondió con el recurso.
-// - NotFound: la dependencia respondió 404, o 400 si el id no es válido; en
-//   Users, que es SOAP, la respuesta no trae GetUserResult.
-// - Failure: la dependencia no está disponible; dice por qué, para que se vea qué
-//   patrón actuó: circuito abierto, bulkhead lleno, timeout, error HTTP.
+/// <summary>
+/// Representa el resultado de llamar a Usuarios o Productos.
+/// </summary>
+/// <remarks>
+/// Distingue tres casos:
+/// <ul>
+/// <li><c>Value</c>: la dependencia respondió con el recurso.</li>
+/// <li><c>NotFound</c>: la dependencia respondió 404, o 400 si el id no es válido;
+/// en Users, que es SOAP, la respuesta no trae <c>GetUserResult</c>.</li>
+/// <li><c>Failure</c>: la dependencia no está disponible; dice por qué, para que se
+/// vea qué patrón actuó: circuito abierto, bulkhead lleno, timeout, error
+/// HTTP.</li>
+/// </ul>
+/// </remarks>
 public record CallResult<T>(T? Value, bool NotFound, string? Failure)
 {
     public bool Available => Failure is null;
@@ -38,10 +46,15 @@ public static class Dependencies
             return new CallResult<T>(value, false, null);
         });
 
-    // Users expone SOAP: se arma el sobre a mano y se envía con el mismo
-    // HttpClient, para que la llamada pase por el pipeline de resiliencia. Un
-    // cliente WCF generado con dotnet-svcutil usaría su propio canal HTTP y
-    // dejaría afuera el Bulkhead, el Retry y el Circuit Breaker.
+    /// <summary>
+    /// Obtiene un User de Users, por SOAP.
+    /// </summary>
+    /// <remarks>
+    /// Users expone SOAP: se arma el sobre a mano y se envía con el mismo
+    /// <c>HttpClient</c>, para que la llamada pase por el pipeline de resiliencia. Un
+    /// cliente WCF generado con <c>dotnet-svcutil</c> usaría su propio canal HTTP y
+    /// dejaría afuera el Bulkhead, el Retry y el Circuit Breaker.
+    /// </remarks>
     public static Task<CallResult<UserDto>> GetUserAsync(HttpClient client, string userId, CancellationToken cancellationToken = default) =>
         CallAsync(async () =>
         {

@@ -2,9 +2,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;
 
-// Demo 31: Unleash decide qué variante del experimento ve cada User. La
-// variante es fija para cada User, se puede forzar por segmento, y el reparto
-// cambia sin desplegar.
+/// <summary>
+/// Contiene las pruebas de la demo 31: Unleash decide qué variante del experimento
+/// ve cada User. La variante es fija para cada User, se puede forzar por segmento,
+/// y el reparto cambia sin desplegar.
+/// </summary>
 [Category(TestEnvironment.FeatureFlags)]
 public class Demo31AbTestingTests : DemoTest
 {

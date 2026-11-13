@@ -7,10 +7,16 @@ using OpenTelemetry.Resources;
 
 namespace Ucu.Andis.Common;
 
-// Métricas para Prometheus: cada servicio expone GET /metrics y Prometheus lo
-// consulta periódicamente. No hace falta instrumentar el código a mano: ASP.NET
-// Core, HttpClient y Polly ya publican sus métricas; solo hay que elegir cuáles
-// exportar.
+/// <summary>
+/// Proporciona los métodos que publican las métricas de un servicio para
+/// Prometheus.
+/// </summary>
+/// <remarks>
+/// Cada servicio expone <c>GET /metrics</c> y Prometheus lo consulta
+/// periódicamente. No hace falta instrumentar el código a mano: ASP.NET Core,
+/// HttpClient y Polly ya publican sus métricas; solo hay que elegir cuáles
+/// exportar.
+/// </remarks>
 public static class ObservabilityExtensions
 {
     private static readonly string[] BuiltInMeters =

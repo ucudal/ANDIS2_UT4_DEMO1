@@ -4,14 +4,19 @@ using Ucu.Andis.OrdersService.Data;
 
 namespace Ucu.Andis.OrdersService.Controllers;
 
-// CQRS: el lado de las consultas. Lee solo la vista materializada
-// order_details, que tiene la forma exacta de la respuesta: una consulta a
-// MySQL y ninguna llamada a Users ni a Products. El lado de los comandos -crear
-// una Order y procesarla- está en OrdersController y en OrderProcessingWorker,
-// y escribe en otras tablas.
-//
-// No tiene Throttling: es tan barata que no hace falta protegerla como a
-// GET /orders/user/{userId}/details.
+/// <summary>
+/// Representa el lado de las consultas de CQRS.
+/// </summary>
+/// <remarks>
+/// Lee solo la vista materializada <c>order_details</c>, que tiene la forma exacta
+/// de la respuesta: una consulta a MySQL y ninguna llamada a Users ni a Products.
+/// El lado de los comandos -crear una Order y procesarla- está en
+/// <c>OrdersController</c> y en <c>Messaging.OrderProcessingWorker</c>, y escribe en
+/// otras tablas.
+///
+/// No tiene Throttling: es tan barata que no hace falta protegerla como a
+/// <c>GET /orders/user/{userId}/details</c>.
+/// </remarks>
 [ApiController]
 [Route("orders")]
 public class OrdersQueriesController : ControllerBase
@@ -25,12 +30,16 @@ public class OrdersQueriesController : ControllerBase
         _logger = logger;
     }
 
-    // GET /orders/user/{userId}/details/view
-    // La misma respuesta que GET /orders/user/{userId}/details. Si Users o
-    // Products no están disponibles, igual responde con los nombres, porque ya
-    // están copiados. A cambio, es eventualmente consistente: una Order recién
-    // creada puede no estar todavía, y un nombre recién cambiado puede ser el
-    // anterior.
+    /// <summary>
+    /// Devuelve el detalle de las Orders de un User desde la vista materializada, en
+    /// <c>GET /orders/user/{userId}/details/view</c>.
+    /// </summary>
+    /// <remarks>
+    /// Es la misma respuesta que <c>GET /orders/user/{userId}/details</c>. Si Users o
+    /// Products no están disponibles, igual responde con los nombres, porque ya están
+    /// copiados. A cambio, es eventualmente consistente: una Order recién creada puede
+    /// no estar todavía, y un nombre recién cambiado puede ser el anterior.
+    /// </remarks>
     [HttpGet("user/{userId}/details/view")]
     public async Task<ActionResult<List<object>>> GetOrdersForUser(string userId)
     {

@@ -7,7 +7,7 @@ using OpenFeature;
 using OpenFeature.Providers.Unleash;
 using SoapCore;
 using Unleash;
-using UsersService.Models;
+using Ucu.Andis.Users.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 

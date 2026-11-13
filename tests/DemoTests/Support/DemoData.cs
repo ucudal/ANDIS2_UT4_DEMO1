@@ -1,7 +1,11 @@
 namespace Ucu.Andis.DemoTests.Support;
 
-// Direcciones y datos de ejemplo que usan las demos. Si cambian los ids de los
-// Users o de los Products, se cambian solo acá.
+/// <summary>
+/// Proporciona las direcciones y los datos de ejemplo que usan las demos.
+/// </summary>
+/// <remarks>
+/// Si cambian los ids de los Users o de los Products, se cambian solo acá.
+/// </remarks>
 public static class DemoData
 {
     public const string Gateway = "http://localhost";
@@ -16,11 +20,20 @@ public static class DemoData
     public const string KubernetesPreview = "http://preview.localhost:8092";
     public const string RabbitMqApi = "http://localhost:15672";
 
-    // alice. Sus Orders sostienen las demos 01 a 04: los tests no le crean
-    // Orders nuevas.
+    /// <summary>
+    /// Id de alice.
+    /// </summary>
+    /// <remarks>
+    /// Sus Orders sostienen las demos 01 a 04: los tests no le crean Orders nuevas.
+    /// </remarks>
     public const string User1 = "665f1c2ab4e8d9a0c1f2e301";
 
-    // bob. Los tests le crean las Orders que necesitan.
+    /// <summary>
+    /// Id de bob.
+    /// </summary>
+    /// <remarks>
+    /// Los tests le crean las Orders que necesitan.
+    /// </remarks>
     public const string User2 = "665f1c2ab4e8d9a0c1f2e302";
 
     public const string User2Name = "bob";
@@ -32,6 +45,8 @@ public static class DemoData
     public static readonly Product Trousers = new(2, "Pantalón", 2300.00m);
     public static readonly Product Shoes = new(3, "Zapatos", 3500.75m);
 
-    // Un User que no existe, para las Orders que se rechazan.
+    /// <summary>
+    /// Id de un User que no existe, para las Orders que se rechazan.
+    /// </summary>
     public const string MissingUser = "000000000000000000000000";
 }

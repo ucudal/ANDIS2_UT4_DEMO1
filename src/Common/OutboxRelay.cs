@@ -6,7 +6,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Ucu.Andis.Common;
 
-// Las métricas del relay, con el mismo nombre en cada servicio que lo usa.
+/// <summary>
+/// Proporciona las métricas del relay, con el mismo nombre en cada servicio que
+/// lo usa.
+/// </summary>
 public static class OutboxRelay
 {
     public const string MeterName = "Ucu.Andis.Outbox";
@@ -16,16 +19,21 @@ public static class OutboxRelay
         "Mensajes del outbox publicados en RabbitMQ");
 }
 
-// Transactional Outbox: publica en RabbitMQ los mensajes que el servicio dejó en
-// su tabla outbox_messages -en Orders, POST /orders/ y el worker; en Products,
-// la reserva y la liberación de stock-. Cada segundo toma los pendientes
-// en orden, los publica y les completa la fecha de publicación. Si RabbitMQ no
-// está, los mensajes quedan pendientes y se reintentan en la próxima vuelta: no
-// se pierde ninguno.
-//
-// La entrega es al menos una vez, no exactamente una: si el relay se cae
-// después de publicar un mensaje y antes de marcarlo, lo vuelve a publicar al
-// arrancar. Por eso los suscriptores tienen que ser idempotentes.
+/// <summary>
+/// Representa el servicio en segundo plano que publica en RabbitMQ los mensajes
+/// que el servicio dejó en su tabla <c>outbox_messages</c>.
+/// </summary>
+/// <remarks>
+/// Transactional Outbox: en Orders, los mensajes los dejan <c>POST /orders/</c>
+/// y el worker; en Products, la reserva y la liberación de stock. Cada segundo
+/// toma los pendientes en orden, los publica y les completa la fecha de
+/// publicación. Si RabbitMQ no está, los mensajes quedan pendientes y se
+/// reintentan en la próxima vuelta: no se pierde ninguno.
+///
+/// La entrega es al menos una vez, no exactamente una: si el relay se cae
+/// después de publicar un mensaje y antes de marcarlo, lo vuelve a publicar al
+/// arrancar. Por eso los suscriptores tienen que ser idempotentes.
+/// </remarks>
 public class OutboxRelay<TDbContext> : BackgroundService
     where TDbContext : DbContext, IOutboxDbContext
 {

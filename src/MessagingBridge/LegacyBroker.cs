@@ -1,11 +1,16 @@
 using Apache.NMS;
 using Apache.NMS.ActiveMQ;
 
-namespace MessagingBridge;
+namespace Ucu.Andis.MessagingBridge;
 
-// La conexión con ActiveMQ, el broker del ERP. failover hace que el cliente se
-// reconecte solo si el broker se reinicia; timeout, que un envío con el broker
-// caído falle a los 3 segundos en lugar de quedar bloqueado para siempre.
+/// <summary>
+/// Representa la conexión con ActiveMQ, el broker del ERP.
+/// </summary>
+/// <remarks>
+/// <c>failover</c> hace que el cliente se reconecte solo si el broker se reinicia;
+/// <c>timeout</c>, que un envío con el broker caído falle a los 3 segundos en lugar
+/// de quedar bloqueado para siempre.
+/// </remarks>
 public class LegacyBroker : IDisposable
 {
     public const string OrdersQueue = "ERP.PEDIDOS";

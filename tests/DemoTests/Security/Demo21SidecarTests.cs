@@ -3,8 +3,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 21: el sidecar de Products exige el rol admin para cambiar el catálogo,
-// verifica la firma del token y no deja pasar a quien no lo tiene.
+/// <summary>
+/// Contiene las pruebas de la demo 21: el sidecar de Products exige el rol admin
+/// para cambiar el catálogo, verifica la firma del token y no deja pasar a quien no
+/// lo tiene.
+/// </summary>
 public class Demo21SidecarTests : DemoTest
 {
     private static readonly DemoData.Product Product = DemoData.Shoes;

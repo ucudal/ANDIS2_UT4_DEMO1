@@ -2,9 +2,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.EnergyEfficiency;
 
-// Demo 35: Prometheus estima la potencia de los pods del worker. Con 3 réplicas
-// ociosas, la potencia es al menos la de la CPU reservada: 3 × 0,25 vCPU ×
-// 0,78 W.
+/// <summary>
+/// Contiene las pruebas de la demo 35: Prometheus estima la potencia de los pods
+/// del worker. Con 3 réplicas ociosas, la potencia es al menos la de la CPU
+/// reservada: 3 × 0,25 vCPU × 0,78 W.
+/// </summary>
 public class Demo35PowerMonitorTests : EnergyTest
 {
     private const double ReservedWatts = 3 * 0.25 * 0.78;

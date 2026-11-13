@@ -5,9 +5,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 11: Products guarda en Redis los Products que lee de su base. La primera
-// lectura es lenta y las siguientes, rápidas; un cambio borra la clave; y sin
-// Redis, Products sigue respondiendo desde la base.
+/// <summary>
+/// Contiene las pruebas de la demo 11: Products guarda en Redis los Products que lee
+/// de su base. La primera lectura es lenta y las siguientes, rápidas; un cambio
+/// borra la clave; y sin Redis, Products sigue respondiendo desde la base.
+/// </summary>
 public class Demo11CacheAsideTests : DemoTest
 {
     private static readonly DemoData.Product Product = DemoData.Shirt;

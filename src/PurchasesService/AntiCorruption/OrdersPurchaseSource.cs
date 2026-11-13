@@ -1,8 +1,13 @@
 namespace Ucu.Andis.PurchasesService.AntiCorruption;
 
-// La fachada de la capa: arma las compras de un Product con las Orders traducidas
-// y el nombre de cada comprador. Es lo único de la capa que Purchases usa, a través
-// de IPurchaseSource.
+/// <summary>
+/// Representa la fachada de la capa anticorrupción.
+/// </summary>
+/// <remarks>
+/// Arma las compras de un Product con las Orders traducidas y el nombre de cada
+/// comprador. Es lo único de la capa que Purchases usa, a través de
+/// <c>IPurchaseSource</c>.
+/// </remarks>
 public class OrdersPurchaseSource : IPurchaseSource
 {
     private readonly OrdersTranslator _orders;

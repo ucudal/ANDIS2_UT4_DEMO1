@@ -3,9 +3,12 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 24: los servicios leen sus valores de Consul mientras corren: un límite,
-// un feature flag, un valor de otro servicio y una URL cambian sin reiniciar
-// nada, y si Consul no responde, siguen con los últimos valores.
+/// <summary>
+/// Contiene las pruebas de la demo 24: los servicios leen sus valores de Consul
+/// mientras corren: un límite, un feature flag, un valor de otro servicio y una URL
+/// cambian sin reiniciar nada, y si Consul no responde, siguen con los últimos
+/// valores.
+/// </summary>
 public class Demo24ExternalConfigurationStoreTests : DemoTest
 {
     [TearDown]

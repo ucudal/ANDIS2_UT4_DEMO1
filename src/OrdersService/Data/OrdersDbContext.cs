@@ -18,11 +18,15 @@ public class OrdersDbContext : DbContext, IOutboxDbContext
     // repetido: ER_DUP_ENTRY.
     private const int DuplicateEntry = 1062;
 
-    // Idempotencia: indica si la excepción es una violación de clave primaria o
-    // de índice único. Quien inserta y choca con una fila igual sabe que otro ya
-    // hizo esa escritura, sin haber tenido que preguntarlo antes -ver
-    // OrderDetailsProjector.cs-. EF Core envuelve el error de MySQL en una
-    // DbUpdateException; el SQL crudo lo lanza directamente.
+    /// <summary>
+    /// Indica si la excepción es una violación de clave primaria o de índice único.
+    /// </summary>
+    /// <remarks>
+    /// Idempotencia: quien inserta y choca con una fila igual sabe que otro ya hizo esa
+    /// escritura, sin haber tenido que preguntarlo antes -ver
+    /// <c>Messaging.OrderDetailsProjector</c>-. EF Core envuelve el error de MySQL en una
+    /// <c>DbUpdateException</c>; el SQL crudo lo lanza directamente.
+    /// </remarks>
     public static bool IsDuplicateKey(Exception ex)
     {
         for (var e = ex; e is not null; e = e.InnerException)

@@ -2,35 +2,55 @@ using System.Diagnostics.Metrics;
 using System.Text.Json;
 using StackExchange.Redis;
 
-namespace ProductsService;
+namespace Ucu.Andis.ProductsService;
 
-// Ajustes de la caché para las demos. Se cambian en tiempo de ejecución, sin
-// reiniciar, igual que el chaos:
-//
-//   PUT    /products/cache  {"enabled": false, "dbDelayMs": 200}
-//   GET    /products/cache
-//   DELETE /products/cache  -vuelve a los valores por defecto-
+/// <summary>
+/// Representa los ajustes de la caché para las demos.
+/// </summary>
+/// <remarks>
+/// Se cambian en tiempo de ejecución, sin reiniciar, igual que el chaos:
+/// <code>
+/// PUT    /products/cache  {"enabled": false, "dbDelayMs": 200}
+/// GET    /products/cache
+/// DELETE /products/cache  -vuelve a los valores por defecto-
+/// </code>
+/// </remarks>
 public class CacheSettings
 {
-    // Si es false, toda lectura va a PostgreSQL: sirve para comparar con y sin
-    // caché bajo la misma carga.
+    /// <summary>
+    /// Obtiene o establece si la caché está habilitada.
+    /// </summary>
+    /// <remarks>
+    /// Si es <c>false</c>, toda lectura va a PostgreSQL: sirve para comparar con y sin
+    /// caché bajo la misma carga.
+    /// </remarks>
     public bool Enabled { get; set; } = true;
 
-    // Demora agregada a cada lectura de PostgreSQL, en milisegundos. PostgreSQL
-    // en la misma máquina responde en 1 o 2 ms y la diferencia con Redis no se
-    // nota; con una base más lenta, como suele ser una real, sí.
+    /// <summary>
+    /// Obtiene o establece la demora agregada a cada lectura de PostgreSQL, en
+    /// milisegundos.
+    /// </summary>
+    /// <remarks>
+    /// PostgreSQL en la misma máquina responde en 1 o 2 ms y la diferencia con Redis no
+    /// se nota; con una base más lenta, como suele ser una real, sí.
+    /// </remarks>
     public int DbDelayMs { get; set; }
 }
 
-// Cache-Aside: Products busca primero en Redis; si no está -miss-, lee
-// PostgreSQL y guarda el resultado en Redis por 60 segundos -o por lo que diga
-// Products:CacheTtlSeconds, en el almacén de configuración- para la próxima. Al
-// cambiar un Product, Products borra de Redis las claves afectadas: la próxima
-// lectura es un miss y trae el dato nuevo.
-//
-// La aplicación es la que maneja la caché; Redis no sabe nada de PostgreSQL. Si
-// Redis no responde, se lee PostgreSQL directamente: la caché acelera, pero
-// Products funciona sin ella.
+/// <summary>
+/// Representa la caché de Products en Redis.
+/// </summary>
+/// <remarks>
+/// Cache-Aside: Products busca primero en Redis; si no está -miss-, lee PostgreSQL
+/// y guarda el resultado en Redis por 60 segundos -o por lo que diga
+/// <c>Products:CacheTtlSeconds</c>, en el almacén de configuración- para la
+/// próxima. Al cambiar un Product, Products borra de Redis las claves afectadas: la
+/// próxima lectura es un miss y trae el dato nuevo.
+///
+/// La aplicación es la que maneja la caché; Redis no sabe nada de PostgreSQL. Si
+/// Redis no responde, se lee PostgreSQL directamente: la caché acelera, pero
+/// Products funciona sin ella.
+/// </remarks>
 public class ProductCache
 {
     public const string MeterName = "Ucu.Andis.ProductsCache";
@@ -108,8 +128,13 @@ public class ProductCache
         return value;
     }
 
-    // Se borra en lugar de escribir el valor nuevo: así la caché nunca guarda un
-    // valor que PostgreSQL no tiene, aunque dos escrituras se crucen.
+    /// <summary>
+    /// Borra de Redis las claves afectadas por un cambio.
+    /// </summary>
+    /// <remarks>
+    /// Se borra en lugar de escribir el valor nuevo: así la caché nunca guarda un valor
+    /// que PostgreSQL no tiene, aunque dos escrituras se crucen.
+    /// </remarks>
     public async Task InvalidateAsync(params string[] keys)
     {
         try

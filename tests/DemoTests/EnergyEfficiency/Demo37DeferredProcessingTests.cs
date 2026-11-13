@@ -2,8 +2,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.EnergyEfficiency;
 
-// Demo 37: fuera de la ventana, el worker está apagado y las Orders esperan en
-// la cola; cuando se abre la ventana, se procesan.
+/// <summary>
+/// Contiene las pruebas de la demo 37: fuera de la ventana, el worker está apagado
+/// y las Orders esperan en la cola; cuando se abre la ventana, se procesan.
+/// </summary>
 public class Demo37DeferredProcessingTests : EnergyTest
 {
     [Test]

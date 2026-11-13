@@ -2,9 +2,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 25: una Order confirmada llega al ERP por el puente entre RabbitMQ y
-// ActiveMQ, y su factura vuelve. Si el broker del ERP no está, el pedido espera
-// y nada se pierde.
+/// <summary>
+/// Contiene las pruebas de la demo 25: una Order confirmada llega al ERP por el
+/// puente entre RabbitMQ y ActiveMQ, y su factura vuelve. Si el broker del ERP no
+/// está, el pedido espera y nada se pierde.
+/// </summary>
 public class Demo25MessagingBridgeTests : DemoTest
 {
     [TearDown]

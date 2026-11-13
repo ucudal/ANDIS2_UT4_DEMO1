@@ -5,9 +5,12 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 15: POST /orders/ responde 202 con Location y Retry-After; el estado
-// responde 200 mientras la Order está Pending y 303 cuando se procesó. Con
-// Idempotency-Key, un reintento no crea otra Order.
+/// <summary>
+/// Contiene las pruebas de la demo 15: <c>POST /orders/</c> responde 202 con
+/// <c>Location</c> y <c>Retry-After</c>; el estado responde 200 mientras la Order
+/// está <c>OrdersService.Models.OrderStatus.Pending</c> y 303 cuando se procesó. Con <c>Idempotency-Key</c>, un reintento no
+/// crea otra Order.
+/// </summary>
 public class Demo15AsynchronousRequestReplyTests : DemoTest
 {
     [Test]

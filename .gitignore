@@ -489,3 +489,6 @@ src/ProductsService/pgdata/
 src/UsersService/mongodbdata/
 # Certificado del gateway, que se copia del contenedor en las demos de seguridad
 gateway.crt
+
+# Doxygen generated documentation
+docs/html/

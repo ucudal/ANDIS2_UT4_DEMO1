@@ -69,9 +69,9 @@ este repositorio:
 
 | Servicio | Responsabilidad | Base de datos |
 | -------- | --------------- | ------------- |
-| `users-service` | Alta y consulta de [`Users`](src/UsersService/Models/Users.cs) | [MongoDB](https://www.mongodb.com/) |
-| `products-service` | Catálogo de [`Products`](src/ProductsService/Models/Product.cs) | [PostgreSQL](https://www.postgresql.org/) |
-| `orders-service` | Alta y consulta de [`Orders`](src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) | [MySQL](https://www.mysql.com/) |
+| `users-service` | Alta y consulta de [`Users`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Models/Users.cs) | [MongoDB](https://www.mongodb.com/) |
+| `products-service` | Catálogo de [`Products`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/Models/Product.cs) | [PostgreSQL](https://www.postgresql.org/) |
+| `orders-service` | Alta y consulta de [`Orders`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/Order.cs); arma el detalle de las `Orders` de un `User` consultando a `Users` y `Products` por [HTTP](https://datatracker.ietf.org/doc/html/rfc9110) | [MySQL](https://www.mysql.com/) |
 | `api-gateway` | Punto de entrada único -nginx- que enruta `/users/`, `/products/` y `/orders/` | — |
 
 La funcionalidad base no cambia entre demos: dar de alta `Users` y `Products`,
@@ -84,7 +84,7 @@ mensajes, una caché, un proveedor de identidad, un almacenamiento de archivos,
 un almacén de configuración-, procesos de `Orders` -el *worker* y el
 proyector-, y servicios que existen para mostrar un patrón -el ERP, el
 monolito, `Purchases` y los BFF-. Todos están en
-[docker-compose.yaml](docker-compose.yaml); qué hace cada uno está en
+[docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml); qué hace cada uno está en
 [Servicios y datos](ARCHITECTURE.md#servicios-y-datos) y en [Facilidad de
 modificación](ARCHITECTURE.md#facilidad-de-modificación), en ARCHITECTURE.md.
 
@@ -105,7 +105,7 @@ Los conceptos que usan las demos:
 | -------- | ------ |
 | [Imagen](https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/) | El paquete de un servicio: el programa y todo lo que necesita para correr. Se construye con un [Dockerfile](https://docs.docker.com/reference/dockerfile/), por ejemplo `orders-service:latest`. |
 | [Contenedor](https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/) | Una instancia de una imagen que está corriendo, aislada de las demás. De una misma imagen pueden correr varios contenedores. |
-| [Servicio](https://docs.docker.com/reference/compose-file/services/) | Cada entrada de [docker-compose.yaml](docker-compose.yaml): qué imagen usar y con qué configuración. Docker Compose crea uno o más contenedores por servicio. |
+| [Servicio](https://docs.docker.com/reference/compose-file/services/) | Cada entrada de [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml): qué imagen usar y con qué configuración. Docker Compose crea uno o más contenedores por servicio. |
 | Réplicas | Varios contenedores del mismo servicio, con la opción `--scale` de [`docker compose up`](https://docs.docker.com/reference/cli/docker/compose/up/). Por ejemplo, `orders-worker` tiene 3. |
 | [Red](https://docs.docker.com/compose/how-tos/networking/) | Los contenedores de Docker Compose comparten una red, en la que cada servicio se llama por su nombre: `orders-service:8000`. Si el servicio tiene varias réplicas, el nombre las devuelve a todas. |
 | [Puerto publicado](https://docs.docker.com/reference/compose-file/services/#ports) | El puerto del contenedor que se ve desde la máquina, por ejemplo `localhost:8000`. Lo que no se publica solo se ve dentro de la red. |
@@ -127,8 +127,8 @@ Los conceptos que usan las demos:
 
 ## Demos de disponibilidad
 
-Escenario: [`Users`](src/UsersService/) o [`Products`](src/ProductsService/)
-fallan o responden lento de forma intermitente. [`Orders`](src/OrdersService/)
+Escenario: [`Users`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/UsersService) o [`Products`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/ProductsService)
+fallan o responden lento de forma intermitente. [`Orders`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/OrdersService)
 debe seguir funcionando y el resto del sistema no debe caerse.
 
 Qué se muestra:
@@ -158,11 +158,11 @@ sus propias rutas.
 | ---------- | -------- |
 | `rabbitmq` | Exchange `andis.events`, donde se publican los eventos; cola `products.stock`, con las `Orders` que esperan su reserva de stock, y cola `orders.process`, con las que esperan su confirmación. Consola en <http://localhost:15672> -usr: `guest` pwd: `guest`-. |
 | `orders-worker` -3 réplicas- | La misma imagen que `orders-service`, con el *worker* habilitado -`WORKER__ENABLED=true`-. Consume la cola y confirma o rechaza cada `Order`. |
-| Estado de la [`Order`](src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. `Products` reserva el stock; un *worker* verifica que el `User` exista y la pasa a `Confirmed` o `Rejected`. Si el ERP no la factura, pasa a `Cancelled`. Ver [Saga](#saga). |
-| Stock del [`Product`](src/ProductsService/Models/Product.cs) | Las unidades disponibles. `GET /products/{id}` lo muestra y `PUT /products/{id}/stock` lo fija. |
-| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
-| Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [Patterns.cs](src/OrdersService/Patterns.cs). |
-| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un *dashboard* de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
+| Estado de la [`Order`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/Order.cs) | `POST /orders/` guarda la `Order` como `Pending`. `Products` reserva el stock; un *worker* verifica que el `User` exista y la pasa a `Confirmed` o `Rejected`. Si el ERP no la factura, pasa a `Cancelled`. Ver [Saga](#saga). |
+| Stock del [`Product`](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/Models/Product.cs) | Las unidades disponibles. `GET /products/{id}` lo muestra y `PUT /products/{id}/stock` lo fija. |
+| Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
+| Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [Patterns.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Patterns.cs). |
+| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un *dashboard* de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/k6). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
 
 Ejemplo de inyección de fallas:
 
@@ -185,7 +185,7 @@ curl -X DELETE http://localhost/products/chaos
 
 ### Patrones de disponibilidad
 
-Cada patrón tiene un *script* en [demos](demos/) que provoca la situación y
+Cada patrón tiene un *script* en [demos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/demos) que provoca la situación y
 muestra el resultado. Los de Retry, Circuit Breaker, Bulkhead y Throttling dejan
 prendido solo su patrón, para que se vea el efecto de cada uno por separado.
 Cómo ejecutarlos está en [Cómo probar los
@@ -208,7 +208,7 @@ reintentan hasta 3 veces con retroceso exponencial -0.5 segundos, 1 segundo, 2
 segundos, con *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408,
 429, errores de red y *timeouts*; un 404 no se reintenta. Está en el método
 `AddResilience` de la clase `Resilience`, en
-[Resilience.cs](src/OrdersService/Resilience.cs), con
+[Resilience.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Resilience.cs), con
 `Microsoft.Extensions.Http.Resilience`.
 
 Reintentar solo es seguro si la operación es idempotente: una llamada que falla
@@ -225,7 +225,7 @@ Las esperas crecen: 0.5 segundos, 1 segundo y 2 segundos
 
 **Código:** la estrategia de reintento del *pipeline* de cada dependencia, en el
 método `AddResilience` de la clase `Resilience`, en
-[Resilience.cs](src/OrdersService/Resilience.cs). `ShouldHandle`
+[Resilience.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Resilience.cs). `ShouldHandle`
 decide qué se reintenta; el `patterns.Retry` permite apagarlo en las demos:
 
 ```csharp
@@ -242,14 +242,14 @@ pipeline.AddRetry(new HttpRetryStrategyOptions
 
 **Cómo verlo:** el detalle de las `Orders` de un `User` lo arma `Orders`, que le
 pide a `Users` el nombre del cliente y a `Products` el nombre del producto de
-cada `Order`. La demo [01 de Retry](demos/01-retry.sh) hace que `Products` falle
+cada `Order`. La demo [01 de Retry](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/01-retry.sh) hace que `Products` falle
 en el 30% de las solicitudes y consulta el detalle 8 veces con el Retry apagado
 y 8 con el Retry prendido. Sin reintentos, cerca de la mitad de las respuestas
 trae algún producto "no disponible"; con reintentos, casi todas traen el nombre
 del producto, porque los reintentos ocultan las fallas. Las que tardan más son
 las que necesitaron reintentos. Los *logs* de Docker de `orders-service`
 muestran cada `[RETRY]` con su demora y su causa; el comando para verlos está en
-[02-availability.azcli](commands/02-availability.azcli).
+[02-availability.azcli](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/commands/02-availability.azcli).
 
 > [!TIP]
 >
@@ -273,7 +273,7 @@ segundos; después pasa a semiabierto, deja pasar una llamada de prueba y, si
 funciona, se cierra. El detalle de `Orders` no devuelve error: muestra `"no
 disponible [circuito abierto]"` en lugar del nombre: lo arma el método
 `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+[OrdersController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/OrdersController.cs).
 
 El estado del circuito vive en la memoria de cada proceso: con tres *workers*,
 cada uno tiene sus propios circuitos. Qué estado vive en cada réplica, y qué
@@ -291,7 +291,7 @@ de resiliencia", y el estado es el del panel "Estado del circuito de cada
 dependencia".
 
 **Código:** la estrategia del *pipeline* de cada dependencia, en
-[Resilience.cs](src/OrdersService/Resilience.cs). Va dentro del
+[Resilience.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Resilience.cs). Va dentro del
 Retry, así que cada reintento cuenta como una llamada más para el circuito:
 
 ```csharp
@@ -308,7 +308,7 @@ pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
 });
 ```
 
-**Cómo verlo:** la demo [02 de Circuit Breaker](demos/02-circuit-breaker.sh) hace
+**Cómo verlo:** la demo [02 de Circuit Breaker](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/02-circuit-breaker.sh) hace
 que `Products` falle en el 100% de las solicitudes y consulta el detalle 6 veces
 con todos los patrones apagados y 6 con solo el Circuit Breaker prendido. Sin el
 circuito, `Products` recibe 12 llamadas, aunque falle siempre; con el circuito,
@@ -336,11 +336,11 @@ demás funciones.
 
 **Implementación:** un límite de concurrencia por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[Resilience.cs](src/OrdersService/Resilience.cs). Las llamadas que
+[Resilience.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Resilience.cs). Las llamadas que
 exceden el límite se rechazan de inmediato. Como cada dependencia tiene su
 propio compartimento, la lentitud de `Products` no afecta las llamadas a
 `Users`. Cada compartimento se dimensiona según su dependencia, al llamar a
-`AddResilience` en [Program.cs](src/OrdersService/Program.cs):
+`AddResilience` en [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Program.cs):
 `Products` tiene 5 llamadas en curso y 5 en espera; `Users`, que responde rápido
 pero se llama en cada consulta, tiene 20 en curso y 5 en espera. Los
 compartimentos son de cada proceso: `orders-service`, cada *worker* y cada
@@ -358,9 +358,9 @@ lento se llena su compartimento, pero el de `Users` sigue libre.
 
 **Código:** un `ConcurrencyLimiter` por dependencia, en el método
 `AddResilience` de la clase `Resilience`, en
-[Resilience.cs](src/OrdersService/Resilience.cs), y el tamaño de
+[Resilience.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Resilience.cs), y el tamaño de
 cada compartimento, en las llamadas a `AddResilience` de
-[Program.cs](src/OrdersService/Program.cs):
+[Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Program.cs):
 
 ```csharp
 // Resilience.cs
@@ -382,7 +382,7 @@ builder.Services.AddHttpClient("UsersService", ...).AddResilience("users", bulkh
 builder.Services.AddHttpClient("ProductsService", ...).AddResilience("products");
 ```
 
-**Cómo verlo:** la demo [03 de Bulkhead](demos/03-bulkhead.sh) hace que `Products`
+**Cómo verlo:** la demo [03 de Bulkhead](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/03-bulkhead.sh) hace que `Products`
 demore 1.5 segundos y lanza 15 consultas simultáneas, primero con el Bulkhead
 apagado y después prendido. Sin el Bulkhead, las 15 traen los nombres, pero
 `Products` llega a atender 15 llamadas a la vez. Con el Bulkhead, nunca más de
@@ -405,16 +405,16 @@ sus clientes.
 **Implementación:** `Orders` atiende como máximo 20 consultas de detalle a la
 vez. Las que exceden el límite reciben `503 Service Unavailable` con
 `Retry-After: 2`, en lugar de encolarse. La política `throttling` se define con
-`AddRateLimiter` en [Program.cs](src/OrdersService/Program.cs), y
+`AddRateLimiter` en [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Program.cs), y
 se aplica con el atributo `[EnableRateLimiting("throttling")]` en el método
 `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+[OrdersController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/OrdersController.cs).
 
 El *gateway* también aplica Throttling, pero por cliente: cada IP puede crear como
 máximo 1 `Order` por segundo, con una ráfaga de hasta 5. Lo que excede el límite
 recibe `429 Too Many Requests` sin llegar a `orders-service`; las consultas no
 tienen límite. Está en
-[nginx.conf](src/ApiGateway/nginxconf/nginx.conf)
+[nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf)
 -[`limit_req_zone`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req_zone)
 y
 [`limit_req`](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html#limit_req)-.
@@ -434,9 +434,9 @@ opuesta: el Bulkhead limita las llamadas que `Orders` hace; el Throttling, las
 solicitudes que `Orders` recibe.
 
 **Código:** la política, con `AddRateLimiter` en
-[Program.cs](src/OrdersService/Program.cs), y el atributo que la
+[Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Program.cs), y el atributo que la
 aplica, en el método `GetOrdersForUser` de la clase `OrdersController`, en
-[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs):
+[OrdersController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/OrdersController.cs):
 
 ```csharp
 // Program.cs
@@ -465,7 +465,7 @@ builder.Services.AddRateLimiter(options =>
 public async Task<ActionResult<List<object>>> GetOrdersForUser(int userId)
 ```
 
-**Cómo verlo:** la demo [04 de Throttling](demos/04-throttling.sh) hace que
+**Cómo verlo:** la demo [04 de Throttling](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/04-throttling.sh) hace que
 `Orders` demore 5 segundos en cada consulta y lanza 40 simultáneas, primero con
 el Throttling apagado y después prendido. Sin el Throttling, las 40 responden
 200 y `Orders` llega a atender 40 a la vez. Con el Throttling, 20 responden 200
@@ -498,8 +498,8 @@ para no chocar contra ese Throttling. En esta aplicación, el servicio es el
 *gateway*, con su Throttling por cliente -1 `POST /orders/` por segundo por IP,
 con una ráfaga de 5; ver [Throttling](#throttling)-, y el cliente es un proceso
 por lotes que crea `Orders`:
-la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y
-[rate-limiting.js](k6/rate-limiting.js).
+la demo [05 de Rate Limiting](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/05-rate-limiting.sh) y
+[rate-limiting.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/rate-limiting.js).
 
 > [!NOTE]
 >
@@ -529,7 +529,7 @@ Con Rate Limiting, el cliente respeta el ritmo que acepta el *gateway*:
 El límite del *gateway* es el mismo en las dos formas: 1 `POST /orders/` por
 segundo por IP, con una ráfaga de 5. Lo que cambia es cómo envía el cliente.
 
-**Cómo verlo:** la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) crea 15
+**Cómo verlo:** la demo [05 de Rate Limiting](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/05-rate-limiting.sh) crea 15
 `Orders` de dos formas. Sin Rate Limiting, las envía todas de golpe y reintenta
 las rechazadas cada 1 segundo: hacen falta unas 55 solicitudes y unas 40 reciben
 429. Con Rate Limiting, respeta el límite del *gateway*: 15 solicitudes y ningún
@@ -558,7 +558,7 @@ cada chequeo -200 si está sano, 503 en caso contrario-:
 publica los tres en `/health/users`, `/health/products` y `/health/orders`.
 Docker los consulta cada 5 segundos
 -[`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck)
-en [docker-compose.yaml](docker-compose.yaml)- y los usa para no levantar un
+en [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml)- y los usa para no levantar un
 servicio hasta que sus dependencias estén sanas -[`depends_on: condition:
 service_healthy`](https://docs.docker.com/reference/compose-file/services/#depends_on)-.
 
@@ -579,23 +579,23 @@ Cada chequeo es una implementación de `IHealthCheck`, registrada con
 `AddHealthChecks` en el `Program.cs` de cada servicio:
 
 * La clase `RabbitMqHealthCheck`, en
-  [RabbitMq.cs](src/Common/RabbitMq.cs), y la clase `MongoHealthCheck`,
+  [RabbitMq.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/RabbitMq.cs), y la clase `MongoHealthCheck`,
   en
-  [MongoHealthCheck.cs](src/UsersService/Data/MongoHealthCheck.cs),
+  [MongoHealthCheck.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Data/MongoHealthCheck.cs),
   implementan el método `CheckHealthAsync`. `Products` y `Orders` chequean su
   base con `AddDbContextCheck`, de [EF Core](https://learn.microsoft.com/ef/core/).
 * El método `WriteJson` de la clase `HealthResponse`, en
-  [HealthResponse.cs](src/Common/HealthResponse.cs), escribe el JSON de
+  [HealthResponse.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/HealthResponse.cs), escribe el JSON de
   `/health`.
 * El método `PublishAsync` de la clase `HealthMetricsPublisher`, en
-  [HealthMetrics.cs](src/Common/HealthMetrics.cs), publica la métrica.
+  [HealthMetrics.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/HealthMetrics.cs), publica la métrica.
 
-**Cómo verlo:** la demo [06 de Health Endpoint Monitoring](demos/06-health.sh)
+**Cómo verlo:** la demo [06 de Health Endpoint Monitoring](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/06-health.sh)
 detiene la base de datos de `Products`. `/health/products` pasa a 503, con el
 chequeo `products-db` en `Unhealthy`; `Orders` sigue sano, y a los pocos segundos Docker
 marca `products-service` como `unhealthy`. Al levantar la base, todo vuelve a la
 normalidad. Para verlo en vivo, corre [el monitor de
-estado](demos/monitor-health.sh) en otra terminal. En Grafana, el panel "Salud
+estado](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/monitor-health.sh) en otra terminal. En Grafana, el panel "Salud
 de los servicios" muestra `products-service` en rojo mientras la base está
 detenida.
 
@@ -621,7 +621,7 @@ mensaje a la vez -`prefetch = 1`- y lo confirma -*ack*- recién cuando termina;
 si se cae antes, RabbitMQ entrega el mensaje a otra réplica. Si `Users` no está
 disponible, el *worker* devuelve el mensaje a la cola y lo reintenta 5 segundos
 después. Está en la clase `OrderProcessingWorker`, en
-[OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs):
+[OrderProcessingWorker.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Messaging/OrderProcessingWorker.cs):
 el método `ExecuteAsync` se suscribe a la cola y confirma o devuelve cada
 mensaje, y el método `ConfirmAsync` procesa la `Order`.
 
@@ -643,7 +643,7 @@ asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.
 ![Clases del worker](assets/07-competing-consumers-clases.svg)
 
 El método `ConfirmAsync` de la clase `OrderProcessingWorker`, en
-[OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
+[OrderProcessingWorker.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Messaging/OrderProcessingWorker.cs),
 devuelve `false` cuando `Users` no responde: el mensaje vuelve a la cola.
 
 Que las réplicas se repartan la cola no evita que dos procesen la misma `Order`.
@@ -711,12 +711,12 @@ llamar a `Users` cuando una copia llega después de que la `Order` ya se proces�
 barrera. Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 
 **Cómo verlo:** la demo [07 de Competing
-Consumers](demos/07-competing-consumers.sh) crea 9 `Orders`. Cada *worker* tarda
+Consumers](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/07-competing-consumers.sh) crea 9 `Orders`. Cada *worker* tarda
 2 segundos por `Order`, y las 9 se procesan en unos 6 segundos, 3 por réplica.
 Después crea 9 más y detiene una réplica mientras procesa: la `Order` que tenía
 la termina otra réplica. Para ver la cola y sus consumidores, abre la consola de
 RabbitMQ. Dos copias del mismo `stock.reserved` procesadas a la vez por dos réplicas
-se ven en la demo [09 de Transactional Outbox](demos/09-transactional-outbox.sh)
+se ven en la demo [09 de Transactional Outbox](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/09-transactional-outbox.sh)
 -ver [Transactional Outbox](#transactional-outbox)-.
 
 > [!TIP]
@@ -737,9 +737,9 @@ inmutable en la tabla `order_events`: `OrderCreated`, `OrderConfirmed`,
 `OrderRejected`, `OrderInvoiced` u `OrderCancelled`. La tabla `orders` es una **proyección**: el estado actual,
 calculado a partir de los eventos. Cada evento es un `OrderEvent`, creado con el
 método `Create` de esa clase, en
-[OrderEvent.cs](src/OrdersService/Models/OrderEvent.cs); el
+[OrderEvent.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/OrderEvent.cs); el
 método `Replay` de la clase `OrderProjection`, en
-[OrderProjection.cs](src/OrdersService/Models/OrderProjection.cs),
+[OrderProjection.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Models/OrderProjection.cs),
 los reproduce para obtener el estado.
 
 * `GET /orders/{id}/events` muestra los eventos de una `Order` y el estado que
@@ -758,7 +758,7 @@ Los eventos no se modifican ni se borran: un cambio nuevo es un evento nuevo.
 
 ![Clases de los eventos y la proyección](assets/08-event-sourcing-clases.svg)
 
-**Cómo verlo:** la demo [08 de Event Sourcing](demos/08-event-sourcing.sh) crea
+**Cómo verlo:** la demo [08 de Event Sourcing](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/08-event-sourcing.sh) crea
 una `Order`, muestra sus eventos, borra la tabla `orders` directamente en MySQL
 y la reconstruye. Las `Orders` vuelven con su estado.
 
@@ -777,10 +777,10 @@ mismo con `order.confirmed`, `order.rejected` y `order.cancelled`. Ninguno de
 los dos publica en RabbitMQ. Lo hacen el método `CreateOrder` de la clase
 `OrdersController` y el método `ChangeStatusAsync` de la clase
 `OrderProcessingWorker`, con el método `Create` de la clase `OutboxMessage`, en
-[OutboxMessage.cs](src/Common/OutboxMessage.cs).
+[OutboxMessage.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/OutboxMessage.cs).
 
 El *relay* del *outbox* -el método `PublishPendingAsync` de la clase
-`OutboxRelay`, en [OutboxRelay.cs](src/Common/OutboxRelay.cs)- corre en
+`OutboxRelay`, en [OutboxRelay.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/OutboxRelay.cs)- corre en
 `orders-service`. Cada segundo toma hasta 50 mensajes pendientes, en
 orden, los publica en `andis.events` y les completa la fecha de publicación.
 Publica con confirmación de RabbitMQ: solo marca un mensaje cuando RabbitMQ
@@ -824,7 +824,7 @@ asíncrona](ARCHITECTURE.md#creación-de-una-order-asíncrona), en ARCHITECTURE.
 `PublishedAt` es nulo mientras el mensaje está pendiente.
 
 **Cómo verlo:** la demo [09 de Transactional
-Outbox](demos/09-transactional-outbox.sh) detiene RabbitMQ y crea 5 `Orders`.
+Outbox](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/09-transactional-outbox.sh) detiene RabbitMQ y crea 5 `Orders`.
 Todas responden `202`; antes del *outbox*, `Orders` respondía `503` y la `Order`
 quedaba `Pending` para siempre. `/health/orders` responde `Degraded`, y los 5
 mensajes esperan en `outbox_messages`. Al levantar RabbitMQ, el *relay* los
@@ -878,25 +878,25 @@ La Saga es por **coreografía**: nadie la coordina. Cada participante escucha
 los eventos de los otros en su propia cola y reacciona:
 
 * `Products`: la clase `StockReservations`, en
-  [StockReservations.cs](src/ProductsService/StockReservations.cs), escucha la
+  [StockReservations.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/StockReservations.cs), escucha la
   cola `products.stock`. El método `ReserveAsync` reserva el stock y el método
   `ReleaseAsync` lo libera. Las reservas están en la tabla `stock_reservations`
-  de [ProductsService](src/ProductsService/pginit/pginit.sql).
+  de [ProductsService](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/pginit/pginit.sql).
 * `Orders`: la clase `OrderProcessingWorker`, en
-  [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs),
+  [OrderProcessingWorker.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Messaging/OrderProcessingWorker.cs),
   escucha la cola `orders.process`. El método `ConfirmAsync` confirma o rechaza
   la `Order` después de la reserva, el método `RejectAsync` la rechaza sin
   reserva y el método `CancelAsync` la cancela.
 * El ERP: el método `ExecuteAsync` de la clase `Erp`, en
-  [Program.cs](src/LegacyErp/Program.cs), responde con un registro
+  [Erp.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/LegacyErp/Erp.cs), responde con un registro
   `RECHAZO` en lugar de una `FACTURA`. El método `ToEvent` de la clase
-  `ErpFormat`, en [ErpFormat.cs](src/MessagingBridge/ErpFormat.cs), lo traduce a
+  `ErpFormat`, en [ErpFormat.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/MessagingBridge/ErpFormat.cs), lo traduce a
   `order.invoice-failed`.
 
 Cada paso guarda su cambio y su evento en una sola transacción, y los publica
 con un [Transactional Outbox](#transactional-outbox). `Products` usa la misma
 clase `OutboxRelay` que `Orders`, en
-[OutboxRelay.cs](src/Common/OutboxRelay.cs). Sin el *outbox*, `Products` podría
+[OutboxRelay.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/OutboxRelay.cs). Sin el *outbox*, `Products` podría
 descontar el stock y caerse antes de publicar `stock.reserved`: la `Order`
 quedaría `Pending` para siempre, con el stock descontado.
 
@@ -957,7 +957,7 @@ Ver [Idempotencia](ARCHITECTURE.md#idempotencia) en ARCHITECTURE.md.
 `PUT /products/{id}/stock` fija el stock de un `Product`, como un ajuste de
 inventario. `PUT /products/{id}` no lo cambia: el stock lo mueven las reservas.
 
-**Cómo verlo:** la demo [10 de Saga](demos/10-saga.sh) fija el stock de un
+**Cómo verlo:** la demo [10 de Saga](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/10-saga.sh) fija el stock de un
 `Product` en 20 unidades y crea cuatro `Orders`. La primera tiene stock y
 termina facturada; la segunda pide 50 unidades y `Products` la rechaza sin
 tocar el stock; la tercera es de un `User` que no existe, y el stock baja y
@@ -993,8 +993,8 @@ Qué se muestra:
 
 Resultado observable: latencias de lectura estables durante el pico, *backlog*
 absorbido por la cola y throughput que crece al agregar *workers*. El pico se
-genera con [load.js](k6/load.js) y
-[load-leveling.js](k6/load-leveling.js), y se compara antes y después de cada
+genera con [load.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/load.js) y
+[load-leveling.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/load-leveling.js), y se compara antes y después de cada
 patrón en el *dashboard* de [Grafana](https://grafana.com/oss/grafana/), en la
 fila "Rendimiento: caché, CQRS y outbox".
 
@@ -1004,7 +1004,7 @@ fila "Rendimiento: caché, CQRS y outbox".
 | ---------- | -------- |
 | `redis` | Caché de `Products`. |
 | `orders-projector` -3 réplicas- | La misma imagen que `orders-service`, con el proyector habilitado -`PROJECTOR__ENABLED=true`-. Mantiene la vista materializada `order_details`. |
-| Exchange `andis.events` | Eventos de `Orders` -`order.created`, `order.confirmed`, `order.rejected` y `order.cancelled`-, de la [Saga](#saga) en `Products` -`stock.reserved`, `stock.rejected` y `stock.released`-, del ERP -`order.invoiced` y `order.invoice-failed`-, y `user.updated` y `product.updated`. Los contratos están en [Events.cs](src/Common/Events.cs). |
+| Exchange `andis.events` | Eventos de `Orders` -`order.created`, `order.confirmed`, `order.rejected` y `order.cancelled`-, de la [Saga](#saga) en `Products` -`stock.reserved`, `stock.rejected` y `stock.released`-, del ERP -`order.invoiced` y `order.invoice-failed`-, y `user.updated` y `product.updated`. Los contratos están en [Events.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/Events.cs). |
 | Modificación de `Users` y `Products` | Operación [SOAP](https://www.w3.org/TR/soap/) `UpdateUser` y `PUT /products/{id}`, que publican `user.updated` y `product.updated`. |
 | Ajustes de la caché | `PUT /products/cache` prende o apaga la caché y agrega una demora a cada lectura de [PostgreSQL](https://www.postgresql.org/), sin reiniciar, igual que el chaos. `DELETE /products/cache` vuelve a los valores por defecto. |
 
@@ -1020,7 +1020,7 @@ curl -X DELETE http://localhost/products/cache
 ### Patrones de rendimiento
 
 Como en las demos de disponibilidad, cada patrón tiene un *script* en
-[demos](demos/), del `11` al `17`. Los *logs* de
+[demos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/demos), del `11` al `17`. Los *logs* de
 [Docker](https://www.docker.com/) muestran los eventos con una etiqueta:
 `[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en `users-service`,
 `products-service` y `orders-projector`; y `[MATERIALIZED VIEW]` en
@@ -1040,9 +1040,9 @@ Redis no sabe nada de PostgreSQL. Si Redis no responde, `Products` lee PostgreSQ
 directamente; la caché acelera, pero no es una dependencia, y por eso no entra
 en `/health`. Está en los métodos `GetOrLoadAsync` e `InvalidateAsync` de la
 clase `ProductCache`, en
-[ProductCache.cs](src/ProductsService/ProductCache.cs), que usan
+[ProductCache.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/ProductCache.cs), que usan
 los métodos `GetProduct` y `UpdateProduct` de la clase `ProductsController`, en
-[ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
+[ProductsController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/Controllers/ProductsController.cs).
 
 Se borra la clave en lugar de escribir el valor nuevo: así la caché nunca guarda
 un valor que PostgreSQL no tiene. La caché está en Redis y no en la memoria de
@@ -1065,12 +1065,12 @@ Si Redis no responde, `Products` lee directamente de PostgreSQL.
 `ProductCache` no conoce a PostgreSQL: su método `GetOrLoadAsync` recibe la lectura
 como una función, `load`.
 
-**Cómo verlo:** la demo [11 de Cache-Aside](demos/11-cache-aside.sh) simula una
+**Cómo verlo:** la demo [11 de Cache-Aside](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/11-cache-aside.sh) simula una
 base que demora 200 ms y lee el mismo `Product` varias veces: la primera lectura
 demora 200 ms y las siguientes, 2 o 3 ms. Después cambia su nombre: la lectura
 siguiente es un *miss* y trae el nombre nuevo. Con Redis detenido, `Products`
 sigue respondiendo, a la velocidad de PostgreSQL. Bajo carga,
-[cache-aside.js](k6/cache-aside.js) lee 50 veces por segundo con la caché
+[cache-aside.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/cache-aside.js) lee 50 veces por segundo con la caché
 apagada y después prendida: la p95 baja de unos 100 ms a unos 3 ms.
 
 > [!TIP]
@@ -1102,11 +1102,11 @@ El pico se acumula en la cola, no en `Users`. El código es el de [Competing
 Consumers](#competing-consumers-para-disponibilidad).
 
 **Cómo verlo:** la demo [12 de Queue-Based Load
-Leveling](demos/12-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
+Leveling](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/12-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
 directamente en `orders-service`: el Throttling por cliente del *gateway*
 rechazaría el pico antes de que llegara a la cola. Todas responden `202` en
 pocos milisegundos; la cola baja de a 3 mensajes cada 2 segundos hasta vaciarse.
-[load-leveling.js](k6/load-leveling.js) envía 10 `POST` por segundo durante
+[load-leveling.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/load-leveling.js) envía 10 `POST` por segundo durante
 10 segundos: la latencia de `create order` se mantiene baja y la cola crece
 durante el pico y se vacía después.
 
@@ -1129,7 +1129,7 @@ disponibilidad](#competing-consumers-para-disponibilidad), con 6 réplicas en
 lugar de 3.
 
 **Cómo verlo:** la demo [13 de Competing Consumers para
-rendimiento](demos/13-competing-consumers-scaling.sh) procesa 30 `Orders` con 3
+rendimiento](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/13-competing-consumers-scaling.sh) procesa 30 `Orders` con 3
 réplicas, unos 21 segundos, y otras 30 con 6 réplicas, unos 12 segundos. Al
 final vuelve a 3 réplicas. Las réplicas se cambian a mano; en la demo [36 de
 escalado a cero](#use-serverless-cloud-services) las decide [KEDA](https://keda.sh/) según el largo
@@ -1166,7 +1166,7 @@ interesan:
 Un mismo `order.created` llega a `orders.details-view` y a `products.stock`. `Orders` no sabe que existen los
 proyectores: agregarlos no cambió el código que publica. La conexión y la
 publicación están en la clase `RabbitMq`, en
-[RabbitMq.cs](src/Common/RabbitMq.cs): el método `PublishEventAsync`
+[RabbitMq.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/RabbitMq.cs): el método `PublishEventAsync`
 publica un evento, y el método `DeclareSubscriberQueueAsync` declara la cola de
 un suscriptor con sus claves.
 
@@ -1193,7 +1193,7 @@ Los contratos de los eventos y la conexión a RabbitMQ están en `Common`, el
 `OrderRejected` también están ahí; el diagrama no los muestra.
 
 **Cómo verlo:** la demo [14 de
-Publisher/Subscriber](demos/14-publisher-subscriber.sh) muestra los enlaces del
+Publisher/Subscriber](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/14-publisher-subscriber.sh) muestra los enlaces del
 exchange, crea una `Order` y muestra los *logs* del *worker* y de los
 proyectores, que la reciben los dos. Después cambia el nombre de un `Product` y
 de un `User`: esos eventos solo los reciben los proyectores.
@@ -1211,7 +1211,7 @@ responde `200` con el estado mientras la `Order` está `Pending`, también con
 Other` a `/orders/{id}`, y el cliente sigue la redirección para obtener el
 resultado. Está en los métodos `CreateOrder` y `GetOrderStatus` de la clase
 `OrdersController`, en
-[OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
+[OrdersController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/OrdersController.cs).
 
 `POST /orders/` crea una `Order` en cada llamada. Si el cliente no recibe el
 `202`, por un *timeout* o un corte de red, no sabe si la `Order` se creó, y si
@@ -1259,7 +1259,7 @@ reintento posterior crea otra `Order`. Ver [Idempotencia](ARCHITECTURE.md#idempo
 Request-Reply](assets/15-asynchronous-request-reply.svg)
 
 **Cómo verlo:** la demo [15 de Asynchronous
-Request-Reply](demos/15-asynchronous-request-reply.sh) crea una `Order`, muestra
+Request-Reply](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/15-asynchronous-request-reply.sh) crea una `Order`, muestra
 el `202` con sus encabezados y consulta el estado respetando `Retry-After` hasta
 el `303`. Sigue la redirección y muestra la `Order` confirmada. Al final crea
 otra `Order` con `Idempotency-Key` y repite el `POST` con la misma clave, como
@@ -1284,13 +1284,13 @@ consulta de detalle tiene que juntar datos de tres servicios en cada lectura.
 * **Comandos:** `POST /orders/` y el *worker* escriben `orders`, `order_events`
   y `outbox_messages`, en el método `CreateOrder` de la clase
   `OrdersController`, en
-  [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs),
+  [OrdersController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/OrdersController.cs),
   y en el método `ChangeStatusAsync` de la clase `OrderProcessingWorker`, en
-  [OrderProcessingWorker.cs](src/OrdersService/Messaging/OrderProcessingWorker.cs).
+  [OrderProcessingWorker.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Messaging/OrderProcessingWorker.cs).
 * **Consultas:** `GET /orders/user/{userId}/details/view` lee solo la vista
   `order_details` -ver [Materialized View](#materialized-view)-, en el método
   `GetOrdersForUser` de la clase `OrdersQueriesController`, en
-  [OrdersQueriesController.cs](src/OrdersService/Controllers/OrdersQueriesController.cs).
+  [OrdersQueriesController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/OrdersQueriesController.cs).
   Es una consulta a [MySQL](https://www.mysql.com/), sin llamadas a `Users` ni a
   `Products`, y sin Throttling.
 
@@ -1317,11 +1317,11 @@ ARCHITECTURE.md.
 La separación se ve en el código: un controlador para los comandos, sobre
 `Order`, y otro para las consultas, sobre `OrderDetails`.
 
-**Cómo verlo:** la demo [16 de CQRS](demos/16-cqrs.sh) hace la misma consulta por
+**Cómo verlo:** la demo [16 de CQRS](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/16-cqrs.sh) hace la misma consulta por
 los dos lados. Sin fallas, la síncrona demora unos 100 ms y la vista, 3 ms. Con
 `Products` demorando 300 ms, la síncrona pasa a casi 2 segundos -una llamada por
 `Order`- y la vista no cambia. Después crea una `Order` y consulta enseguida: la
-síncrona ya la tiene, la vista todavía no. Bajo carga, [load.js](k6/load.js)
+síncrona ya la tiene, la vista todavía no. Bajo carga, [load.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/load.js)
 con `-e DETAILS=live` y con `-e DETAILS=view` compara las dos.
 
 #### Materialized View
@@ -1333,7 +1333,7 @@ detalle sale degradado.
 **Implementación:** la tabla `order_details` guarda el detalle de cada `Order`
 con el nombre del cliente y el nombre del producto ya copiados. La mantiene el
 método `ApplyAsync` de la clase `OrderDetailsProjector`, en
-[OrderDetailsProjector.cs](src/OrdersService/Messaging/OrderDetailsProjector.cs),
+[OrderDetailsProjector.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Messaging/OrderDetailsProjector.cs),
 que corre en `orders-projector` y consume la cola `orders.details-view`:
 
 * `order.created`: el método `AddOrderAsync` busca el nombre del cliente y del
@@ -1424,7 +1424,7 @@ pero no rendimiento.
 Los proyectores son los únicos que escriben la vista, y los únicos que llaman a
 `Users` y a `Products`.
 
-**Cómo verlo:** la demo [17 de Materialized View](demos/17-materialized-view.sh)
+**Cómo verlo:** la demo [17 de Materialized View](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/17-materialized-view.sh)
 cambia el nombre de un `Product` y la vista lo refleja. Con `Products` fallando
 siempre, la consulta síncrona responde "no disponible" y la vista sigue
 respondiendo con los nombres. Después detiene los proyectores, hace que `Users`
@@ -1473,12 +1473,12 @@ privilegio necesario.
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [andis-realm.json](src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
-| Entrada HTTPS del *gateway* | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
-| `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al *sidecar*; la HTTP, directamente a `Products`. Está en [envoy.yaml](src/ProductsSidecar/envoy.yaml). |
+| `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [andis-realm.json](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
+| Entrada HTTPS del *gateway* | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf). |
+| `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al *sidecar*; la HTTP, directamente a `Products`. Está en [envoy.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsSidecar/envoy.yaml). |
 | `azurite` | El emulador de [Azure Storage](https://azure.microsoft.com/products/storage/), con las imágenes de los `Products`, en <http://localhost:10000>. |
 | Imágenes de los `Products` | `PUT /products/{id}/image` sube la imagen a través de `Products`; `POST /products/{id}/image/upload-url` entrega una URL firmada para subirla directamente a [Azurite](https://github.com/Azure/Azurite); `GET /products/{id}/image` redirige a una URL firmada para bajarla. |
-| [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) | Deja de publicar en el *host* los puertos de los servicios y de las bases: la única entrada a los servicios es el *gateway*. |
+| [docker-compose.gatekeeper.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.gatekeeper.yaml) | Deja de publicar en el *host* los puertos de los servicios y de las bases: la única entrada a los servicios es el *gateway*. |
 
 Los usuarios de [Keycloak](https://www.keycloak.org/), todos con la contraseña
 `Pa55w0rd`:
@@ -1513,8 +1513,8 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 
 ### Patrones de seguridad
 
-Cada patrón tiene un *script* en [demos](demos/), del `18` al `22`, y un paso a
-paso en [04-security.azcli](commands/04-security.azcli) que compara la
+Cada patrón tiene un *script* en [demos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/demos), del `18` al `22`, y un paso a
+paso en [04-security.azcli](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/commands/04-security.azcli) que compara la
 misma solicitud por la entrada
 [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la
 HTTPS, con él. Los *logs* de [Docker](https://www.docker.com/) muestran los
@@ -1553,7 +1553,7 @@ correo. Confía en la firma de Keycloak y usa los claims:
 * `Orders` decide con esos claims. Un cliente crea `Orders` solo para él y
   consulta solo las suyas; un admin consulta las de todos, pero no crea
   `Orders`, porque no es cliente. Lo hace con el registro `CallerIdentity`, en
-  [CallerIdentity.cs](src/OrdersService/CallerIdentity.cs), que
+  [CallerIdentity.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/CallerIdentity.cs), que
   usan los métodos `CreateOrder`, `ListOrders`, `GetOrder`, `GetOrderStatus`,
   `GetOrderEvents` y `GetOrdersForUser` de la clase `OrdersController`, y el
   método `GetOrdersForUser` de la clase `OrdersQueriesController`.
@@ -1585,7 +1585,7 @@ decide con los claims que trae el *token*.
 `Orders` sin pasar por el *gateway*, puede mandar esos encabezados con cualquier
 valor.
 
-**Cómo verlo:** la demo [18 de Federated Identity](demos/18-federated-identity.sh)
+**Cómo verlo:** la demo [18 de Federated Identity](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/18-federated-identity.sh)
 crea una `Order` para el `User` 2 por la entrada HTTP, sin identificarse.
 Después bob inicia sesión y, por la entrada HTTPS, crea una `Order` sin indicar
 el `User`: es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta
@@ -1615,12 +1615,12 @@ cambiar todos los servicios.
 
 **Implementación:** el *gateway* se hace cargo de esas funciones en la entrada
 HTTPS, en
-[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf):
 
 * **TLS:** el *gateway* termina TLS con su certificado; los servicios siguen
   hablando HTTP dentro de la red de Docker, sin certificados. El certificado es
   autofirmado y se genera al construir la imagen, en
-  [Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
+  [Dockerfile](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/Dockerfile), para no guardar una clave
   privada en el repositorio; en producción lo emitiría una autoridad de
   certificación.
 * **Validación de tokens:** antes de reenviar cada solicitud,
@@ -1628,7 +1628,7 @@ HTTPS, en
   hace una subsolicitud a `/userinfo` de Keycloak con el *token*. Si Keycloak
   responde 200, la solicitud sigue; si no, el *gateway* responde 401 y la
   solicitud no llega al servicio. Después, `identity.js`, en
-  [identity.js](src/ApiGateway/nginxconf/identity.js), lee
+  [identity.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/identity.js), lee
   los claims del *token*, ya validado, y el *gateway* se los pasa al servicio en los
   encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
 * **Compresión:** el *gateway* comprime con
@@ -1648,7 +1648,7 @@ sin preguntarle cada vez, a cambio de no enterarse si se cerró la sesión.
 servicios](assets/19-gateway-offloading.svg)
 
 **Código:** la validación del *token*, en
-[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf):
 
 ```nginx
 auth_request /_auth;
@@ -1665,7 +1665,7 @@ js_set $user_id identity.userId;
 proxy_set_header X-User-Id $user_id;
 ```
 
-**Cómo verlo:** la demo [19 de Gateway Offloading](demos/19-gateway-offloading.sh)
+**Cómo verlo:** la demo [19 de Gateway Offloading](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/19-gateway-offloading.sh)
 muestra que `Orders` no habla TLS y que el *gateway* sí, con su certificado. Sin
 *token*, el *gateway* responde 401, y su *log* muestra que la solicitud no llegó a
 ningún servicio; con *token*, la reenvía. La lista de `Orders` llega unas 15 veces
@@ -1692,7 +1692,7 @@ servicio y a sus datos.
 **Implementación:** en la entrada HTTPS, el *gateway* es el intermediario entre
 los clientes y los servicios, y valida y sanea cada solicitud antes de
 reenviarla, en
-[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf):
 
 * **Rutas:** publica solo las de la aplicación. Las de administración -`/chaos`,
   `/patterns`, `/cache`, `/orders/projections/rebuild`- y cualquier otra
@@ -1711,10 +1711,10 @@ El *gateway* no tiene credenciales de las bases ni acceso a los datos: si alguie
 lo compromete, no obtiene más que lo que ya podía pedir a través de él.
 
 Para que sirva, los servicios no tienen que poder alcanzarse sin pasar por el
-*gateway*. [docker-compose.yaml](docker-compose.yaml) publica en el *host* el puerto
+*gateway*. [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml) publica en el *host* el puerto
 de cada servicio y de cada base, para las demos anteriores; por ahí, cualquiera
 llega a la administración o manda encabezados de identidad falsos.
-[docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de
+[docker-compose.gatekeeper.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.gatekeeper.yaml) deja de
 publicarlos: los servicios siguen hablando entre sí por la red de Docker, pero
 desde afuera la única entrada es el *gateway*. Se aplica junto con el otro
 archivo, y [Docker Compose](https://docs.docker.com/compose/) vuelve a crear
@@ -1730,7 +1730,7 @@ docker compose -f docker-compose.yaml -f docker-compose.gatekeeper.yaml up -d --
 solicitud](assets/20-gatekeeper.svg)
 
 **Código:** las rutas de `Orders` y el saneamiento de los encabezados, en
-[nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
+[nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf):
 
 ```nginx
 proxy_set_header X-User-Id    $user_id;
@@ -1752,7 +1752,7 @@ location / {
 }
 ```
 
-**Cómo verlo:** la demo [20 de Gatekeeper](demos/20-gatekeeper.sh) compara las dos
+**Cómo verlo:** la demo [20 de Gatekeeper](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/20-gatekeeper.sh) compara las dos
 entradas. Por HTTP, las rutas de administración responden 200, y los métodos,
 los cuerpos y los ids inválidos llegan a `Orders`, que los rechaza después de
 recibirlos. Por HTTPS, el *gateway* los rechaza sin llegar a los servicios. alice
@@ -1784,10 +1784,10 @@ dentro de la red, cualquier contenedor llama a cualquier servicio.
 `products-sidecar`, corre junto a `products-service`, en su mismo espacio de red
 -[`network_mode:
 service:products-service`](https://docs.docker.com/reference/compose-file/services/#network_mode)
-en [docker-compose.yaml](docker-compose.yaml)-. Para Envoy, `Products` es
+en [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml)-. Para Envoy, `Products` es
 `127.0.0.1:8000`; para los demás contenedores, el *sidecar* es
 `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
-configura con [envoy.yaml](src/ProductsSidecar/envoy.yaml):
+configura con [envoy.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsSidecar/envoy.yaml):
 
 * **Autenticación:** el filtro
   [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
@@ -1821,7 +1821,7 @@ decidir si la deja pasar; y por último `router`, que la envía a `Products`. Si
 un filtro la rechaza, los siguientes no se ejecutan y `Products` no se entera.
 Al terminar, con cualquier resultado, Envoy escribe la línea `[SIDECAR]`.
 
-**Código:** [envoy.yaml](src/ProductsSidecar/envoy.yaml) no es
+**Código:** [envoy.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsSidecar/envoy.yaml) no es
 código, sino configuración, que Envoy lee al arrancar. Tiene tres partes:
 
 * El *listener*: dónde escucha Envoy, en el puerto 9000.
@@ -1848,7 +1848,7 @@ policies:
           value: { list_match: { one_of: { string_match: { exact: admin } } } }
 ```
 
-**Cómo verlo:** la demo [21 de Sidecar](demos/21-sidecar.sh) cambia el nombre de
+**Cómo verlo:** la demo [21 de Sidecar](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/21-sidecar.sh) cambia el nombre de
 un `Product` por HTTP, sin identificarse. Por HTTPS, alice lo lee pero no lo
 puede cambiar, y carol sí. Desde adentro de la red, `products-service:8000`
 acepta cualquier cambio, y el *sidecar*, `products-service:9000`, lo rechaza: 403
@@ -1894,12 +1894,12 @@ también permite una operación sobre un objeto durante un tiempo acotado:
   [Gatekeeper](#gatekeeper) no deja pasar más de 64 KB.
 
 Lo hace la clase `ProductImages`, en
-[ProductImages.cs](src/ProductsService/ProductImages.cs): el
+[ProductImages.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/ProductImages.cs): el
 método `GetUploadKeyAsync` firma la URL de escritura, `GetDownloadKeyAsync` la
 de lectura, y `UploadAsync` sube la imagen sin Valet Key. Los usan los métodos
 `GetImageUploadUrl`, `GetImage` y `UploadImage` de la clase
 `ProductsController`, en
-[ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
+[ProductsController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ProductsService/Controllers/ProductsController.cs).
 La firma se calcula con la clave de la cuenta, sin llamar a Azurite, y no
 incluye el *host*: `Products` llega a Azurite como `azurite:10000`, y la URL que
 entrega dice `localhost:10000`, la dirección que usa el cliente. Como en
@@ -1914,7 +1914,7 @@ URL de escritura.
 
 ![Clases de las imágenes de Products](assets/22-valet-key-clases.svg)
 
-**Cómo verlo:** la demo [22 de Valet Key](demos/22-valet-key.sh) sube una imagen
+**Cómo verlo:** la demo [22 de Valet Key](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/22-valet-key.sh) sube una imagen
 de 5 MB a través de `Products`, por HTTP; por HTTPS, el *gateway* la rechaza con
 413. Después carol pide una URL firmada y sube la imagen directamente a Azurite.
 Con esa URL no se puede leer la imagen, ni escribir la de otro `Product`, y sin
@@ -1959,19 +1959,19 @@ note.
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService](src/PurchasesService/). El *gateway* lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
+| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/PurchasesService). El *gateway* lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
 | `consul` | El almacén de configuración, con la consola en <http://localhost:8500>. |
 | `legacy-broker` | [ActiveMQ](https://activemq.apache.org/), el *broker* del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
-| `legacy-erp` | Un ERP simulado, en [Program.cs](src/LegacyErp/Program.cs). |
-| `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge](src/MessagingBridge/). |
-| `monolith` | El sistema que se reemplaza, en [Program.cs](src/Monolith/Program.cs). |
-| Fachada del *gateway* | `http://localhost:8090`, con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
-| `bff-web` y `bff-mobile` | Un *backend* para la web y otro para la app móvil, en [BffWeb](src/BffWeb/) y [BffMobile](src/BffMobile/). El *gateway* los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
+| `legacy-erp` | Un ERP simulado, en [Erp.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/LegacyErp/Erp.cs). |
+| `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/MessagingBridge). |
+| `monolith` | El sistema que se reemplaza, en [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Monolith/Program.cs). |
+| Fachada del *gateway* | `http://localhost:8090`, con la tabla de rutas en [strangler-routes.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/strangler-routes.conf). |
+| `bff-web` y `bff-mobile` | Un *backend* para la web y otro para la app móvil, en [BffWeb](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/BffWeb) y [BffMobile](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/BffMobile). El *gateway* los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
 
 ### Patrones de facilidad de modificación
 
-Cada patrón tiene un *script* en [demos](demos/), del `23` al `27`, y un paso a
-paso en [05-modifiability.azcli](commands/05-modifiability.azcli). Los
+Cada patrón tiene un *script* en [demos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/demos), del `23` al `27`, y un paso a
+paso en [05-modifiability.azcli](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/commands/05-modifiability.azcli). Los
 *logs* de [Docker](https://www.docker.com/) muestran los eventos con una
 etiqueta: `[EXTERNAL CONFIG]` en los servicios, `[MESSAGING BRIDGE]` en
 `messaging-bridge` y en `orders-projector`, `[ERP]` en `legacy-erp` y
@@ -2002,15 +2002,15 @@ Los datos están en `Orders`, que habla de `user_id`, `product_id` y estados
 `Pending`, `Confirmed` y `Rejected`, y en `Users`, que habla
 [SOAP](https://www.w3.org/TR/soap/).
 
-**Implementación:** [PurchasesService](src/PurchasesService/) separa el modelo
+**Implementación:** [PurchasesService](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/PurchasesService) separa el modelo
 de `Purchases` de la capa que traduce.
 
 * **El modelo:** `Purchase`, en
-  [Purchase.cs](src/PurchasesService/Purchase.cs), con número,
+  [Purchase.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/PurchasesService/Purchase.cs), con número,
   comprador, unidades y si está confirmada. `Purchases` depende de la interfaz
   `IPurchaseSource`, no de `Orders` ni de `Users`.
 * **La capa:** la carpeta
-  [AntiCorruption](src/PurchasesService/AntiCorruption/).
+  [AntiCorruption](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/src/PurchasesService/AntiCorruption).
   * La clase `OrdersTranslator` lee `GET /orders/`, filtra por `Product`, deja
     afuera las `Orders` rechazadas y traduce el estado.
   * La clase `UsersTranslator` arma el sobre SOAP y lee solo el nombre.
@@ -2055,7 +2055,7 @@ return orders
 ```
 
 **Cómo verlo:**
-la demo [23 de Anti-corruption Layer](demos/23-anti-corruption-layer.sh) muestra,
+la demo [23 de Anti-corruption Layer](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/23-anti-corruption-layer.sh) muestra,
 para el mismo `Product`, la respuesta de `Orders`, la de `Users` por SOAP y la
 de `Purchases`. Después cambia el modelo de `Orders`: prende un *flag* en
 [Consul](https://developer.hashicorp.com/consul) con el que cada `Order` trae su
@@ -2120,7 +2120,7 @@ Para la demo local se eligió Consul porque corre en un contenedor, sin cuentas
 ni credenciales, y tiene consola para mostrar los valores en clase.
 
 **Implementación:** el almacén es una fuente más de `IConfiguration`, en
-[ExternalConfiguration.cs](src/Common/ExternalConfiguration.cs):
+[ExternalConfiguration.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/ExternalConfiguration.cs):
 
 * El método `AddExternalConfiguration` de la clase
   `ExternalConfigurationExtensions` agrega al almacén como la última fuente:
@@ -2140,7 +2140,7 @@ que leerla en cada uso, y no guardarla al arrancar. Los valores de la demo:
 | `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | *Feature flag*: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
 | `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | *Feature flag*: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 23, para cambiar el modelo de `Orders` |
 | `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de [Redis](https://redis.io/) |
-| `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
+| `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
 | `andis/Energy/WindowOpen` | El método `GetWindow` de la clase `EnergyController` | Si la ventana de [Queue Non-Urgent Processing Requests](#queue-non-urgent-processing-requests) está abierta. Lo usa la demo 37. Sin valor, está cerrada |
 | `andis/Energy/WindowReplicas` | El método `GetWindow` de la clase `EnergyController` | Cuántas réplicas del *worker* pide la ventana abierta. Sin valor, 3 |
 
@@ -2155,7 +2155,7 @@ responde](assets/24-external-configuration-store.svg)
 configuración](assets/24-external-configuration-store-clases.svg)
 
 **Cómo verlo:**
-la demo [24 de External Configuration Store](demos/24-external-configuration-store.sh)
+la demo [24 de External Configuration Store](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/24-external-configuration-store.sh)
 cambia cada valor de la tabla en Consul y muestra el efecto: una `Order` de 10
 unidades pasa de `202 Accepted` a `400 Bad Request`, el detalle gana una columna
 de precio, la caché dura 5 segundos y `Orders` deja de llegar a `Products` y
@@ -2248,7 +2248,7 @@ Bus](https://azure.microsoft.com/products/service-bus/), y en AWS, [Amazon
 SQS](https://aws.amazon.com/sqs/); [Amazon
 MQ](https://aws.amazon.com/amazon-mq/) ofrece ActiveMQ administrado.
 
-**El ERP simulado:** [Program.cs](src/LegacyErp/Program.cs) representa
+**El ERP simulado:** [Erp.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/LegacyErp/Erp.cs) representa
 el sistema que no se puede cambiar. Simula la creación de una factura para cada
 orden de compra. No conoce RabbitMQ, ni [JSON](https://www.json.org/), ni la
 aplicación, y no comparte código con ella: solo sabe leer pedidos de la cola
@@ -2276,11 +2276,11 @@ Tres detalles del ciclo:
 `messaging-bridge`:
 
 * **De RabbitMQ a ActiveMQ:** la clase `OrdersToErpBridge`, en
-  [OrdersToErpBridge.cs](src/MessagingBridge/OrdersToErpBridge.cs),
+  [OrdersToErpBridge.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/MessagingBridge/OrdersToErpBridge.cs),
   es un suscriptor más de `order.confirmed`, con su cola `bridge.erp`. `Orders`
   no sabe que existe.
 * **De ActiveMQ a RabbitMQ:** la clase `ErpToOrdersBridge`, en
-  [ErpToOrdersBridge.cs](src/MessagingBridge/ErpToOrdersBridge.cs),
+  [ErpToOrdersBridge.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/MessagingBridge/ErpToOrdersBridge.cs),
   lee las facturas y publica `order.invoiced`. El método `ApplyAsync` de la
   clase `OrderDetailsProjector` la agrega al historial de la `Order`. Los
   rechazos los publica como `order.invoice-failed`, y el *worker* cancela la
@@ -2303,7 +2303,7 @@ sin cambiar su contenido. Acá los sistemas además hablan formatos distintos:
 JSON y registros de ancho fijo. Esa traducción es otro patrón, Message
 Translator, de *Enterprise Integration Patterns*, ajeno al programa de la UT4.
 Por eso está aparte, en la clase `ErpFormat`, en
-[ErpFormat.cs](src/MessagingBridge/ErpFormat.cs): las clases que
+[ErpFormat.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/MessagingBridge/ErpFormat.cs): las clases que
 reenvían no conocen los formatos.
 
 ```text
@@ -2321,7 +2321,7 @@ sentidos](assets/25-messaging-bridge.svg)
 
 ![Clases del puente](assets/25-messaging-bridge-clases.svg)
 
-**Cómo verlo:** la demo [25 de Messaging Bridge](demos/25-messaging-bridge.sh)
+**Cómo verlo:** la demo [25 de Messaging Bridge](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/25-messaging-bridge.sh)
 crea una `Order` para el `User` 2 y muestra su historial con `OrderInvoiced`, y
 el registro de ancho fijo que pasó por el puente. Después detiene ActiveMQ y
 crea otra `Order`: se confirma igual, y su mensaje espera en la cola
@@ -2363,7 +2363,7 @@ factura.
 viejo sigue cambiando mientras se escribe el nuevo, todo el riesgo se concentra
 en el día de la migración, y no hay valor hasta el final.
 
-**El monolito simulado:** [Program.cs](src/Monolith/Program.cs)
+**El monolito simulado:** [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Monolith/Program.cs)
 representa lo que la aplicación habría sido antes de separarse en servicios: un
 solo proceso y una sola base, sin patrones. Ofrece las mismas rutas de los
 microservicios que usa la demo, con los mismos contratos, para que el cliente no
@@ -2392,10 +2392,10 @@ higuera estranguladora, que crece alrededor de un árbol hasta reemplazarlo.
 
 * **La fachada:** un tercer
   [`server`](https://nginx.org/en/docs/http/ngx_http_core_module.html#server) de
-  [nginx.conf](src/ApiGateway/nginxconf/nginx.conf), en el
+  [nginx.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/nginx.conf), en el
   puerto 8090. Responde quién atendió en `X-Served-By`.
 * **La tabla de rutas:**
-  [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf).
+  [strangler-routes.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/strangler-routes.conf).
   Migrar una ruta es cambiar una línea y recargar [nginx](https://nginx.org/),
   sin cortar el servicio. Volver atrás es lo mismo.
 
@@ -2409,7 +2409,7 @@ Gateway.
 servicios](assets/26-strangler-fig.svg)
 
 **Código:** la tabla de rutas al principio, en
-[strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf):
+[strangler-routes.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/strangler-routes.conf):
 
 ```nginx
 set $users_route    monolith:8000;
@@ -2417,7 +2417,7 @@ set $products_route monolith:8000;
 set $orders_route   monolith:8000;
 ```
 
-**Cómo verlo:** la demo [26 de Strangler Fig](demos/26-strangler-fig.sh) hace las
+**Cómo verlo:** la demo [26 de Strangler Fig](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/26-strangler-fig.sh) hace las
 mismas solicitudes mientras migra `Products`, `Users` y `Orders`, de a una, y
 muestra quién atiende cada ruta. A mitad de camino cambia el nombre de un
 `Product` por la fachada: lo recibe el microservicio, y el JOIN del monolito
@@ -2514,10 +2514,10 @@ estado.
 **Implementación:** un *backend* por cliente, que mantiene el equipo de ese
 cliente.
 
-* **`bff-web`:** [Program.cs](src/BffWeb/Program.cs). Pide las `Orders` a
+* **`bff-web`:** [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/BffWeb/Program.cs). Pide las `Orders` a
   `Orders`, el nombre y el precio de cada `Product` a `Products`, y calcula el
   total.
-* **`bff-mobile`:** [Program.cs](src/BffMobile/Program.cs). Hace una
+* **`bff-mobile`:** [Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/BffMobile/Program.cs). Hace una
   sola consulta, el detalle por `User` de `Orders`, y devuelve solo el
   `Product`, el estado y cuántas son.
 * **El gateway:** publica `/web/` y `/mobile/` en la entrada HTTP.
@@ -2538,7 +2538,7 @@ Gateway.
 móvil](assets/27-backends-for-frontends.svg)
 
 **Código:** la respuesta de la app, en
-[Program.cs](src/BffMobile/Program.cs):
+[Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/BffMobile/Program.cs):
 
 ```csharp
 return Results.Ok(new
@@ -2549,7 +2549,7 @@ return Results.Ok(new
 ```
 
 **Cómo verlo:**
-la demo [27 de Backends for Frontends](demos/27-backends-for-frontends.sh) muestra
+la demo [27 de Backends for Frontends](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/27-backends-for-frontends.sh) muestra
 la respuesta de cada BFF para el `User` 1: 238 bytes para la web y 107 para la
 app. Después redespliega `bff-mobile` mientras consulta a los dos clientes. La
 app puede recibir algún `502 Bad Gateway`; la web sigue respondiendo `200 OK`, y
@@ -2589,7 +2589,7 @@ producción irían detrás de la entrada HTTPS, con los patrones de seguridad.
 
 El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes
 ni reinicios. Para mostrarlo,
-[load-modifiability.sh](demos/load-modifiability.sh) lanza un escenario de
+[load-modifiability.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/load-modifiability.sh) lanza un escenario de
 [k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
 marcado con una línea vertical en el *dashboard*, con una anotación de
 [Grafana](https://grafana.com/oss/grafana/), para distinguir el antes y el
@@ -2625,7 +2625,7 @@ baja despacio.
 ejecución, pero la facilidad de modificación se mide con otra pregunta: cuánto
 cuesta hacer el cambio. En un escenario de calidad -UT1-, esa es la medida de
 respuesta. Los números salen de
-[measure-change-size.sh](demos/measure-change-size.sh), que se puede
+[measure-change-size.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/measure-change-size.sh), que se puede
 volver a ejecutar:
 
 ```bash
@@ -2782,7 +2782,7 @@ Compose](#contenedores-y-docker-compose)-:
 | [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) | Declara cuántas réplicas de un pod tiene que haber y con qué imagen. Kubernetes crea, borra y reemplaza pods hasta cumplirlo, y si uno se cae, levanta otro. | Un servicio, con `--scale` |
 | [Service](https://kubernetes.io/docs/concepts/services-networking/service/) | Un nombre y una dirección estables para un grupo de pods, elegidos por sus etiquetas, por ejemplo `app: users`. Reparte las solicitudes entre ellos. | El nombre de un servicio en la red |
 | [readinessProbe](https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/) | La prueba con la que Kubernetes decide si un pod está listo para recibir solicitudes. Hasta que la pasa, el Service no le manda ninguna. | El `healthcheck` |
-| [Manifiesto](https://kubernetes.io/docs/concepts/overview/working-with-objects/) | Un archivo YAML que declara un recurso: un Deployment o un Service. Los de las demos están en [k8s](k8s/). | `docker-compose.yaml` |
+| [Manifiesto](https://kubernetes.io/docs/concepts/overview/working-with-objects/) | Un archivo YAML que declara un recurso: un Deployment o un Service. Los de las demos están en [k8s](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/k8s). | `docker-compose.yaml` |
 | [kubectl](https://kubernetes.io/docs/reference/kubectl/) | La línea de comandos de Kubernetes: `kubectl apply` crea o actualiza los recursos de un manifiesto, y `kubectl get` los consulta. | `docker compose` |
 | [Namespace](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/) | Un espacio de nombres dentro del clúster, para separar recursos. Los de las demos están en `andis`. | Un proyecto de Docker Compose |
 | [Gateway API](https://gateway-api.sigs.k8s.io/) | La entrada de las solicitudes desde fuera del clúster: un Gateway es la entrada, y cada `HTTPRoute` dice a qué Service va cada ruta. | El *gateway* nginx y su configuración |
@@ -2794,14 +2794,14 @@ Compose](#contenedores-y-docker-compose)-:
 | Componente | Para qué |
 | ---------- | -------- |
 | `users-service-v2` | La versión `v2` de `Users`: la misma imagen que `users-service`, con `RELEASE__VERSION: "2"`, y la misma base. No publica puertos, y tiene el [alias de red](https://docs.docker.com/reference/compose-file/services/#aliases) `users-pool`. Solo lo usan estas demos; `Orders`, `Purchases` y la fachada siguen llamando a `users-service`. |
-| Entrada de despliegue del *gateway* | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
-| Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [Release.cs](src/UsersService/Release.cs). |
-| El experimento | La clase `Experiment`, en [Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
-| `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 31 los levanta sola. |
-| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 32 a 34. Lo crea [k8s-up.sh](demos/k8s-up.sh) y lo borra [k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
-| Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [Dockerfile](src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
-| El Gateway del clúster | La entrada de los clientes en el puerto 8092: un Gateway de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [*gateway*.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
-| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el *plugin* `kubectl argo rollouts`. |
+| Entrada de despliegue del *gateway* | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [deployment-routes.conf](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/ApiGateway/nginxconf/deployment-routes.conf). |
+| Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [Release.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Release.cs). |
+| El experimento | La clase `Experiment`, en [Experiment.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
+| `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 31 los levanta sola. |
+| El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 32 a 34. Lo crea [k8s-up.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/k8s-up.sh) y lo borra [k8s-down.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/k8s-down.sh); los manifiestos están en [k8s](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/k8s). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
+| Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [Dockerfile](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
+| El Gateway del clúster | La entrada de los clientes en el puerto 8092: un Gateway de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [*gateway*.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
+| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [analysis-error-rate.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el *plugin* `kubectl argo rollouts`. |
 
 La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión
 `v1` con otra configuración y en otros contenedores, para simplificar las demos
@@ -2812,8 +2812,8 @@ de Kubernetes, o un `Rollout` de Argo Rollouts, cuyos pods cambian de imagen.
 
 ### Patrones de facilidad de despliegue
 
-Cada estrategia tiene un *script* en [demos](demos/), del `28` al `31`, y un paso
-a paso en [06-deployability.azcli](commands/06-deployability.azcli).
+Cada estrategia tiene un *script* en [demos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/demos), del `28` al `31`, y un paso
+a paso en [06-deployability.azcli](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/commands/06-deployability.azcli).
 Blue/Green, Rolling Upgrade y Canary Testing tienen además una versión con
 [Kubernetes](https://kubernetes.io/), del `32` al `34`, análoga a la demo de
 [Docker Compose](https://docs.docker.com/compose/) pero automatizando el
@@ -2833,7 +2833,7 @@ estrategias en Grafana](#las-estrategias-en-grafana).
 Cambiar de estrategia de despliegue -pasar de Blue/Green a Canary, o cambiar la
 configuración de Canary- es reescribir `deployment-routes.conf` en el contenedor
 del *gateway* y recargar [nginx](https://nginx.org/), sin cortar el servicio. La
-función `deploy_routes` de [common.sh](demos/common.sh) lo hace en los
+función `deploy_routes` de [common.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/common.sh) lo hace en los
 *scripts*; el archivo del repositorio no cambia.
 
 Las cuatro estrategias de despliegue facilitan el mismo tipo de despliegue: una
@@ -2916,7 +2916,7 @@ map $host $users_target {
   versión `v2` directamente, desde adentro de la red de Docker, con la función
   `get_user_inside`.
 
-La demo [28 de Blue/Green Deployment](demos/28-blue-green.sh) muestra que la versión
+La demo [28 de Blue/Green Deployment](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/28-blue-green.sh) muestra que la versión
 `v1` atiende la entrada de despliegue publicada en el puerto 8091 y prueba la
 `v2` por adentro, con su campo nuevo. Después cambia de versión mientras una
 sonda pide el `User` 1 cada 0.1 segundos: las respuestas pasan de la versión
@@ -2947,9 +2947,9 @@ despliegue.
 
 | Qué | Dónde |
 | --- | ----- |
-| El `Rollout` y su estrategia | [rollout.yaml](k8s/blue-green/rollout.yaml) |
-| `users-active` y `users-preview` | [services.yaml](k8s/blue-green/services.yaml) |
-| Las rutas de los clientes y de la prueba previa | [httproute.yaml](k8s/blue-green/httproute.yaml) |
+| El `Rollout` y su estrategia | [rollout.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/blue-green/rollout.yaml) |
+| `users-active` y `users-preview` | [services.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/blue-green/services.yaml) |
+| Las rutas de los clientes y de la prueba previa | [httproute.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/blue-green/httproute.yaml) |
 
 ```yaml
 strategy:
@@ -2960,7 +2960,7 @@ strategy:
     scaleDownDelaySeconds: 60
 ```
 
-La demo [32 de Blue/Green Deployment con Kubernetes](demos/32-argo-blue-green.sh) sigue los
+La demo [32 de Blue/Green Deployment con Kubernetes](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/32-argo-blue-green.sh) sigue los
 mismos pasos que la demo 28, y en cada uno muestra el estado del `Rollout` como
 lo muestra Argo: cada versión con sus pods y su papel, `stable`, `active` o
 `preview`. La conmutación y la vuelta atrás, con una sonda pidiendo el `User` 1
@@ -3009,10 +3009,12 @@ Upgrade no las agrega-.
 
 **Implementación:**
 
-* **El grupo[^1]:** los clientes mandan sus solicitudes siempre a la misma
+* **El grupo:** los clientes mandan sus solicitudes siempre a la misma
   dirección, y detrás de ella un balanceador de carga las reparte entre varias
-  instancias de `Users`: ese conjunto es el grupo. Una instancia está en el
-  grupo por tener una marca, así que puede ser de cualquier versión. Desplegar
+  instancias de `Users`: ese conjunto es el grupo. El concepto de ≪grupo≫ viene
+  de cómo llaman a esto las nubes: *backend pool* en Azure Load Balancer y
+  *target group* en un Application Load Balancer de AWS. Una instancia está en
+  el grupo por tener una marca, así que puede ser de cualquier versión. Desplegar
   es cambiar quién está en el grupo: entran instancias de la `v2` y salen de la
   `v1`. A diferencia de Blue/Green, hay un solo grupo, y durante el reemplazo
   tiene las dos versiones.
@@ -3021,10 +3023,6 @@ Upgrade no las agrega-.
 * **Las instancias que se van:** las solicitudes que el balanceador todavía les
   manda no se pierden: se reintentan en otra instancia, o dejan de llegarles
   antes de que se detengan.
-
-[^1]: El concepto de ≪grupo≫ viene de cómo llaman a esto las nubes: *backend
-    pool* en Azure Load Balancer y *target group* en un Application Load
-    Balancer de AWS.
 
 Es la estrategia por defecto de un Deployment de
 Kubernetes, de Azure Container Apps y de los
@@ -3042,7 +3040,7 @@ En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
 `v2`](assets/29-rolling-upgrade.svg)
 
 **Código:** un paso, en la función `pool_replace` de
-[common.sh](demos/common.sh):
+[common.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/common.sh):
 
 ```bash
 docker compose up -d --no-deps --scale users-service-v2="$1" --wait users-service-v2
@@ -3077,7 +3075,7 @@ docker stop "users-v1-$1"
   [SOAP](https://www.w3.org/TR/soap/), hasta `GetUser`, que es una lectura, es
   un POST, y nginx no reintenta un POST que ya envió.
 
-La demo [29 de Rolling Upgrade](demos/29-rolling-upgrade.sh) arma el grupo
+La demo [29 de Rolling Upgrade](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/29-rolling-upgrade.sh) arma el grupo
 con tres instancias de la versión `v1` y las reemplaza en tres pasos. Después de
 cada paso muestra qué instancias tiene el grupo y cuántas respuestas dio cada
 versión. Durante todo el reemplazo, una sonda pide el `User` 1 cada 0.1
@@ -3115,11 +3113,11 @@ Rollouts.
 
 | Qué | Dónde |
 | --- | ----- |
-| El Deployment | [deployment.yaml](k8s/rolling-upgrade/deployment.yaml) |
-| El `Rollout`, con los pasos y el análisis | [rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
-| El Service y la ruta, para los dos | [service.yaml](k8s/rolling-upgrade/service.yaml) |
-| El análisis, que comparten las demos 33 y 34 | [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
-| Prometheus del clúster | [prometheus.yaml](k8s/base/prometheus.yaml) |
+| El Deployment | [deployment.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/rolling-upgrade/deployment.yaml) |
+| El `Rollout`, con los pasos y el análisis | [rollout.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/rolling-upgrade/rollout.yaml) |
+| El Service y la ruta, para los dos | [service.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/rolling-upgrade/service.yaml) |
+| El análisis, que comparten las demos 33 y 34 | [analysis-error-rate.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/analysis-error-rate.yaml) |
+| Prometheus del clúster | [prometheus.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/prometheus.yaml) |
 
 Los pasos del `Rollout`: sin un router que reparta el tráfico, `setWeight` es la
 fracción de los pods con la versión nueva: de 3 pods, 33 es 1 y 66 son 2.
@@ -3138,7 +3136,7 @@ steps:
   - analysis: ...
 ```
 
-La demo [33 de Rolling Upgrade con Kubernetes](demos/33-k8s-rolling-upgrade.sh)
+La demo [33 de Rolling Upgrade con Kubernetes](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/33-k8s-rolling-upgrade.sh)
 muestra primero el Deployment: la versión `v2` reemplaza a la `v1` sin errores,
 y la `v3-bad` llega a los tres pods y falla hasta el `undo`. Después cambia el
 Deployment por el `Rollout` y despliega la `v3-bad`: llega a un solo pod, el
@@ -3242,7 +3240,7 @@ El reparto es por solicitud: el mismo cliente puede recibir una versión y
 después la otra. Para que cada cliente vea siempre la misma, el *hash* puede usar
 una *cookie* o el `User`.
 
-La demo [30 de Canary Testing](demos/30-canary.sh) manda a la versión `v2` el 10%,
+La demo [30 de Canary Testing](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/30-canary.sh) manda a la versión `v2` el 10%,
 el 50% y el 100% de las solicitudes, y con cada porcentaje cuenta cuántas
 respuestas dio cada versión. Después vuelve al 10% con una versión `v2` que
 falla: fallan solo sus respuestas, cerca del 10%. Al final vuelve todo a la
@@ -3274,10 +3272,10 @@ análisis después de cada paso.
 
 | Qué | Dónde |
 | --- | ----- |
-| El `Rollout`, con los pasos y el análisis | [rollout.yaml](k8s/canary/rollout.yaml) |
-| `users-stable` y `users-canary` | [services.yaml](k8s/canary/services.yaml) |
-| La ruta con los pesos | [httproute.yaml](k8s/canary/httproute.yaml) |
-| El permiso del *plugin* para cambiar la ruta | [argo-rollouts-gateway-api.yaml](k8s/base/argo-rollouts-gateway-api.yaml) |
+| El `Rollout`, con los pasos y el análisis | [rollout.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/canary/rollout.yaml) |
+| `users-stable` y `users-canary` | [services.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/canary/services.yaml) |
+| La ruta con los pesos | [httproute.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/canary/httproute.yaml) |
+| El permiso del *plugin* para cambiar la ruta | [argo-rollouts-gateway-api.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/argo-rollouts-gateway-api.yaml) |
 
 ```yaml
 strategy:
@@ -3296,7 +3294,7 @@ strategy:
       - analysis: ...
 ```
 
-La demo [34 de Canary Testing con Kubernetes](demos/34-argo-canary.sh) despliega la versión
+La demo [34 de Canary Testing con Kubernetes](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/34-argo-canary.sh) despliega la versión
 `v2`, que avanza sola del 10% al 100% en un minuto y medio, sin errores. Después
 despliega la `v3-bad`: con el 10%, el análisis mide alrededor del 30% de
 errores, y Argo vuelve todo a la `v2` en medio minuto. En cada cambio muestra
@@ -3376,7 +3374,7 @@ una versión.
 
 Es también un ejemplo de facilidad de modificación: la clase `Experiment` solo
 depende de OpenFeature. El único lugar que sabe de Unleash es el
-[Program.cs](src/UsersService/Program.cs) de `Users`, que registra el
+[Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Program.cs) de `Users`, que registra el
 proveedor. Cambiar Unleash por otro servicio de *feature flags* es cambiar ese
 registro y el paquete del proveedor, sin tocar `Experiment`.
 
@@ -3434,7 +3432,7 @@ user.DisplayName = variant == "B" ? $"{user.Name} <{user.Email}>" : user.Name;
 ```
 
 El registro del proveedor, en
-[Program.cs](src/UsersService/Program.cs). Solo se registra si está
+[Program.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/UsersService/Program.cs). Solo se registra si está
 configurado `Unleash:Url`, como en la versión `v2`:
 
 ```csharp
@@ -3448,10 +3446,10 @@ await Api.Instance.SetProviderAsync(new UnleashProvider(new UnleashSettings
 ```
 
 El *feature flag* y sus estrategias los crean las funciones `experiment_start` y
-`experiment_split` de [common.sh](demos/common.sh), con la API de
+`experiment_split` de [common.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/common.sh), con la API de
 administración de Unleash.
 
-**Cómo verlo:** la demo [31 de A/B Testing](demos/31-ab-testing.sh) levanta
+**Cómo verlo:** la demo [31 de A/B Testing](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/31-ab-testing.sh) levanta
 Unleash, muestra que la versión `v1` no tiene experimento y despliega la `v2`
 con Blue/Green. Pide los dos `Users`: 'alice' cae en la B y 'bob' en la A. Pide
 a 'bob' tres veces, y siempre recibe la A; con `X-Segment: beta`, recibe la B.
@@ -3488,7 +3486,7 @@ cada variante, según las métricas de `Users`.
 
 ### Las estrategias en Grafana
 
-La demo [despliegue con carga](demos/load-deployment.sh) lanza un escenario de
+La demo [despliegue con carga](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/load-deployment.sh) lanza un escenario de
 [k6](https://k6.io/) y despliega la versión `v2` mientras corre. Cada paso queda
 marcado con una línea vertical en el *dashboard*, con la etiqueta `despliegue`.
 Los *scripts* del `28` al `31` también marcan sus pasos si
@@ -3560,19 +3558,19 @@ Qué se muestra:
 * Cuándo cada alternativa consume menos y qué consecuencias tiene: la demora en
   procesar.
 
-Resultado observable: con 3 réplicas fijas, el *worker* consume alrededor de 1.1
+Resultado observable: con 3 réplicas fijas, el *worker* consume alrededor de 0.67
 W aunque no haya `Orders`. Con escalado a cero, no consume nada entre un pico y
 otro. En una corrida de 10 minutos con tres picos, el escalado a cero consumió
-un 26% menos que las réplicas fijas.
+un 31% menos que las réplicas fijas.
 
 ### Qué agrega a las demos de facilidad de despliegue
 
 | Componente | Para qué |
 | ---------- | -------- |
-| El *worker* en el clúster | El [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) `orders-worker` de [worker.yaml](k8s/energy/worker.yaml): la misma imagen que `orders-worker` de [Docker Compose](https://docs.docker.com/compose/), con 3 réplicas que reservan 0.25 vCPU cada una: sus [`requests`](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/), la CPU que Kubernetes aparta para cada pod en el nodo, la use o no. Corre en el clúster de [Kubernetes](https://kubernetes.io/) de las demos 32 a 34 -ver [Conceptos de Kubernetes](#conceptos-de-kubernetes)-, porque ahí se puede medir y escalar cada pod. |
-| La conexión con Docker Compose | El *worker* usa [RabbitMQ](https://www.rabbitmq.com/), la base de `Orders`, `Users` y `Products` de Docker Compose: el nodo de [kind](https://kind.sigs.k8s.io/) se conecta a la red de Docker Compose, y los pods llegan a cada servicio por su nombre -ver [worker-config.yaml](k8s/energy/worker-config.yaml)-. Mientras corre el del clúster, el `orders-worker` de Docker Compose queda en 0 réplicas, para que no compitan por la cola `orders.process`. |
-| [KEDA](https://keda.sh/) | Cambia las réplicas del *worker* según el largo de la cola, en la demo 36, o según una ventana de tiempo, en la 37, y lo puede bajar a 0 réplicas. Se configura con un [ScaledObject](https://keda.sh/docs/latest/reference/scaledobject-spec/), un recurso personalizado que dice qué Deployment escalar y según qué métrica. Por cada ScaledObject, KEDA crea un [HorizontalPodAutoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/), el recurso de Kubernetes que cambia las réplicas según una métrica, y se encarga él mismo del paso de 0 a 1 réplica. Lo instala [k8s-up.sh](demos/k8s-up.sh). |
-| La estimación de la energía | [Prometheus](https://prometheus.io/) del clúster lee la CPU que usa cada contenedor y la que reserva. La que usa sale de [cAdvisor](https://github.com/google/cadvisor), incluido en el [kubelet](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/), el agente de Kubernetes que arranca los pods en cada nodo. La que reserva sale de [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics), que publica como métricas el estado de los recursos del clúster. Con las dos calcula la potencia de cada pod, con las reglas de `energy.rules.yml`, en [prometheus.yaml](k8s/base/prometheus.yaml). |
+| El *worker* en el clúster | El [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) `orders-worker` de [worker.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/energy/worker.yaml): la misma imagen que `orders-worker` de [Docker Compose](https://docs.docker.com/compose/), con 3 réplicas que reservan 0.25 vCPU cada una: sus [`requests`](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/), la CPU que Kubernetes aparta para cada pod en el nodo, la use o no. Corre en el clúster de [Kubernetes](https://kubernetes.io/) de las demos 32 a 34 -ver [Conceptos de Kubernetes](#conceptos-de-kubernetes)-, porque ahí se puede medir y escalar cada pod. |
+| La conexión con Docker Compose | El *worker* usa [RabbitMQ](https://www.rabbitmq.com/), la base de `Orders`, `Users` y `Products` de Docker Compose: el nodo de [kind](https://kind.sigs.k8s.io/) se conecta a la red de Docker Compose, y los pods llegan a cada servicio por su nombre -ver [worker-config.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/energy/worker-config.yaml)-. Mientras corre el del clúster, el `orders-worker` de Docker Compose queda en 0 réplicas, para que no compitan por la cola `orders.process`. |
+| [KEDA](https://keda.sh/) | Cambia las réplicas del *worker* según el largo de la cola, en la demo 36, o según una ventana de tiempo, en la 37, y lo puede bajar a 0 réplicas. Se configura con un [ScaledObject](https://keda.sh/docs/latest/reference/scaledobject-spec/), un recurso personalizado que dice qué Deployment escalar y según qué métrica. Por cada ScaledObject, KEDA crea un [HorizontalPodAutoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/), el recurso de Kubernetes que cambia las réplicas según una métrica, y se encarga él mismo del paso de 0 a 1 réplica. Lo instala [k8s-up.sh](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/k8s-up.sh). |
+| La estimación de la energía | [Prometheus](https://prometheus.io/) del clúster lee la CPU que usa cada contenedor y la que reserva. La que usa sale de [cAdvisor](https://github.com/google/cadvisor), incluido en el [kubelet](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/), el agente de Kubernetes que arranca los pods en cada nodo. La que reserva sale de [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics), que publica como métricas el estado de los recursos del clúster. Con las dos calcula la potencia de cada pod, con las reglas de `energy.rules.yml`, en [prometheus.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/prometheus.yaml). |
 | Fila "Eficiencia energética" en [Grafana](https://grafana.com/oss/grafana/) | Las réplicas del *worker*, la cola `orders.process`, la potencia estimada de cada pod y la energía del período. |
 
 Las demos 35 a 37 necesitan a la vez Docker Compose y el clúster: Docker
@@ -3582,8 +3580,8 @@ que se mide deja de ser la del *worker*.
 
 ### Patrones de eficiencia energética
 
-Cada patrón tiene un *script* en [demos](demos/), del `35` al `37`, y un paso a
-paso en [07-energy-efficiency.azcli](commands/07-energy-efficiency.azcli).
+Cada patrón tiene un *script* en [demos](https://github.com/ucudal/ANDIS2_UT4_DEMO1/tree/main/demos), del `35` al `37`, y un paso a
+paso en [07-energy-efficiency.azcli](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/commands/07-energy-efficiency.azcli).
 Necesitan el clúster, que se crea una vez con `./demos/k8s-up.sh`, y Docker
 Compose levantado. Cada *script* marca sus pasos en el *dashboard* de Grafana, con
 la etiqueta `energía`. Cómo ver los tres bajo la misma carga está en [La
@@ -3642,7 +3640,7 @@ Las dos informan por mes y por servicio, no por pod.
 reserva](assets/35-power-monitor.svg)
 
 **Código:** las reglas de `energy.rules.yml`, en
-[prometheus.yaml](k8s/base/prometheus.yaml):
+[prometheus.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/base/prometheus.yaml):
 
 ```yaml
 - record: pod:cpu_used:vcpu
@@ -3662,17 +3660,19 @@ reserva](assets/35-power-monitor.svg)
 * La CPU reservada sale de kube-state-metrics y no de cAdvisor, porque si bien
   cAdvisor también la informa, su resultado en este contexto es incorrecto.
 
-**Cómo verlo:** la demo [35 de Power Monitor](demos/35-power-monitor.sh) aplica
+**Cómo verlo:** la demo [35 de Power Monitor](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/35-power-monitor.sh) aplica
 el *worker* con 3 réplicas y muestra la CPU y la potencia de cada pod:
 
 | Momento | vCPU usadas por pod | Potencia de las 3 réplicas |
 | ------- | ------------------- | -------------------------- |
-| Ociosas | 0.05 a 0.06 | 1.09 W, de los que 0.58 W son de la CPU reservada |
+| Recién arrancadas | 0.05 a 0.06 | 1.09 W |
+| Ociosas, 2 o 3 minutos después de arrancar | 0.01 | 0.67 W, de los que 0.58 W son de la CPU reservada |
 | Procesando un pico de 30 `Orders` | 0.08 | Hasta 1.37 W |
 
-La potencia sube poco con el pico: procesar una `Order` es casi todo esperar a
-`Users` y a `Products`. Lo que más pesa es la CPU reservada, que se consume haya
-o no `Orders`. Esa es la oportunidad que aprovecha la demo 36.
+Con el pico la potencia se duplica, pero solo mientras se vacía la cola, y cada
+réplica sigue lejos de su vCPU reservada: procesar una `Order` es casi todo
+esperar a `Users` y a `Products`. La CPU reservada, en cambio, se consume todo
+el tiempo, haya o no `Orders`. Esa es la oportunidad que aprovecha la demo 36.
 
 <!-- markdownlint-disable-next-line MD024 -->
 ##### Evaluación
@@ -3745,7 +3745,7 @@ EKS](https://aws.amazon.com/eks/).
 ![KEDA mira la cola y enciende o apaga el worker](assets/36-scale-to-zero.svg)
 
 **Código:** el [ScaledObject](https://keda.sh/docs/latest/reference/scaledobject-spec/) de
-[scaledobject-queue.yaml](k8s/energy/scaledobject-queue.yaml), con el
+[scaledobject-queue.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/energy/scaledobject-queue.yaml), con el
 [*scaler* de RabbitMQ](https://keda.sh/docs/latest/scalers/rabbitmq-queue/):
 
 ```yaml
@@ -3768,9 +3768,9 @@ KEDA hace dos cosas: enciende y apaga el *worker*, de 0 a 1 réplica y de 1 a 0,
 y crea un
 [HorizontalPodAutoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
 de Kubernetes, que decide las réplicas de 1 a 6 con el largo de la cola. Cómo
-llega KEDA a RabbitMQ está en [rabbitmq-auth.yaml](k8s/energy/rabbitmq-auth.yaml).
+llega KEDA a RabbitMQ está en [rabbitmq-auth.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/energy/rabbitmq-auth.yaml).
 
-**Cómo verlo:** la demo [36 de escalado a cero](demos/36-scale-to-zero.sh)
+**Cómo verlo:** la demo [36 de escalado a cero](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/36-scale-to-zero.sh)
 empieza con 3 réplicas fijas, como la 35, y mide su potencia. Al aplicar el
 ScaledObject, KEDA baja el *worker* a 0 réplicas. Un pico de 30 `Orders` lo
 enciende: unos 10 segundos después hay una réplica, y Kubernetes suma hasta 4 o
@@ -3856,7 +3856,7 @@ puede habilitar y deshabilitar al consumidor.
 ventana](assets/37-deferred-processing.svg)
 
 **Código:** el método `GetWindow` de la clase `EnergyController`, en
-[EnergyController.cs](src/OrdersService/Controllers/EnergyController.cs), publica
+[EnergyController.cs](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/src/OrdersService/Controllers/EnergyController.cs), publica
 la ventana en `GET /energy/window`: `{"open": true, "replicas": 3}` con la
 ventana abierta y `{"open": false, "replicas": 0}` con la ventana cerrada. Lee la
 clave en cada consulta, como el resto de la configuración externa. Está en
@@ -3864,7 +3864,7 @@ clave en cada consulta, como el resto de la configuración externa. Está en
 tiene réplicas que respondan.
 
 El ScaledObject de
-[scaledobject-window.yaml](k8s/energy/scaledobject-window.yaml) consulta ese
+[scaledobject-window.yaml](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k8s/energy/scaledobject-window.yaml) consulta ese
 *endpoint* con el [*scaler*
 metrics-api](https://keda.sh/docs/latest/scalers/metrics-api/), cada 5
 segundos, y pide tantas réplicas como indica `replicas`:
@@ -3885,7 +3885,7 @@ No tiene el *trigger* de la cola: si lo tuviera, KEDA encendería el *worker*
 apenas llegara un mensaje, y la ventana no serviría. De paso, KEDA depende de
 `orders-service` para saber si la ventana está abierta.
 
-**Cómo verlo:** la demo [37 de procesamiento diferido](demos/37-deferred-processing.sh)
+**Cómo verlo:** la demo [37 de procesamiento diferido](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/37-deferred-processing.sh)
 cierra la ventana y crea 10 `Orders`: quedan `Pending`, con los 10 mensajes en
 la cola y sin réplicas. Al abrir la ventana, KEDA enciende el *worker* y llega a
 3 réplicas, que procesan las 10 `Orders` en unos 20 segundos. Las `Orders`
@@ -3961,9 +3961,9 @@ de Well-Architected.
 
 ### La eficiencia energética en Grafana
 
-La demo [eficiencia energética con carga](demos/load-energy.sh) prepara el
+La demo [eficiencia energética con carga](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/demos/load-energy.sh) prepara el
 *worker* en una de las tres configuraciones y lanza un escenario de
-[k6](https://k6.io/), [energy.js](k6/energy.js): tres picos de 30 `Orders`,
+[k6](https://k6.io/), [energy.js](https://github.com/ucudal/ANDIS2_UT4_DEMO1/blob/main/k6/energy.js): tres picos de 30 `Orders`,
 cada 4 minutos, con el *worker* ocioso entre uno y otro. Cada corrida dura 10
 minutos, aunque k6 termine antes: hay que esperar a que termine para comparar la
 energía. En macOS, el *script* impide que la máquina se duerma mientras corre:
@@ -3984,9 +3984,9 @@ rendimiento.
 
 | Configuración | Qué se hace | Qué mirar | Energía en 10 minutos |
 | ------------- | ----------- | --------- | --------------------- |
-| `fixed`, como la demo 35 | 3 réplicas fijas | "Potencia estimada del worker, por pod": un piso de 1.1 W que no baja nunca | 625 J |
-| `queue`, como la demo 36 | [KEDA](https://keda.sh/) según la cola | "Réplicas del worker en el clúster": 0 entre picos, y hasta 6 en cada uno; en la potencia, un salto al arrancar cada pod | 465 J, un 26% menos que `fixed` |
-| `window`, como la demo 37 | KEDA según la ventana | Las réplicas: 3 mientras la ventana está abierta, un minuto de cada dos; la cola crece fuera de la ventana y se vacía dentro | 470 J, un 25% menos que `fixed`, casi lo mismo que `queue` |
+| `fixed`, como la demo 35 | 3 réplicas fijas | "Potencia estimada del worker, por pod": un piso de unos 0.22 W por pod que no baja nunca | 460 J |
+| `queue`, como la demo 36 | [KEDA](https://keda.sh/) según la cola | "Réplicas del worker en el clúster": 0 entre picos, y hasta 6 en cada uno; en la potencia, un salto al arrancar cada pod | 316 J, un 31% menos que `fixed` |
+| `window`, como la demo 37 | KEDA según la ventana | Las réplicas: 3 mientras la ventana está abierta, un minuto de cada dos; la cola crece fuera de la ventana y se vacía dentro | 332 J, un 28% menos que `fixed`, casi lo mismo que `queue` |
 
 `window` consume casi lo mismo que `queue` por caminos distintos: tiene 3
 réplicas encendidas la mitad del tiempo, haya o no `Orders` en la cola, mientras

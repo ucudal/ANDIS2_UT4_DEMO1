@@ -5,8 +5,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 22: Products entrega una URL firmada para subir la imagen de un Product
-// directamente a Azurite. La clave sirve solo para escribir ese blob, y vence.
+/// <summary>
+/// Contiene las pruebas de la demo 22: Products entrega una URL firmada para subir
+/// la imagen de un Product directamente a Azurite. La clave sirve solo para
+/// escribir ese blob, y vence.
+/// </summary>
 public class Demo22ValetKeyTests : DemoTest
 {
     private static readonly DemoData.Product Product = DemoData.Trousers;

@@ -26,19 +26,27 @@ public class OrdersController : ControllerBase
         _logger = logger;
     }
 
-    // POST /orders
-    // Guarda la orden como Pending junto con su evento OrderCreated y deja el
-    // mensaje order.created en el outbox, los tres en la misma transacción.
-    // Transactional Outbox: no se publica en RabbitMQ acá, lo hace OutboxRelay.
-    // Así no puede quedar una orden guardada sin su mensaje, ni un mensaje de
-    // una orden que no se guardó, y la orden se acepta aunque RabbitMQ no esté.
-    // Asynchronous Request-Reply: responde 202 Accepted, porque la orden todavía
-    // no se procesó, con Location para consultar su estado y Retry-After para
-    // indicar cada cuánto.
-    // Federated Identity: si la solicitud viene con identidad, la Order es del
-    // User del token. El cuerpo puede omitir userId; si trae otro, se rechaza.
-    // Idempotencia: el encabezado opcional Idempotency-Key evita crear dos veces
-    // la misma Order cuando el cliente reintenta -ver más abajo-.
+    /// <summary>
+    /// Crea una Order, en <c>POST /orders</c>.
+    /// </summary>
+    /// <remarks>
+    /// Guarda la orden como <c>Models.OrderStatus.Pending</c> junto con su evento <c>Common.OrderCreated</c> y deja el
+    /// mensaje <c>order.created</c> en el outbox, los tres en la misma transacción.
+    /// <ul>
+    /// <li>Transactional Outbox: no se publica en RabbitMQ acá, lo hace
+    /// <c>Common.OutboxRelay</c>. Así no puede quedar una orden guardada sin su mensaje, ni un
+    /// mensaje de una orden que no se guardó, y la orden se acepta aunque RabbitMQ no
+    /// esté.</li>
+    /// <li>Asynchronous Request-Reply: responde 202 Accepted, porque la orden todavía
+    /// no se procesó, con <c>Location</c> para consultar su estado y
+    /// <c>Retry-After</c> para indicar cada cuánto.</li>
+    /// <li>Federated Identity: si la solicitud viene con identidad, la Order es del
+    /// User del token. El cuerpo puede omitir <c>userId</c>; si trae otro, se
+    /// rechaza.</li>
+    /// <li>Idempotencia: el encabezado opcional <c>Idempotency-Key</c> evita crear dos
+    /// veces la misma Order cuando el cliente reintenta -ver más abajo-.</li>
+    /// </ul>
+    /// </remarks>
     [HttpPost]
     public async Task<ActionResult<object>> CreateOrder([FromBody] Order order)
     {
@@ -154,11 +162,15 @@ public class OrdersController : ControllerBase
         return Accepted($"/orders/{previous.OrderId}/status", new { id = previous.OrderId, status = OrderStatus.Pending, msg = "Order accepted" });
     }
 
-    // GET /orders/{id}/status
-    // Asynchronous Request-Reply: mientras la orden está Pending responde 200 con
-    // el estado y Retry-After. Cuando un worker la confirma o la rechaza,
-    // responde 303 See Other a la orden: el cliente sigue la redirección y
-    // obtiene el resultado.
+    /// <summary>
+    /// Devuelve el estado de una Order, en <c>GET /orders/{id}/status</c>.
+    /// </summary>
+    /// <remarks>
+    /// Asynchronous Request-Reply: mientras la orden está <c>Models.OrderStatus.Pending</c> responde 200 con el
+    /// estado y <c>Retry-After</c>. Cuando un worker la confirma o la rechaza, responde
+    /// 303 See Other a la orden: el cliente sigue la redirección y obtiene el
+    /// resultado.
+    /// </remarks>
     [HttpGet("{id:int}/status")]
     public async Task<ActionResult<object>> GetOrderStatus(int id)
     {
@@ -178,9 +190,13 @@ public class OrdersController : ControllerBase
         return Ok(new { id = order.Id, status = order.Status });
     }
 
-    // GET /orders
-    // Federated Identity: un cliente ve solo sus Orders; un admin, o una
-    // solicitud anónima, todas.
+    /// <summary>
+    /// Devuelve las Orders, en <c>GET /orders</c>.
+    /// </summary>
+    /// <remarks>
+    /// Federated Identity: un cliente ve solo sus Orders; un admin, o una solicitud
+    /// anónima, todas.
+    /// </remarks>
     [HttpGet]
     public async Task<ActionResult<List<object>>> ListOrders()
     {
@@ -223,7 +239,9 @@ public class OrdersController : ControllerBase
             .ToListAsync());
     }
 
-    // GET /orders/{id}
+    /// <summary>
+    /// Devuelve una Order, en <c>GET /orders/{id}</c>.
+    /// </summary>
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> GetOrder(int id)
     {
@@ -236,9 +254,13 @@ public class OrdersController : ControllerBase
         return Ok(new { id = order.Id, user_id = order.UserId, product_id = order.ProductId, quantity = order.Quantity, status = order.Status });
     }
 
-    // GET /orders/{id}/events
-    // Event Sourcing: historial de eventos de la orden y el estado que resulta
-    // de reproducirlos.
+    /// <summary>
+    /// Devuelve el historial de eventos de la orden y el estado que resulta de
+    /// reproducirlos, en <c>GET /orders/{id}/events</c>.
+    /// </summary>
+    /// <remarks>
+    /// Event Sourcing: los eventos son la fuente de verdad.
+    /// </remarks>
     [HttpGet("{id:int}/events")]
     public async Task<ActionResult<object>> GetOrderEvents(int id)
     {
@@ -261,9 +283,14 @@ public class OrdersController : ControllerBase
         });
     }
 
-    // POST /orders/projections/rebuild
-    // Event Sourcing: borra la tabla orders y la vuelve a construir reproduciendo
-    // todos los eventos. Muestra que los eventos son la fuente de verdad.
+    /// <summary>
+    /// Reconstruye la tabla <c>orders</c> reproduciendo todos los eventos, en
+    /// <c>POST /orders/projections/rebuild</c>.
+    /// </summary>
+    /// <remarks>
+    /// Event Sourcing: borra la tabla y la vuelve a construir. Muestra que los eventos
+    /// son la fuente de verdad.
+    /// </remarks>
     [HttpPost("projections/rebuild")]
     public async Task<ActionResult<object>> RebuildProjections()
     {
@@ -283,13 +310,21 @@ public class OrdersController : ControllerBase
         return Ok(new { events = events.Count, orders_rebuilt = orders.Count });
     }
 
-    // GET /orders/user/{userId}/details
-    // Degradación controlada: si Usuarios o Productos no están disponibles, la
-    // respuesta incluye las órdenes igual, con "no disponible" y el motivo.
-    // Throttling: el atributo aplica la política "throttling" de Program.cs. Si
-    // ya hay 20 consultas de detalle en curso, el middleware responde 503 con
-    // Retry-After y este método no llega a ejecutarse. Es la consulta que se
-    // limita porque es la más cara: lee la base y llama a Users y a Products.
+    /// <summary>
+    /// Devuelve el detalle de las Orders de un User, en
+    /// <c>GET /orders/user/{userId}/details</c>.
+    /// </summary>
+    /// <remarks>
+    /// <ul>
+    /// <li>Degradación controlada: si Usuarios o Productos no están disponibles, la
+    /// respuesta incluye las órdenes igual, con "no disponible" y el motivo.</li>
+    /// <li>Throttling: el atributo aplica la política <c>throttling</c> de
+    /// <c>Program.cs</c>. Si ya hay 20 consultas de detalle en curso, el middleware
+    /// responde 503 con <c>Retry-After</c> y este método no llega a ejecutarse. Es la
+    /// consulta que se limita porque es la más cara: lee la base y llama a Users y a
+    /// Products.</li>
+    /// </ul>
+    /// </remarks>
     [HttpGet("user/{userId}/details")]
     [EnableRateLimiting("throttling")]
     public async Task<ActionResult<List<object>>> GetOrdersForUser(string userId)

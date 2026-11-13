@@ -3,8 +3,11 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 05: el gateway acepta 1 POST /orders/ por segundo por cliente, con una
-// ráfaga de 5. Un cliente que regula su ritmo no recibe ningún 429.
+/// <summary>
+/// Contiene las pruebas de la demo 05: el gateway acepta 1 <c>POST /orders/</c> por
+/// segundo por cliente, con una ráfaga de 5. Un cliente que regula su ritmo no
+/// recibe ningún 429.
+/// </summary>
 public class Demo05RateLimitingTests : DemoTest
 {
     [Test]

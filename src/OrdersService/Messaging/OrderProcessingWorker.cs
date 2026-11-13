@@ -9,30 +9,42 @@ using Ucu.Andis.OrdersService.Models;
 
 namespace Ucu.Andis.OrdersService.Messaging;
 
-// Competing Consumers: cada réplica de orders-worker ejecuta este servicio y
-// consume de la misma cola. RabbitMQ entrega cada mensaje a un solo consumidor,
-// así que las réplicas se reparten el trabajo. Si una réplica se cae antes de
-// confirmar -ack- un mensaje, RabbitMQ se lo entrega a otra.
-//
-// Saga: el worker es el paso de Orders en la coreografía. La cola
-// orders.process es su suscripción, en el exchange andis.events, a lo que
-// responden los otros participantes:
-//
-// - stock.reserved: Products reservó el stock. El worker verifica el User y
-//   confirma la Order, o la rechaza si el User no existe; con order.rejected,
-//   Products libera la reserva.
-// - stock.rejected: Products no reservó nada. El worker rechaza la Order.
-// - order.invoice-failed: el ERP no facturó una Order confirmada. El worker la
-//   cancela, y con order.cancelled Products libera la reserva.
-//
-// Nadie coordina la Saga: cada participante reacciona a los eventos de los
-// otros -ver PATTERNS.md-.
+/// <summary>
+/// Representa el worker que procesa las Orders.
+/// </summary>
+/// <remarks>
+/// Competing Consumers: cada réplica de <c>orders-worker</c> ejecuta este servicio
+/// y consume de la misma cola. RabbitMQ entrega cada mensaje a un solo consumidor,
+/// así que las réplicas se reparten el trabajo. Si una réplica se cae antes de
+/// confirmar -ack- un mensaje, RabbitMQ se lo entrega a otra.
+///
+/// Saga: el worker es el paso de Orders en la coreografía. La cola
+/// <c>orders.process</c> es su suscripción, en el exchange <c>andis.events</c>, a
+/// lo que responden los otros participantes:
+/// <ul>
+/// <li><c>stock.reserved</c>: Products reservó el stock. El worker verifica el User
+/// y confirma la Order, o la rechaza si el User no existe; con
+/// <c>order.rejected</c>, Products libera la reserva.</li>
+/// <li><c>stock.rejected</c>: Products no reservó nada. El worker rechaza la
+/// Order.</li>
+/// <li><c>order.invoice-failed</c>: el ERP no facturó una Order confirmada. El
+/// worker la cancela, y con <c>order.cancelled</c> Products libera la
+/// reserva.</li>
+/// </ul>
+///
+/// Nadie coordina la Saga: cada participante reacciona a los eventos de los otros
+/// -ver <c>PATTERNS.md</c>-.
+/// </remarks>
 public class OrderProcessingWorker : BackgroundService
 {
     public const string MeterName = "Ucu.Andis.OrdersWorker";
 
-    // Cola de órdenes pendientes de procesar. Todos los workers consumen de esta
-    // misma cola: Competing Consumers.
+    /// <summary>
+    /// Cola de órdenes pendientes de procesar.
+    /// </summary>
+    /// <remarks>
+    /// Todos los workers consumen de esta misma cola: Competing Consumers.
+    /// </remarks>
     public const string OrdersQueue = "orders.process";
 
     private static readonly TimeSpan RequeueDelay = TimeSpan.FromSeconds(5);

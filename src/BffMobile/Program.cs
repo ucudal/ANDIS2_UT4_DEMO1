@@ -1,11 +1,6 @@
 using System.Net;
-using System.Text.Json.Serialization;
+using Ucu.Andis.BffMobile;
 
-// Backends for Frontends: el backend de la app móvil. La pantalla del teléfono es
-// chica y la red puede ser lenta: la app muestra solo el Product y el estado de
-// cada Order, y cuántas son. Este servicio arma esa respuesta con una sola
-// consulta a Orders, el detalle por User. La web tiene su propio backend, en
-// BffWeb. Lo mantiene el equipo de la app, y cambia al ritmo de la app.
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpClient("Orders", client =>
@@ -35,6 +30,14 @@ app.MapGet("/mobile/orders/user/{userId}", async (string userId, IHttpClientFact
 
 app.Run();
 
-record DetailRecord(
-    [property: JsonPropertyName("product_name")] string ProductName,
-    [property: JsonPropertyName("status")] string Status);
+/// <summary>
+/// Representa el backend de la app móvil, de Backends for Frontends.
+/// </summary>
+/// <remarks>
+/// La pantalla del teléfono es chica y la red puede ser lenta: la app muestra solo
+/// el Product y el estado de cada Order, y cuántas son. Este servicio arma esa
+/// respuesta con una sola consulta a Orders, el detalle por User. La web tiene su
+/// propio backend, en BffWeb. Lo mantiene el equipo de la app, y cambia al ritmo
+/// de la app.
+/// </remarks>
+partial class Program { }

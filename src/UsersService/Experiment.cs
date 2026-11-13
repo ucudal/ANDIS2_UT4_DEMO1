@@ -1,35 +1,41 @@
 using System.Diagnostics.Metrics;
 using OpenFeature;
 using OpenFeature.Model;
-using UsersService.Models;
+using Ucu.Andis.Users.Models;
 
 namespace Ucu.Andis.Users;
 
-// A/B Testing: la versión 2 de Users trae un experimento. Cada User ve su
-// nombre en una de dos variantes, y se cuenta cuántas veces se mostró cada una,
-// para compararlas:
-//
-// - A: DisplayName es el nombre.
-// - B: DisplayName es el nombre y el email.
-//
-// Qué variante ve cada User no lo decide este código: lo decide Unleash, en el
-// flag users-display-name, y se cambia sin desplegar. Users se lo pregunta a
-// OpenFeature, el estándar de feature flags: esta clase no depende de Unleash,
-// solo del proveedor que se registra en Program.cs. El flag decide así -ver
-// experiment_split en demos/common.sh-:
-//
-// - Por segmento: si la solicitud trae el encabezado X-Segment: beta, va a la B.
-//   Es la forma de elegir a quién se le muestra, por ejemplo a los que se
-//   anotaron para probar lo nuevo.
-// - Por porcentaje: si no, según el reparto del flag. Es aleatoria entre los
-//   Users, pero el mismo User cae siempre en la misma variante: si cambiara en
-//   cada consulta, no se podría comparar el efecto de cada una. Unleash calcula
-//   un hash del id del User, así todas las réplicas eligen la misma variante.
-//
-// Si Unleash no responde, Users sigue con la última configuración que leyó. Si
-// nunca la leyó, OpenFeature devuelve la variante A, el valor por omisión.
-//
-// La versión 1 no tiene experimento: no completa DisplayName.
+/// <summary>
+/// Representa el experimento de A/B Testing que trae la versión 2 de Users.
+/// </summary>
+/// <remarks>
+/// Cada User ve su nombre en una de dos variantes, y se cuenta cuántas veces se
+/// mostró cada una, para compararlas:
+/// <ul>
+/// <li>A: <c>Models.User.DisplayName</c> es el nombre.</li>
+/// <li>B: <c>Models.User.DisplayName</c> es el nombre y el email.</li>
+/// </ul>
+///
+/// Qué variante ve cada User no lo decide este código: lo decide Unleash, en el
+/// flag <c>users-display-name</c>, y se cambia sin desplegar. Users se lo pregunta
+/// a OpenFeature, el estándar de feature flags: esta clase no depende de Unleash,
+/// solo del proveedor que se registra en <c>Program.cs</c>. El flag decide así -ver
+/// <c>experiment_split</c> en <c>demos/common.sh</c>-:
+/// <ul>
+/// <li>Por segmento: si la solicitud trae el encabezado <c>X-Segment: beta</c>, va
+/// a la B. Es la forma de elegir a quién se le muestra, por ejemplo a los que se
+/// anotaron para probar lo nuevo.</li>
+/// <li>Por porcentaje: si no, según el reparto del flag. Es aleatoria entre los
+/// Users, pero el mismo User cae siempre en la misma variante: si cambiara en cada
+/// consulta, no se podría comparar el efecto de cada una. Unleash calcula un hash
+/// del id del User, así todas las réplicas eligen la misma variante.</li>
+/// </ul>
+///
+/// Si Unleash no responde, Users sigue con la última configuración que leyó. Si
+/// nunca la leyó, OpenFeature devuelve la variante A, el valor por omisión.
+///
+/// La versión 1 no tiene experimento: no completa <c>Models.User.DisplayName</c>.
+/// </remarks>
 public class Experiment
 {
     public const string MeterName = "Ucu.Andis.UsersExperiment";
@@ -50,8 +56,10 @@ public class Experiment
         _flags = flags;
     }
 
-    // Completa DisplayName según la variante del User, y la informa en el
-    // encabezado X-Variant de la respuesta.
+    /// <summary>
+    /// Completa <c>Models.User.DisplayName</c> según la variante del User, y la informa en el
+    /// encabezado <c>X-Variant</c> de la respuesta.
+    /// </summary>
     public async Task ApplyAsync(User user)
     {
         var context = _http.HttpContext;

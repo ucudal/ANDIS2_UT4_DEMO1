@@ -4,8 +4,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Modifiability;
 
-// Demo 27: la web y la app móvil tienen cada una su backend, con la respuesta a
-// su medida, y redesplegar uno no afecta al otro.
+/// <summary>
+/// Contiene las pruebas de la demo 27: la web y la app móvil tienen cada una su
+/// backend, con la respuesta a su medida, y redesplegar uno no afecta al otro.
+/// </summary>
 public class Demo27BackendsForFrontendsTests : DemoTest
 {
     [Test]

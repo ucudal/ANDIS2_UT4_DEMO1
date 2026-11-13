@@ -3,8 +3,13 @@ using System.Xml.Linq;
 
 namespace Ucu.Andis.PurchasesService.AntiCorruption;
 
-// Traduce el SOAP de Users. Purchases solo necesita el nombre del comprador; el
-// sobre, la acción y los espacios de nombres quedan acá.
+/// <summary>
+/// Representa el traductor del SOAP de Users.
+/// </summary>
+/// <remarks>
+/// Purchases solo necesita el nombre del comprador; el sobre, la acción y los
+/// espacios de nombres quedan acá.
+/// </remarks>
 public class UsersTranslator
 {
     private static readonly XNamespace Soap = "http://schemas.xmlsoap.org/soap/envelope/";
@@ -14,7 +19,10 @@ public class UsersTranslator
 
     public UsersTranslator(HttpClient client) => _client = client;
 
-    // El nombre del User, o un texto que lo explica si Users no lo sabe o no responde.
+    /// <summary>
+    /// Devuelve el nombre del User, o un texto que lo explica si Users no lo sabe o no
+    /// responde.
+    /// </summary>
     public async Task<string> NameAsync(string userId, CancellationToken cancellationToken)
     {
         var envelope = new XDocument(

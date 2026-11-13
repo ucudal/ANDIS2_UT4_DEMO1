@@ -3,8 +3,12 @@ using System.Text.Json;
 
 namespace Ucu.Andis.OrdersService.Models;
 
-// Event Sourcing: cada cambio de una orden se guarda como un evento inmutable.
-// Los eventos solo se agregan, nunca se modifican ni se borran.
+/// <summary>
+/// Representa un cambio de una orden, guardado como un evento inmutable.
+/// </summary>
+/// <remarks>
+/// Event Sourcing: los eventos solo se agregan, nunca se modifican ni se borran.
+/// </remarks>
 [Table("order_events")]
 public class OrderEvent
 {
@@ -17,7 +21,9 @@ public class OrderEvent
     [Column("type")]
     public string Type { get; set; } = string.Empty;
 
-    // Datos del evento en JSON.
+    /// <summary>
+    /// Obtiene o establece los datos del evento en JSON.
+    /// </summary>
     [Column("data")]
     public string Data { get; set; } = "{}";
 

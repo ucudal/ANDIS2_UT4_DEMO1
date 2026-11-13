@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using UsersService.Models;
+using Ucu.Andis.Users.Models;
 
 namespace Ucu.Andis.Users.Data;
 
-// Health check de MongoDB: envía un "ping" a la base de datos.
+/// <summary>
+/// Representa el health check de MongoDB, que envía un "ping" a la base de datos.
+/// </summary>
 public class MongoHealthCheck : IHealthCheck
 {
     private readonly IMongoDatabase _database;

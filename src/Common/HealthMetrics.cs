@@ -3,12 +3,18 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Ucu.Andis.Common;
 
-// Health Endpoint Monitoring en Grafana: Prometheus no puede leer /health, solo
-// métricas. ASP.NET Core ejecuta periódicamente los mismos chequeos que
-// responde /health y le pasa el resultado a este publicador, que lo guarda y lo
-// publica como métrica: 0 Unhealthy, 1 Degraded, 2 Healthy. Hay una medición
-// con el estado general del servicio, check="total", y una por cada chequeo,
-// con su nombre.
+/// <summary>
+/// Representa el publicador que convierte los health checks en métricas para
+/// Grafana.
+/// </summary>
+/// <remarks>
+/// Health Endpoint Monitoring en Grafana: Prometheus no puede leer
+/// <c>/health</c>, solo métricas. ASP.NET Core ejecuta periódicamente los
+/// mismos chequeos que responde <c>/health</c> y le pasa el resultado a este
+/// publicador, que lo guarda y lo publica como métrica: 0 Unhealthy, 1
+/// Degraded, 2 Healthy. Hay una medición con el estado general del servicio,
+/// <c>check="total"</c>, y una por cada chequeo, con su nombre.
+/// </remarks>
 public sealed class HealthMetricsPublisher : IHealthCheckPublisher
 {
     public const string MeterName = "Ucu.Andis.Health";

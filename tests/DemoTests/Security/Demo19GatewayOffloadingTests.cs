@@ -3,8 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Security;
 
-// Demo 19: el gateway termina TLS, valida los tokens y comprime las respuestas;
-// los servicios solo hablan HTTP.
+/// <summary>
+/// Contiene las pruebas de la demo 19: el gateway termina TLS, valida los tokens y
+/// comprime las respuestas; los servicios solo hablan HTTP.
+/// </summary>
 public class Demo19GatewayOffloadingTests : DemoTest
 {
     [Test]

@@ -3,8 +3,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
 
-// Demo 04: Orders atiende como máximo 20 consultas de detalle a la vez; las
-// demás reciben 503 con Retry-After.
+/// <summary>
+/// Contiene las pruebas de la demo 04: Orders atiende como máximo 20 consultas de
+/// detalle a la vez; las demás reciben 503 con <c>Retry-After</c>.
+/// </summary>
 public class Demo04ThrottlingTests : DemoTest
 {
     [Test]

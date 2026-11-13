@@ -1,10 +1,14 @@
 namespace Ucu.Andis.DemoTests.Support;
 
-// Lo asíncrono -un worker que procesa, un proyector que actualiza la vista- no
-// pasa enseguida. Eventually repite una consulta hasta que su resultado cumple
-// la condición o vence el plazo, y devuelve el último resultado: el test lo
-// verifica con Assert.That, y si vence el plazo el mensaje muestra lo último
-// que vio.
+/// <summary>
+/// Proporciona la espera de lo asíncrono: repite una consulta hasta que su
+/// resultado cumple la condición o vence el plazo.
+/// </summary>
+/// <remarks>
+/// Lo asíncrono -un worker que procesa, un proyector que actualiza la vista- no pasa
+/// enseguida. <c>Eventually</c> devuelve el último resultado: el test lo verifica
+/// con <c>Assert.That</c>, y si vence el plazo el mensaje muestra lo último que vio.
+/// </remarks>
 public static class Eventually
 {
     public static async Task<T> GetAsync<T>(Func<Task<T>> probe, Func<T, bool> done,

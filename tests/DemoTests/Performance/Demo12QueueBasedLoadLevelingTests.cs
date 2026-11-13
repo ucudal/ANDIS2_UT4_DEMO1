@@ -6,8 +6,10 @@ using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Performance;
 
-// Demo 12: un pico de 30 Orders a la vez se acepta enseguida; la cola lo
-// absorbe y los workers la vacían a su ritmo.
+/// <summary>
+/// Contiene las pruebas de la demo 12: un pico de 30 Orders a la vez se acepta
+/// enseguida; la cola lo absorbe y los workers la vacían a su ritmo.
+/// </summary>
 public class Demo12QueueBasedLoadLevelingTests : DemoTest
 {
     [Test]

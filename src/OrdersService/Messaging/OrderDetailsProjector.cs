@@ -8,39 +8,44 @@ using Ucu.Andis.OrdersService.Models;
 
 namespace Ucu.Andis.OrdersService.Messaging;
 
-// Materialized View: mantiene la tabla order_details a partir de los eventos.
-// Publisher/Subscriber: se suscribe con su propia cola a los eventos de Orders,
-// Users y Products; recibe order.created igual que el worker, sin que Orders
-// sepa que existe.
-//
-// Corre en orders-projector, con tres réplicas que consumen la misma cola, como
-// el worker. Cada mensaje va a una réplica distinta y se procesa en paralelo:
-// los eventos de una misma Order pueden aplicarse en cualquier orden, y dos
-// copias del mismo evento -el outbox y el puente entregan al menos una vez-
-// pueden procesarse a la vez. Los proyectores no guardan nada en memoria, pero
-// eso no alcanzaba: con uno solo, su resultado dependía del orden de los
-// mensajes. Sin lo que sigue, con varias réplicas pasaría esto, sin errores
-// visibles:
-//
-// a. Estado perdido por desorden. La réplica A recibe order.created y llama a
-//    Users y a Products, que tardan. El worker confirma la Order y la réplica B
-//    recibe order.confirmed, no encuentra la fila y descarta el estado. A
-//    inserta la fila como Pending, y la vista queda Pending para siempre.
-//    Solución: el estado solo avanza -Pending pasa a Confirmed o Rejected, y
-//    Confirmed a Cancelled-, así que el resultado no depende del orden. SetStatusAsync
-//    crea la fila si no existe, y AddOrderAsync nunca pisa el estado.
-// b. Duplicados que pasan el chequeo. Verificar si la fila o el evento ya
-//    existen y después insertarlos son dos pasos: dos copias en dos réplicas
-//    pasan las dos el chequeo. Solución: una sola sentencia atómica, un upsert,
-//    o un índice único que hace fallar la segunda inserción.
-// c. Una réplica trabada. Una excepción no capturada deja el mensaje sin ack ni
-//    nack; con prefetch 1, RabbitMQ no le entrega más mensajes a esa réplica.
-//    Solución: toda excepción devuelve el mensaje a la cola.
-// d. Nombres aplicados al revés. Dos cambios del nombre de un User -"Ana",
-//    después "Ana María"- llegan a réplicas distintas y el más viejo se aplica
-//    último. Cada cambio es idempotente, pero no conmutativo. Solución: cada
-//    nombre guarda la fecha en que cambió, y uno más viejo no pisa uno más
-//    nuevo.
+/// <summary>
+/// Representa el proyector que mantiene la tabla <c>order_details</c> a partir de
+/// los eventos.
+/// </summary>
+/// <remarks>
+/// Materialized View. Publisher/Subscriber: se suscribe con su propia cola a los
+/// eventos de Orders, Users y Products; recibe <c>order.created</c> igual que el
+/// worker, sin que Orders sepa que existe.
+///
+/// Corre en <c>orders-projector</c>, con tres réplicas que consumen la misma cola,
+/// como el worker. Cada mensaje va a una réplica distinta y se procesa en
+/// paralelo: los eventos de una misma Order pueden aplicarse en cualquier orden, y
+/// dos copias del mismo evento -el outbox y el puente entregan al menos una vez-
+/// pueden procesarse a la vez. Los proyectores no guardan nada en memoria, pero
+/// eso no alcanzaba: con uno solo, su resultado dependía del orden de los
+/// mensajes. Sin lo que sigue, con varias réplicas pasaría esto, sin errores
+/// visibles:
+/// <ol>
+/// <li>Estado perdido por desorden. La réplica A recibe <c>order.created</c> y
+/// llama a Users y a Products, que tardan. El worker confirma la Order y la réplica
+/// B recibe <c>order.confirmed</c>, no encuentra la fila y descarta el estado. A
+/// inserta la fila como <c>Models.OrderStatus.Pending</c>, y la vista queda <c>Models.OrderStatus.Pending</c> para siempre. Solución:
+/// el estado solo avanza -Pending pasa a <c>Models.OrderStatus.Confirmed</c> o <c>Models.OrderStatus.Rejected</c>, y <c>Models.OrderStatus.Confirmed</c> a
+/// Cancelled-, así que el resultado no depende del orden. <c>SetStatusAsync</c>
+/// crea la fila si no existe, y <c>AddOrderAsync</c> nunca pisa el estado.</li>
+/// <li>Duplicados que pasan el chequeo. Verificar si la fila o el evento ya existen
+/// y después insertarlos son dos pasos: dos copias en dos réplicas pasan las dos el
+/// chequeo. Solución: una sola sentencia atómica, un upsert, o un índice único que
+/// hace fallar la segunda inserción.</li>
+/// <li>Una réplica trabada. Una excepción no capturada deja el mensaje sin ack ni
+/// nack; con prefetch 1, RabbitMQ no le entrega más mensajes a esa réplica.
+/// Solución: toda excepción devuelve el mensaje a la cola.</li>
+/// <li>Nombres aplicados al revés. Dos cambios del nombre de un User -"Ana",
+/// después "Ana María"- llegan a réplicas distintas y el más viejo se aplica
+/// último. Cada cambio es idempotente, pero no conmutativo. Solución: cada nombre
+/// guarda la fecha en que cambió, y uno más viejo no pisa uno más nuevo.</li>
+/// </ol>
+/// </remarks>
 public class OrderDetailsProjector : BackgroundService
 {
     public const string DetailsQueue = "orders.details-view";

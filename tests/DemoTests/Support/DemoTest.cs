@@ -2,14 +2,18 @@ using System.Net;
 
 namespace Ucu.Andis.DemoTests.Support;
 
-// La base de los tests de las demos que corren con Docker Compose. Antes del
-// primer test verifica que la aplicación esté levantada, y al terminar cada
-// test deja los servicios sin fallas simuladas y con todos los patrones
-// prendidos, como el trap de demos/common.sh.
-//
-// NUnit corre el TearDown de la clase derivada antes que este: si una demo
-// restaura datos llamando a un servicio con chaos, tiene que llamar antes a
-// Api.ResetChaosAsync.
+/// <summary>
+/// Representa la base de los tests de las demos que corren con Docker Compose.
+/// </summary>
+/// <remarks>
+/// Antes del primer test verifica que la aplicación esté levantada, y al terminar
+/// cada test deja los servicios sin fallas simuladas y con todos los patrones
+/// prendidos, como el trap de <c>demos/common.sh</c>.
+///
+/// NUnit corre el TearDown de la clase derivada antes que este: si una demo
+/// restaura datos llamando a un servicio con chaos, tiene que llamar antes a
+/// <c>Api.ResetChaosAsync</c>.
+/// </remarks>
 public abstract class DemoTest
 {
     private static bool _checked;

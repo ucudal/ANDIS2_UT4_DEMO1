@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using ProductsService;
-using ProductsService.Data;
+using Ucu.Andis.ProductsService;
+using Ucu.Andis.ProductsService.Data;
 using StackExchange.Redis;
 using Ucu.Andis.Common;
 

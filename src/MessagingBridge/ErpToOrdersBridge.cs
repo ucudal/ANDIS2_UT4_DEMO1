@@ -1,14 +1,19 @@
 using Apache.NMS;
 using Ucu.Andis.Common;
 
-namespace MessagingBridge;
+namespace Ucu.Andis.MessagingBridge;
 
-// De ActiveMQ a RabbitMQ: cada factura del ERP se publica como un evento
-// order.invoiced en andis.events, y cada rechazo como order.invoice-failed. Para
-// la aplicación es un evento más: no sabe que viene de otro broker.
-//
-// Igual que en el otro sentido, confirma el mensaje en ActiveMQ recién después
-// de que RabbitMQ lo recibió.
+/// <summary>
+/// Representa el puente de ActiveMQ a RabbitMQ.
+/// </summary>
+/// <remarks>
+/// Cada factura del ERP se publica como un evento <c>order.invoiced</c> en
+/// <c>andis.events</c>, y cada rechazo como <c>order.invoice-failed</c>. Para la
+/// aplicación es un evento más: no sabe que viene de otro broker.
+///
+/// Igual que en el otro sentido, confirma el mensaje en ActiveMQ recién después de
+/// que RabbitMQ lo recibió.
+/// </remarks>
 public class ErpToOrdersBridge : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(3);

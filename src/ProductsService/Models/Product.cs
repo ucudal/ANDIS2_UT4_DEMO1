@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace ProductsService.Models
+namespace Ucu.Andis.ProductsService.Models
 {
     [Table("products")]
     public class Product
@@ -14,8 +14,13 @@ namespace ProductsService.Models
         [Column("price")]
         public double Price { get; set; }
 
-        // Saga: las unidades disponibles. Lo cambian las reservas y las
-        // compensaciones -ver StockReservations.cs- y PUT /products/{id}/stock.
+        /// <summary>
+        /// Obtiene o establece las unidades disponibles.
+        /// </summary>
+        /// <remarks>
+        /// Saga: lo cambian las reservas y las compensaciones -ver
+        /// <c>StockReservations</c>- y <c>PUT /products/{id}/stock</c>.
+        /// </remarks>
         [Column("stock")]
         public int Stock { get; set; }
     }
