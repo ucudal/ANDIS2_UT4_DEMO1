@@ -106,6 +106,7 @@ public class RabbitMq : IAsyncDisposable
         if (_connection is not null)
             await _connection.DisposeAsync();
         _lock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

@@ -49,5 +49,6 @@ public class LegacyBroker : IDisposable
     {
         _connection?.Dispose();
         _lock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

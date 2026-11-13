@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Ucu.Andis.DemoTests.Support;
 
@@ -50,7 +51,7 @@ public class Demo24ExternalConfigurationStoreTests : DemoTest
         await Shell.ComposeAsync("exec -T redis redis-cli del products:all");
         using (await Api.Http.GetAsync($"{DemoData.Gateway}/products/")) { }
 
-        var ttl = int.Parse((await Shell.ComposeAsync("exec -T redis redis-cli ttl products:all")).Output);
+        var ttl = int.Parse((await Shell.ComposeAsync("exec -T redis redis-cli ttl products:all")).Output, CultureInfo.InvariantCulture);
 
         Assert.That(ttl, Is.InRange(1, 5));
     }

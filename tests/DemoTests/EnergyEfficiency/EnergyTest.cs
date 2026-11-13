@@ -19,7 +19,7 @@ public abstract class EnergyTest : KubernetesTest
     public Task CleanupAsync() => KubernetesAsync("energy_cleanup");
 
     protected static async Task<int> ReplicasAsync() =>
-        int.Parse((await KubernetesAsync("worker_replicas")).Output);
+        int.Parse((await KubernetesAsync("worker_replicas")).Output, CultureInfo.InvariantCulture);
 
     protected static Task<int> WaitReplicasAsync(int replicas, TimeSpan? timeout = null) =>
         Eventually.GetAsync(ReplicasAsync, r => r == replicas, timeout ?? TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(2));

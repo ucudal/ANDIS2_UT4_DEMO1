@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Availability;
@@ -72,5 +73,5 @@ public class Demo09TransactionalOutboxTests : DemoTest
     }
 
     private static async Task<int> PendingAsync() =>
-        int.Parse(await Shell.OrdersSqlAsync("SELECT COUNT(*) FROM outbox_messages WHERE published_at IS NULL"));
+        int.Parse(await Shell.OrdersSqlAsync("SELECT COUNT(*) FROM outbox_messages WHERE published_at IS NULL"), CultureInfo.InvariantCulture);
 }

@@ -10,6 +10,8 @@ namespace Ucu.Andis.DemoTests.Availability;
 /// </summary>
 public class Demo08EventSourcingTests : DemoTest
 {
+    private static readonly string[] InvoicedEvents = ["OrderCreated", "OrderConfirmed", "OrderInvoiced"];
+
     [Test]
     public async Task EventsReplayToTheCurrentState()
     {
@@ -21,7 +23,7 @@ public class Demo08EventSourcingTests : DemoTest
         var events = await Api.EventsAsync(id);
         var types = events["events"]!.AsArray().Select(e => e!["type"]!.GetValue<string>());
 
-        Assert.That(types, Is.EqualTo(new[] { "OrderCreated", "OrderConfirmed", "OrderInvoiced" }));
+        Assert.That(types, Is.EqualTo(InvoicedEvents));
         Assert.That(events["replayed_state"]!["status"]!.GetValue<string>(), Is.EqualTo("Confirmed"));
         Assert.That(events["replayed_state"]!["quantity"]!.GetValue<int>(), Is.EqualTo(3));
     }

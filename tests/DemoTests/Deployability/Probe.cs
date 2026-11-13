@@ -65,7 +65,9 @@ public sealed class Probe : IAsyncDisposable
         while (!token.IsCancellationRequested)
         {
             responses.Add(await Api.GetUserAsync(baseUrl, DemoData.User1));
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // Sin el token: al detenerse, la sonda termina la vuelta y devuelve lo
+            // que juntó, en lugar de cortar con una excepción.
+            await Task.Delay(TimeSpan.FromMilliseconds(100), CancellationToken.None);
         }
         return responses;
     }

@@ -32,7 +32,7 @@ public class Demo01RetryTests : DemoTest
         {
             var details = await Api.DetailsAsync(DemoData.User1);
             Assert.That(details.Status, Is.EqualTo(HttpStatusCode.OK));
-            failed += details.Rows.Count(r => r!["product_name"]!.GetValue<string>().StartsWith("no disponible"));
+            failed += details.Rows.Count(r => r!["product_name"]!.GetValue<string>().StartsWith("no disponible", StringComparison.Ordinal));
         }
         return failed;
     }

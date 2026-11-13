@@ -88,12 +88,11 @@ monolito, `Purchases` y los BFF-. Todos están en
 [Servicios y datos](ARCHITECTURE.md#servicios-y-datos) y en [Facilidad de
 modificación](ARCHITECTURE.md#facilidad-de-modificación), en ARCHITECTURE.md.
 
-Las dependencias que más se aprovechan son dos. En `GET
-/orders/user/{userId}/details`, `Orders` llama de forma sincrónica a `Users` y a
-`Products`: es el punto natural para mostrar fallas en cascada, cachés y vistas
-materializadas. En `POST /orders/`, `Orders` y `Products` se coordinan con
-eventos: es el punto para mostrar colas, consumidores en competencia, el
-*outbox* y la [Saga](#saga).
+Las dependencias que más se aprovechan son dos. En `GET /orders/user/{userId}/details`,
+`Orders` llama de forma sincrónica a `Users` y a `Products`: es el punto natural
+para mostrar fallas en cascada, cachés y vistas materializadas. En `POST
+/orders/`, `Orders` y `Products` se coordinan con eventos: es el punto para
+mostrar colas, consumidores en competencia, el *outbox* y la [Saga](#saga).
 
 ### Contenedores y Docker Compose
 

@@ -11,6 +11,9 @@ namespace Ucu.Andis.DemoTests.Modifiability;
 [Category(TestEnvironment.Disruptive)]
 public class Demo26StranglerFigTests : DemoTest
 {
+    private static readonly string[] ProductsMigrated = ["monolith:8000", "products-service:8000", "monolith:8000"];
+    private static readonly string[] AllMigrated = ["users-service:8000", "products-service:8000", "orders-service:8000"];
+
     [TearDown]
     public async Task BackToTheMonolithAsync()
     {
@@ -28,14 +31,14 @@ public class Demo26StranglerFigTests : DemoTest
         await Shell.DemoAsync("strangler_route products products-service:8000");
         var products = await ServedAsync();
         Assert.That(products.Select(s => s.ServedBy),
-            Is.EqualTo(new[] { "monolith:8000", "products-service:8000", "monolith:8000" }));
+            Is.EqualTo(ProductsMigrated));
 
         await Shell.DemoAsync("strangler_route users users-service:8000; strangler_route orders orders-service:8000");
         await Shell.ComposeAsync("stop monolith");
         var after = await ServedAsync();
 
         Assert.That(after.Select(s => s.ServedBy),
-            Is.EqualTo(new[] { "users-service:8000", "products-service:8000", "orders-service:8000" }));
+            Is.EqualTo(AllMigrated));
         Assert.That(after.Select(s => s.Status), Has.All.EqualTo(HttpStatusCode.OK), "sin el monolito, todo sigue respondiendo");
         Assert.That(after.Select(s => s.Body), Is.EqualTo(before.Select(s => s.Body)), "el cliente recibe las mismas respuestas");
     }

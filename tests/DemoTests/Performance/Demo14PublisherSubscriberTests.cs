@@ -9,6 +9,10 @@ namespace Ucu.Andis.DemoTests.Performance;
 /// </summary>
 public class Demo14PublisherSubscriberTests : DemoTest
 {
+    private static readonly string[] WorkerKeys = ["stock.reserved", "stock.rejected", "order.invoice-failed"];
+    private static readonly string[] ProjectorKeys = ["order.*", "product.updated", "user.updated"];
+    private static readonly string[] StockKeys = ["order.created", "order.rejected", "order.cancelled"];
+
     [TearDown]
     public async Task RestoreAsync()
     {
@@ -24,10 +28,10 @@ public class Demo14PublisherSubscriberTests : DemoTest
             .GroupBy(b => b!["destination"]!.GetValue<string>())
             .ToDictionary(g => g.Key, g => g.Select(b => b!["routing_key"]!.GetValue<string>()).ToList());
 
-        Assert.That(keys["orders.process"], Is.EquivalentTo(new[] { "stock.reserved", "stock.rejected", "order.invoice-failed" }));
+        Assert.That(keys["orders.process"], Is.EquivalentTo(WorkerKeys));
         // Los proyectores reciben todos los eventos de las Orders, con un comodín.
-        Assert.That(keys["orders.details-view"], Is.EquivalentTo(new[] { "order.*", "product.updated", "user.updated" }));
-        Assert.That(keys["products.stock"], Is.EquivalentTo(new[] { "order.created", "order.rejected", "order.cancelled" }));
+        Assert.That(keys["orders.details-view"], Is.EquivalentTo(ProjectorKeys));
+        Assert.That(keys["products.stock"], Is.EquivalentTo(StockKeys));
     }
 
     [Test]

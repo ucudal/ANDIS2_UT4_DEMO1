@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ucu.Andis.Common;
 
 namespace Ucu.Andis.MessagingBridge;
@@ -25,10 +26,10 @@ public static class ErpFormat
 
     public static string ToOrderRecord(OrderConfirmed order) =>
         OrderRecord
-        + order.OrderId.ToString("D10")
+        + order.OrderId.ToString("D10", CultureInfo.InvariantCulture)
         + (order.UserId ?? "").PadRight(24)
-        + order.ProductId.ToString("D8")
-        + order.Quantity.ToString("D5");
+        + order.ProductId.ToString("D8", CultureInfo.InvariantCulture)
+        + order.Quantity.ToString("D5", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Convierte la respuesta del ERP a un pedido en el evento que corresponde:
@@ -39,7 +40,7 @@ public static class ErpFormat
     /// </remarks>
     public static (string RoutingKey, object Event, int OrderId) ToEvent(string record)
     {
-        if (record.StartsWith(RejectionRecord))
+        if (record.StartsWith(RejectionRecord, StringComparison.Ordinal))
         {
             var failed = ToOrderInvoiceFailed(record);
             return (Events.OrderInvoiceFailed, failed, failed.OrderId);
@@ -54,18 +55,18 @@ public static class ErpFormat
         if (record.Length != 48)
             throw new FormatException($"No es un registro RECHAZO: '{record}'");
 
-        return new OrderInvoiceFailed(int.Parse(record[8..18]), record[18..48].Trim());
+        return new OrderInvoiceFailed(int.Parse(record[8..18], CultureInfo.InvariantCulture), record[18..48].Trim());
     }
 
     // FormatException si el registro no es una factura válida.
     private static OrderInvoiced ToOrderInvoiced(string record)
     {
-        if (record.Length != 38 || !record.StartsWith(InvoiceRecord))
+        if (record.Length != 38 || !record.StartsWith(InvoiceRecord, StringComparison.Ordinal))
             throw new FormatException($"No es un registro FACTURA: '{record}'");
 
         var issuedOn = record[30..38];
         return new OrderInvoiced(
-            int.Parse(record[8..18]),
+            int.Parse(record[8..18], CultureInfo.InvariantCulture),
             record[18..30].Trim(),
             $"{issuedOn[..4]}-{issuedOn[4..6]}-{issuedOn[6..8]}");
     }

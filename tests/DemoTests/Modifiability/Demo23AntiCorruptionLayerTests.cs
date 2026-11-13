@@ -10,6 +10,8 @@ namespace Ucu.Andis.DemoTests.Modifiability;
 /// </summary>
 public class Demo23AntiCorruptionLayerTests : DemoTest
 {
+    private static readonly string[] PurchaseFields = ["number", "buyer", "units", "confirmed"];
+
     private static readonly DemoData.Product Product = DemoData.Shoes;
 
     [TearDown]
@@ -24,7 +26,7 @@ public class Demo23AntiCorruptionLayerTests : DemoTest
         var purchases = await PurchasesAsync();
         var purchase = purchases.Single(p => p!["number"]!.GetValue<int>() == id)!.AsObject();
 
-        Assert.That(purchase.Select(p => p.Key), Is.EquivalentTo(new[] { "number", "buyer", "units", "confirmed" }));
+        Assert.That(purchase.Select(p => p.Key), Is.EquivalentTo(PurchaseFields));
         Assert.That(purchase["buyer"]!.GetValue<string>(), Is.EqualTo(DemoData.User2Name));
         Assert.That(purchase["confirmed"]!.GetValue<bool>(), Is.True);
     }

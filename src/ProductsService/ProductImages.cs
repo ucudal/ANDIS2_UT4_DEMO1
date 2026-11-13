@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 
@@ -81,7 +82,7 @@ public class ProductImages
         await content.CopyToAsync(buffer, cancellationToken);
         buffer.Position = 0;
 
-        await _container.GetBlobClient(productId.ToString()).UploadAsync(buffer,
+        await _container.GetBlobClient(productId.ToString(CultureInfo.InvariantCulture)).UploadAsync(buffer,
             new Azure.Storage.Blobs.Models.BlobUploadOptions
             {
                 HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = contentType }
@@ -115,7 +116,7 @@ public class ProductImages
     public async Task<(Uri Url, DateTimeOffset ExpiresOn)?> GetDownloadKeyAsync(int productId, CancellationToken cancellationToken)
     {
         await EnsureContainerAsync(cancellationToken);
-        if (!await _container.GetBlobClient(productId.ToString()).ExistsAsync(cancellationToken))
+        if (!await _container.GetBlobClient(productId.ToString(CultureInfo.InvariantCulture)).ExistsAsync(cancellationToken))
             return null;
         return IssueKey(productId, BlobSasPermissions.Read, "read", MaxKeyLifetime);
     }
@@ -126,7 +127,7 @@ public class ProductImages
             lifetime = MaxKeyLifetime;
         var expiresOn = DateTimeOffset.UtcNow.Add(lifetime);
         // La firma se calcula con la clave de la cuenta, sin llamar a Azurite.
-        var sas = _container.GetBlobClient(productId.ToString()).GenerateSasUri(permissions, expiresOn);
+        var sas = _container.GetBlobClient(productId.ToString(CultureInfo.InvariantCulture)).GenerateSasUri(permissions, expiresOn);
         var url = new Uri(sas.ToString().Replace(_internalEndpoint, _publicEndpoint));
 
         IssuedKeys.Add(1, new KeyValuePair<string, object?>("permission", permission));

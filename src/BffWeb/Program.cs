@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ucu.Andis.BffWeb;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,7 +25,7 @@ app.MapGet("/web/orders/user/{userId}", async (string userId, IHttpClientFactory
     // El nombre y el precio de cada Product, una sola vez por Product.
     var products = new Dictionary<int, ProductRecord>();
     foreach (var productId in orders.Select(o => o.ProductId).Distinct())
-        products[productId] = await clients.CreateClient("Products").GetFromJsonAsync<ProductRecord>(productId.ToString(), cancellationToken)
+        products[productId] = await clients.CreateClient("Products").GetFromJsonAsync<ProductRecord>(productId.ToString(CultureInfo.InvariantCulture), cancellationToken)
             ?? new ProductRecord("desconocido", 0);
 
     var rows = orders.Select(o => new

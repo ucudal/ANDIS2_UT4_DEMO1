@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Ucu.Andis.Users;
 
 /// <summary>
@@ -38,7 +40,7 @@ public static class ReleaseExtensions
     /// </remarks>
     public static IApplicationBuilder UseReleaseHeader(this IApplicationBuilder app)
     {
-        var version = app.ApplicationServices.GetRequiredService<Release>().Version.ToString();
+        var version = app.ApplicationServices.GetRequiredService<Release>().Version.ToString(CultureInfo.InvariantCulture);
         return app.Use((context, next) =>
         {
             context.Response.Headers[Release.VersionHeader] = version;

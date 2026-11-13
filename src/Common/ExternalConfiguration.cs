@@ -64,7 +64,7 @@ public class ConsulConfigurationSource : IConfigurationSource
     public IConfigurationProvider Build(IConfigurationBuilder builder) => Provider;
 }
 
-public class ConsulConfigurationProvider : ConfigurationProvider
+public class ConsulConfigurationProvider : ConfigurationProvider, IDisposable
 {
     private const string Prefix = "andis/";
 
@@ -73,6 +73,15 @@ public class ConsulConfigurationProvider : ConfigurationProvider
     public ConsulConfigurationProvider(string url)
     {
         _client = new HttpClient { BaseAddress = new Uri(url), Timeout = TimeSpan.FromSeconds(2) };
+    }
+
+    /// <summary>
+    /// Libera el cliente HTTP con el que se lee Consul.
+    /// </summary>
+    public void Dispose()
+    {
+        _client.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -155,7 +164,7 @@ public class ConsulConfigurationProvider : ConfigurationProvider
     }
 
     // Consul entrega cada valor en base64.
-    private record ConsulEntry([property: JsonPropertyName("Key")] string Key, [property: JsonPropertyName("Value")] string? Value);
+    private sealed record ConsulEntry([property: JsonPropertyName("Key")] string Key, [property: JsonPropertyName("Value")] string? Value);
 }
 
 /// <summary>

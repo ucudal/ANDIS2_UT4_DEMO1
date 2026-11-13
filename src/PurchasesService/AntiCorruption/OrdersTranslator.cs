@@ -34,7 +34,7 @@ public class OrdersTranslator
 
     // Una Order tal como la devuelve Orders. Solo se leen los campos que la
     // traducción usa: si Orders agrega campos, la capa no cambia.
-    private record OrderRecord(
+    private sealed record OrderRecord(
         [property: JsonPropertyName("id")] int Id,
         [property: JsonPropertyName("user_id")] string UserId,
         [property: JsonPropertyName("product_id")] int ProductId,

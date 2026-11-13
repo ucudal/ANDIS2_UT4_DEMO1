@@ -10,6 +10,8 @@ namespace Ucu.Andis.DemoTests.Modifiability;
 /// </summary>
 public class Demo27BackendsForFrontendsTests : DemoTest
 {
+    private static readonly string[] MobileFields = ["product", "status"];
+
     [Test]
     public async Task EachClientGetsItsOwnResponse()
     {
@@ -22,7 +24,7 @@ public class Demo27BackendsForFrontendsTests : DemoTest
         Assert.That(orders.Select(o => o!["unitPrice"]), Has.All.Not.Null);
         Assert.That(web["total"]!.GetValue<decimal>(), Is.EqualTo(orders.Sum(o => o!["total"]!.GetValue<decimal>())));
         Assert.That(mobile["orders"]!.AsArray().Select(o => o!.AsObject().Select(p => p.Key)),
-            Has.All.EquivalentTo(new[] { "product", "status" }));
+            Has.All.EquivalentTo(MobileFields));
         Assert.That(mobileBody.Length, Is.LessThan(webBody.Length));
     }
 
@@ -49,9 +51,11 @@ public class Demo27BackendsForFrontendsTests : DemoTest
         var statuses = new List<HttpStatusCode>();
         while (!token.IsCancellationRequested)
         {
-            using var response = await Api.Http.GetAsync($"{DemoData.Gateway}/{client}/orders/user/{DemoData.User1}");
+            // Sin el token: al detenerse, la sonda termina la vuelta y devuelve lo
+            // que juntó, en lugar de cortar con una excepción.
+            using var response = await Api.Http.GetAsync($"{DemoData.Gateway}/{client}/orders/user/{DemoData.User1}", CancellationToken.None);
             statuses.Add(response.StatusCode);
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
+            await Task.Delay(TimeSpan.FromMilliseconds(200), CancellationToken.None);
         }
         return statuses;
     }

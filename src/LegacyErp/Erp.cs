@@ -1,3 +1,4 @@
+using System.Globalization;
 using Apache.NMS;
 using Apache.NMS.ActiveMQ;
 
@@ -40,7 +41,7 @@ public class Erp : BackgroundService
                 continue;
 
             var record = message.Text;
-            if (record.Length != 55 || !record.StartsWith("PEDIDO  "))
+            if (record.Length != 55 || !record.StartsWith("PEDIDO  ", StringComparison.Ordinal))
             {
                 _logger.LogWarning("[ERP] Registro inválido: '{Record}'", record);
                 await session.CommitAsync();
@@ -50,7 +51,7 @@ public class Erp : BackgroundService
             // La factura sale del número de pedido: si el mismo pedido llega dos
             // veces, se emite la misma factura, o el mismo rechazo.
             var order = record[8..18];
-            var response = int.Parse(record[50..55]) > _maxQuantity
+            var response = int.Parse(record[50..55], CultureInfo.InvariantCulture) > _maxQuantity
                 ? $"RECHAZO {order}{$"MAS DE {_maxQuantity} UNIDADES",-30}"
                 : $"FACTURA {order}{"F" + order,-12}{DateTime.UtcNow:yyyyMMdd}";
             await producer.SendAsync(await session.CreateTextMessageAsync(response));

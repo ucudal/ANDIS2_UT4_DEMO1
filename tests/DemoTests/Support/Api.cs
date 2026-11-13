@@ -13,6 +13,8 @@ namespace Ucu.Andis.DemoTests.Support;
 /// </summary>
 public static class Api
 {
+    private static readonly string[] Patterns = ["retry", "circuitBreaker", "bulkhead", "throttling"];
+
     /// <summary>
     /// Cliente HTTP sin redirecciones automáticas, para ver los 302 y 303, y sin
     /// descompresión, para ver qué comprime el gateway.
@@ -67,7 +69,7 @@ public static class Api
     /// </remarks>
     public static async Task OnlyPatternAsync(string? pattern)
     {
-        var settings = new[] { "retry", "circuitBreaker", "bulkhead", "throttling" }
+        var settings = Patterns
             .ToDictionary(p => p, p => p == pattern);
         using var response = await Http.PutAsJsonAsync($"{DemoData.Gateway}/orders/patterns", settings);
         response.EnsureSuccessStatusCode();
@@ -233,7 +235,7 @@ public static class Api
     {
         var metrics = await Http.GetStringAsync($"{DemoData.ProductsDirect}/metrics");
         return metrics.Split('\n')
-            .Where(l => l.StartsWith("http_server_request_duration_seconds_count{")
+            .Where(l => l.StartsWith("http_server_request_duration_seconds_count{", StringComparison.Ordinal)
                 && l.Contains("http_request_method=\"GET\"")
                 && l.Contains("http_route=\"products/{productId}\""))
             .Sum(l => double.Parse(l[(l.LastIndexOf(' ') + 1)..], System.Globalization.CultureInfo.InvariantCulture));

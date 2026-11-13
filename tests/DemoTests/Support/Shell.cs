@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 
 namespace Ucu.Andis.DemoTests.Support;
 
@@ -97,7 +98,7 @@ public static class Shell
         {
             var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 3 && parts[0] == queue)
-                return (int.Parse(parts[1]), int.Parse(parts[2]));
+                return (int.Parse(parts[1], CultureInfo.InvariantCulture), int.Parse(parts[2], CultureInfo.InvariantCulture));
         }
         throw new InvalidOperationException($"No existe la cola {queue}");
     }

@@ -1,4 +1,3 @@
-using System.Net;
 using Ucu.Andis.DemoTests.Support;
 
 namespace Ucu.Andis.DemoTests.Deployability;

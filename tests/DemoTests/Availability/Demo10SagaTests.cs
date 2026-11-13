@@ -10,6 +10,9 @@ namespace Ucu.Andis.DemoTests.Availability;
 /// </summary>
 public class Demo10SagaTests : DemoTest
 {
+    private static readonly string[] InvoicedEvents = ["OrderCreated", "OrderConfirmed", "OrderInvoiced"];
+    private static readonly string[] CancelledEvents = ["OrderCreated", "OrderConfirmed", "OrderCancelled"];
+
     private const int Stock = 20;
     private static readonly int Product = DemoData.Shoes.Id;
     private int _initialStock;
@@ -44,7 +47,7 @@ public class Demo10SagaTests : DemoTest
 
         var events = await Eventually.GetAsync(() => Api.EventTypesAsync(id), e => e.Contains("OrderInvoiced"));
 
-        Assert.That(events, Is.EqualTo(new[] { "OrderCreated", "OrderConfirmed", "OrderInvoiced" }));
+        Assert.That(events, Is.EqualTo(InvoicedEvents));
         Assert.That(await Api.StockAsync(Product), Is.EqualTo(Stock - 2));
     }
 
@@ -81,7 +84,7 @@ public class Demo10SagaTests : DemoTest
         var status = await Eventually.GetAsync(() => Api.OrderStatusAsync(id), s => s == "Cancelled", TimeSpan.FromSeconds(60));
 
         Assert.That(status, Is.EqualTo("Cancelled"));
-        Assert.That(await Api.EventTypesAsync(id), Is.EqualTo(new[] { "OrderCreated", "OrderConfirmed", "OrderCancelled" }));
+        Assert.That(await Api.EventTypesAsync(id), Is.EqualTo(CancelledEvents));
         Assert.That(await Eventually.GetAsync(() => Api.StockAsync(Product), s => s == Stock), Is.EqualTo(Stock));
     }
 

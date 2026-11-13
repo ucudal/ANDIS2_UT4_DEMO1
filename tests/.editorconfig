@@ -1,0 +1,6 @@
+# tests/.editorconfig
+root = false
+
+[**/*.cs]
+# Disable CA1707: Remove underscores from member names
+dotnet_diagnostic.CA1707.severity = none

@@ -9,6 +9,8 @@ namespace Ucu.Andis.DemoTests.Modifiability;
 /// </summary>
 public class Demo25MessagingBridgeTests : DemoTest
 {
+    private static readonly string[] InvoicedEvents = ["OrderCreated", "OrderConfirmed", "OrderInvoiced"];
+
     [TearDown]
     public Task RestoreAsync() => Shell.ComposeAsync("start legacy-broker");
 
@@ -20,7 +22,7 @@ public class Demo25MessagingBridgeTests : DemoTest
 
         var types = await Eventually.GetAsync(() => Api.EventTypesAsync(id), t => t.Contains("OrderInvoiced"));
 
-        Assert.That(types, Is.EqualTo(new[] { "OrderCreated", "OrderConfirmed", "OrderInvoiced" }));
+        Assert.That(types, Is.EqualTo(InvoicedEvents));
     }
 
     [Test]
