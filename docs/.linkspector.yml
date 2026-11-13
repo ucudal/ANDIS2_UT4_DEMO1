@@ -1,7 +1,0 @@
-dirs:
-  - .
-fileExtensions:
-  - md
-replacementPatterns:
-  - pattern: '^\.\/'
-    replacement: './html/'
