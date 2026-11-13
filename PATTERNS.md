@@ -1,6 +1,7 @@
-# Demos de atrones de arquitectura sobre una misma aplicación con microservicios
+# Demos de patrones de arquitectura sobre una misma aplicación con microservicios
 
 * [Aplicación base](#aplicación-base)
+  * [Contenedores y Docker Compose](#contenedores-y-docker-compose)
 * [Cobertura](#cobertura)
 * [Demos de disponibilidad](#demos-de-disponibilidad)
   * [Qué agrega a la aplicación base](#qué-agrega-a-la-aplicación-base)
@@ -44,6 +45,7 @@
   * [Antes y después en Grafana](#antes-y-después-en-grafana)
   * [Tamaño del cambio](#tamaño-del-cambio)
 * [Demos de facilidad de despliegue](#demos-de-facilidad-de-despliegue)
+  * [Conceptos de Kubernetes](#conceptos-de-kubernetes)
   * [Qué agrega a las demos de facilidad de modificación](#qué-agrega-a-las-demos-de-facilidad-de-modificación)
   * [Patrones de facilidad de despliegue](#patrones-de-facilidad-de-despliegue)
     * [Blue/Green Deployment](#bluegreen-deployment)
@@ -51,6 +53,14 @@
     * [Canary Testing](#canary-testing)
     * [A/B Testing](#ab-testing)
   * [Las estrategias en Grafana](#las-estrategias-en-grafana)
+* [Demos de eficiencia energética](#demos-de-eficiencia-energética)
+  * [Qué agrega a las demos de facilidad de despliegue](#qué-agrega-a-las-demos-de-facilidad-de-despliegue)
+  * [Patrones de eficiencia energética](#patrones-de-eficiencia-energética)
+    * [Power Monitor](#power-monitor)
+    * [Use Serverless Cloud Services](#use-serverless-cloud-services)
+    * [Queue Non-Urgent Processing Requests](#queue-non-urgent-processing-requests)
+  * [Patrones existentes y la eficiencia energética](#patrones-existentes-y-la-eficiencia-energética)
+  * [La eficiencia energética en Grafana](#la-eficiencia-energética-en-grafana)
 
 ## Aplicación base
 
@@ -69,7 +79,7 @@ crear `Orders` y consultar el detalle de las `Orders` de un `User`. Cada demo
 agrega patrones sobre esta base, así se puede comparar el comportamiento sin
 cambiar la experiencia de uso.
 
-Los patrones agregan componentes sobre esta base: infraestructura -un broker de
+Los patrones agregan componentes sobre esta base: infraestructura -un *broker* de
 mensajes, una caché, un proveedor de identidad, un almacenamiento de archivos,
 un almacén de configuración-, procesos de `Orders` -el *worker* y el
 proyector-, y servicios que existen para mostrar un patrón -el ERP, el
@@ -85,6 +95,25 @@ materializadas. En `POST /orders/`, `Orders` y `Products` se coordinan con
 eventos: es el punto para mostrar colas, consumidores en competencia, el
 *outbox* y la [Saga](#saga).
 
+### Contenedores y Docker Compose
+
+Cada servicio de la aplicación corre en un contenedor, y
+[Docker Compose](https://docs.docker.com/compose/) los levanta a todos juntos.
+Los conceptos que usan las demos:
+
+| Concepto | Qué es |
+| -------- | ------ |
+| [Imagen](https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-an-image/) | El paquete de un servicio: el programa y todo lo que necesita para correr. Se construye con un [Dockerfile](https://docs.docker.com/reference/dockerfile/), por ejemplo `orders-service:latest`. |
+| [Contenedor](https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/) | Una instancia de una imagen que está corriendo, aislada de las demás. De una misma imagen pueden correr varios contenedores. |
+| [Servicio](https://docs.docker.com/reference/compose-file/services/) | Cada entrada de [docker-compose.yaml](docker-compose.yaml): qué imagen usar y con qué configuración. Docker Compose crea uno o más contenedores por servicio. |
+| Réplicas | Varios contenedores del mismo servicio, con la opción `--scale` de [`docker compose up`](https://docs.docker.com/reference/cli/docker/compose/up/). Por ejemplo, `orders-worker` tiene 3. |
+| [Red](https://docs.docker.com/compose/how-tos/networking/) | Los contenedores de Docker Compose comparten una red, en la que cada servicio se llama por su nombre: `orders-service:8000`. Si el servicio tiene varias réplicas, el nombre las devuelve a todas. |
+| [Puerto publicado](https://docs.docker.com/reference/compose-file/services/#ports) | El puerto del contenedor que se ve desde la máquina, por ejemplo `localhost:8000`. Lo que no se publica solo se ve dentro de la red. |
+| [Variables de entorno](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/) | La configuración de cada contenedor, como `RELEASE__VERSION` o `CONSUL__URL`. La misma imagen se comporta distinto según las variables. |
+| [Volumen](https://docs.docker.com/reference/compose-file/services/#volumes) | Una carpeta de la máquina montada en el contenedor: los datos de las bases, en `src/*/mysqldata` y similares, sobreviven si se recrea el contenedor, y los archivos de configuración, como `nginx.conf`, se cambian sin reconstruir la imagen. |
+| [`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck) | La prueba con la que Docker decide si un contenedor está sano, por ejemplo pedir `/health`. Con [`depends_on`](https://docs.docker.com/compose/how-tos/startup-order/), un servicio espera a que otro esté sano para arrancar. |
+| [Perfil](https://docs.docker.com/reference/compose-file/profiles/) | Servicios que solo se levantan si se piden, como `observability`, con Prometheus y Grafana, o `k6`. |
+
 ## Cobertura
 
 | Categoría | Patrones | Demo |
@@ -94,6 +123,7 @@ eventos: es el punto para mostrar colas, consumidores en competencia, el
 | Seguridad | Gatekeeper, Federated Identity, Gateway Offloading, Sidecar, Valet Key | 3 |
 | Facilidad de modificación | Anti-corruption Layer, External Configuration Store, Messaging Bridge, Strangler Fig, Backends for Frontends | 4 |
 | Facilidad de despliegue: estrategias de lanzamiento | Blue/Green, Rolling Upgrade, Canary Testing, A/B Testing | 5 |
+| Eficiencia energética | Power Monitor, Use Serverless Cloud Services, Scale Logical Components Independently, Queue Non-Urgent Processing Requests | 6 |
 
 ## Demos de disponibilidad
 
@@ -132,7 +162,7 @@ sus propias rutas.
 | Stock del [`Product`](src/ProductsService/Models/Product.cs) | Las unidades disponibles. `GET /products/{id}` lo muestra y `PUT /products/{id}/stock` lo fija. |
 | Inyección de fallas | `PUT /users/chaos`, `PUT /products/chaos` y `PUT /orders/chaos` hacen que el servicio falle o demore a propósito, sin reiniciarlo. Así se provocan las situaciones que activan cada patrón. Está en el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs). Los ajustes quedan en la memoria de la réplica que recibe el `PUT` -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-. |
 | Interruptores de los patrones | `PUT /orders/patterns` prende y apaga el Retry, el Circuit Breaker, el Bulkhead y el Throttling de `Orders`, sin reiniciarlo; `DELETE /orders/patterns` los vuelve a prender. Cada demo deja prendido solo su patrón, para que no intervengan los demás. Está en la clase `PatternSettings` y en el método `MapPatterns` de la clase `PatternExtensions`, en [Patterns.cs](src/OrdersService/Patterns.cs). |
-| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un dashboard de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
+| Observabilidad y carga -opcional- | [Perfil](https://docs.docker.com/compose/how-tos/profiles/) `observability` de [Docker Compose](https://docs.docker.com/compose/) con [Prometheus](https://prometheus.io/) y un *dashboard* de [Grafana](https://grafana.com/oss/grafana/) ya configurado, y escenarios de carga con [k6](https://k6.io/) en [k6](k6/). Muestra los patrones bajo carga y a lo largo del tiempo. Cómo usarlos está en [Observabilidad y pruebas de carga](README.md#observabilidad-y-pruebas-de-carga), en el README. |
 
 Ejemplo de inyección de fallas:
 
@@ -155,7 +185,7 @@ curl -X DELETE http://localhost/products/chaos
 
 ### Patrones de disponibilidad
 
-Cada patrón tiene un script en [demos](demos/) que provoca la situación y
+Cada patrón tiene un *script* en [demos](demos/) que provoca la situación y
 muestra el resultado. Los de Retry, Circuit Breaker, Bulkhead y Throttling dejan
 prendido solo su patrón, para que se vea el efecto de cada uno por separado.
 Cómo ejecutarlos está en [Cómo probar los
@@ -166,7 +196,7 @@ patrón también aparecen en los *logs* de [Docker](https://www.docker.com/) de
 `products-service` y `orders-worker`, con la etiqueta `[SAGA]`. Los patrones
 que dependen de la carga -Circuit Breaker, Bulkhead, Throttling, Rate Limiting y
 Competing Consumers- tienen además un escenario de [k6](https://k6.io/) para
-verlos en el dashboard.
+verlos en el *dashboard*.
 
 #### Retry
 
@@ -174,7 +204,7 @@ verlos en el dashboard.
 reinicia- hace fallar una operación que habría funcionado un momento después.
 
 **Implementación:** los `HttpClient` de `Orders` hacia `Users` y `Products`
-reintentan hasta 3 veces con retroceso exponencial -0,5 segundos, 1 segundo, 2
+reintentan hasta 3 veces con retroceso exponencial -0.5 segundos, 1 segundo, 2
 segundos, con *jitter*-. Solo se reintentan los errores transitorios: 5xx, 408,
 429, errores de red y *timeouts*; un 404 no se reintenta. Está en el método
 `AddResilience` de la clase `Resilience`, en
@@ -190,7 +220,7 @@ en [Idempotencia](ARCHITECTURE.md#idempotencia), en ARCHITECTURE.md.
 ![Secuencia de un reintento de Orders a Products](assets/01-retry.svg)
 
 Si fallan los 3 reintentos, la consulta dice `"no disponible [error HTTP 503]"`.
-Las esperas crecen: 0,5 segundos, 1 segundo y 2 segundos
+Las esperas crecen: 0.5 segundos, 1 segundo y 2 segundos
 -`DelayBackoffType.Exponential`-.
 
 **Código:** la estrategia de reintento del *pipeline* de cada dependencia, en el
@@ -236,7 +266,7 @@ muestran cada `[RETRY]` con su demora y su causa; el comando para verlos está e
 desperdicia recursos, demora las respuestas y la sobrecarga justo cuando intenta
 recuperarse.
 
-**Implementación:** un circuito por dependency, en el mismo pipeline que el
+**Implementación:** un circuito por dependency, en el mismo *pipeline* que el
 Retry. Se abre si fallan al menos la mitad de las llamadas en 10 segundos, con
 un mínimo de 5 llamadas. Abierto, las llamadas fallan de inmediato durante 15
 segundos; después pasa a semiabierto, deja pasar una llamada de prueba y, si
@@ -268,7 +298,7 @@ Retry, así que cada reintento cuenta como una llamada más para el circuito:
 pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
 {
     ShouldHandle = args => patterns.CircuitBreaker ? shouldBreak(args) : PredicateResult.False(),
-    FailureRatio = CircuitFailureRatio,            // 0,5
+    FailureRatio = CircuitFailureRatio,            // 0.5
     MinimumThroughput = CircuitMinimumThroughput,  // 5
     SamplingDuration = CircuitSamplingDuration,    // 10 segundos
     BreakDuration = CircuitBreakDuration,          // 15 segundos
@@ -353,7 +383,7 @@ builder.Services.AddHttpClient("ProductsService", ...).AddResilience("products")
 ```
 
 **Cómo verlo:** la demo [03 de Bulkhead](demos/03-bulkhead.sh) hace que `Products`
-demore 1,5 segundos y lanza 15 consultas simultáneas, primero con el Bulkhead
+demore 1.5 segundos y lanza 15 consultas simultáneas, primero con el Bulkhead
 apagado y después prendido. Sin el Bulkhead, las 15 traen los nombres, pero
 `Products` llega a atender 15 llamadas a la vez. Con el Bulkhead, nunca más de
 5: 10 consultas entran al compartimento de `Products` y traen los nombres de los
@@ -380,7 +410,7 @@ se aplica con el atributo `[EnableRateLimiting("throttling")]` en el método
 `GetOrdersForUser` de la clase `OrdersController`, en
 [OrdersController.cs](src/OrdersService/Controllers/OrdersController.cs).
 
-El gateway también aplica Throttling, pero por cliente: cada IP puede crear como
+El *gateway* también aplica Throttling, pero por cliente: cada IP puede crear como
 máximo 1 `Order` por segundo, con una ráfaga de hasta 5. Lo que excede el límite
 recibe `429 Too Many Requests` sin llegar a `orders-service`; las consultas no
 tienen límite. Está en
@@ -392,7 +422,7 @@ Es el límite que respeta el cliente de la demo de Rate Limiting.
 
 Los dos límites están en la memoria de cada instancia: con N réplicas de
 `orders-service`, el servicio atiende hasta 20 × N consultas de detalle a la
-vez, y con dos gateways, un cliente puede crear el doble de `Orders` -ver
+vez, y con dos *gateways*, un cliente puede crear el doble de `Orders` -ver
 [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 
 **Cómo funciona:**
@@ -443,7 +473,7 @@ con todos los nombres y 20 se rechazan al instante con 503. La demo apaga el
 Bulkhead; con el Bulkhead prendido, algunas respuestas 200 traerían un producto
 "no disponible", porque las 20 consultas atendidas llaman a `Products` a la vez
 y llenan su compartimento: en un sistema real, el Throttling y el Bulkhead
-actúan juntos. El Throttling por cliente del gateway se ve en la demo de Rate
+actúan juntos. El Throttling por cliente del *gateway* se ve en la demo de Rate
 Limiting.
 
 > [!TIP]
@@ -465,7 +495,7 @@ proceso por lotes que envía muchos datos a un servicio con límite de capacidad
 del servicio. Rate Limiting y Throttling son las dos caras del mismo límite: el
 servicio aplica Throttling para protegerse, y el cliente aplica Rate Limiting
 para no chocar contra ese Throttling. En esta aplicación, el servicio es el
-gateway, con su Throttling por cliente -1 `POST /orders/` por segundo por IP,
+*gateway*, con su Throttling por cliente -1 `POST /orders/` por segundo por IP,
 con una ráfaga de 5; ver [Throttling](#throttling)-, y el cliente es un proceso
 por lotes que crea `Orders`:
 la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y
@@ -474,7 +504,7 @@ la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y
 > [!NOTE]
 >
 > **Rate limiting en [nginx](https://nginx.org/) y en Azure.** nginx llama *rate
-> limiting* a `limit_req`, y muchos API gateways y proveedores de APIs usan el
+> limiting* a `limit_req`, y muchos API *gateways* y proveedores de APIs usan el
 > término en el mismo sentido: un límite que el **servicio** aplica a cada
 > cliente. En el catálogo de patrones de Azure Architecture Center, que sigue
 > este repositorio, eso es
@@ -482,7 +512,7 @@ la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) y
 > en este caso por cliente; y [Rate
 > Limiting](https://learn.microsoft.com/en-us/azure/architecture/patterns/rate-limiting-pattern)
 > es un patrón del **cliente**, que regula su ritmo para no superar el
-> Throttling del servicio al que llama. Por eso el gateway usa la configuración
+> Throttling del servicio al que llama. Por eso el *gateway* usa la configuración
 > de *rate limiting* de nginx para implementar Throttling, y el patrón Rate
 > Limiting está en el cliente de la demo.
 
@@ -492,18 +522,18 @@ Sin Rate Limiting, el cliente envía todo de golpe y reintenta lo rechazado:
 
 ![Envío de un lote sin Rate Limiting](assets/05-rate-limiting-sin.svg)
 
-Con Rate Limiting, el cliente respeta el ritmo que acepta el gateway:
+Con Rate Limiting, el cliente respeta el ritmo que acepta el *gateway*:
 
 ![Envío de un lote con Rate Limiting](assets/05-rate-limiting-con.svg)
 
-El límite del gateway es el mismo en las dos formas: 1 `POST /orders/` por
+El límite del *gateway* es el mismo en las dos formas: 1 `POST /orders/` por
 segundo por IP, con una ráfaga de 5. Lo que cambia es cómo envía el cliente.
 
 **Cómo verlo:** la demo [05 de Rate Limiting](demos/05-rate-limiting.sh) crea 15
 `Orders` de dos formas. Sin Rate Limiting, las envía todas de golpe y reintenta
 las rechazadas cada 1 segundo: hacen falta unas 55 solicitudes y unas 40 reciben
-429. Con Rate Limiting, respeta el límite del gateway: 15 solicitudes y ningún
-429. Las dos formas demoran unos 10 segundos, porque el límite del gateway fija
+429. Con Rate Limiting, respeta el límite del *gateway*: 15 solicitudes y ningún
+429. Las dos formas demoran unos 10 segundos, porque el límite del *gateway* fija
 el ritmo máximo.
 
 #### Health Endpoint Monitoring
@@ -524,7 +554,7 @@ cada chequeo -200 si está sano, 503 en caso contrario-:
   `Unhealthy`, porque sin RabbitMQ no reciben nada.
 
 `Orders` **no** chequea a `Users` ni a `Products`: si se cae una dependency,
-`Orders` sigue funcionando degradado y no debe figurar como caído. El gateway
+`Orders` sigue funcionando degradado y no debe figurar como caído. El *gateway*
 publica los tres en `/health/users`, `/health/products` y `/health/orders`.
 Docker los consulta cada 5 segundos
 -[`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck)
@@ -952,9 +982,6 @@ compensaciones `Released`.
 
 ## Demos de rendimiento y procesamiento asíncrono
 
-**Estado: implementada en este repositorio, sobre las demos de resiliencia y
-disponibilidad.**
-
 Escenario: un pico de tráfico en una campaña. La aplicación debe mantener
 latencias bajas y absorber la carga.
 
@@ -968,7 +995,7 @@ Resultado observable: latencias de lectura estables durante el pico, *backlog*
 absorbido por la cola y throughput que crece al agregar *workers*. El pico se
 genera con [load.js](k6/load.js) y
 [load-leveling.js](k6/load-leveling.js), y se compara antes y después de cada
-patrón en el dashboard de [Grafana](https://grafana.com/oss/grafana/), en la
+patrón en el *dashboard* de [Grafana](https://grafana.com/oss/grafana/), en la
 fila "Rendimiento: caché, CQRS y outbox".
 
 ### Qué agrega a las demos de disponibilidad
@@ -992,7 +1019,7 @@ curl -X DELETE http://localhost/products/cache
 
 ### Patrones de rendimiento
 
-Como en las demos de disponibilidad, cada patrón tiene un script en
+Como en las demos de disponibilidad, cada patrón tiene un *script* en
 [demos](demos/), del `11` al `17`. Los *logs* de
 [Docker](https://www.docker.com/) muestran los eventos con una etiqueta:
 `[CACHE-ASIDE]` en `products-service`; `[PUB/SUB]` en `users-service`,
@@ -1076,12 +1103,16 @@ Consumers](#competing-consumers-para-disponibilidad).
 
 **Cómo verlo:** la demo [12 de Queue-Based Load
 Leveling](demos/12-queue-based-load-leveling.sh) crea 30 `Orders` a la vez,
-directamente en `orders-service`: el Throttling por cliente del gateway
+directamente en `orders-service`: el Throttling por cliente del *gateway*
 rechazaría el pico antes de que llegara a la cola. Todas responden `202` en
 pocos milisegundos; la cola baja de a 3 mensajes cada 2 segundos hasta vaciarse.
 [load-leveling.js](k6/load-leveling.js) envía 10 `POST` por segundo durante
 10 segundos: la latencia de `create order` se mantiene baja y la cola crece
 durante el pico y se vacía después.
+
+La misma cola sirve para elegir cuándo procesar, no solo a qué ritmo: en la demo
+[37 de procesamiento diferido](#queue-non-urgent-processing-requests), el
+*worker* solo consume la cola dentro de una ventana de tiempo.
 
 #### Competing Consumers para rendimiento
 
@@ -1100,7 +1131,9 @@ lugar de 3.
 **Cómo verlo:** la demo [13 de Competing Consumers para
 rendimiento](demos/13-competing-consumers-scaling.sh) procesa 30 `Orders` con 3
 réplicas, unos 21 segundos, y otras 30 con 6 réplicas, unos 12 segundos. Al
-final vuelve a 3 réplicas.
+final vuelve a 3 réplicas. Las réplicas se cambian a mano; en la demo [36 de
+escalado a cero](#use-serverless-cloud-services) las decide [KEDA](https://keda.sh/) según el largo
+de la cola, y bajan a 0 cuando está vacía.
 
 #### Publisher/Subscriber
 
@@ -1211,7 +1244,7 @@ reintento.
   en proceso; acá la segunda espera y nunca la ve en proceso.
 
 La clave es de un `User`: con [Federated Identity](#federated-identity), la del
-token; si la solicitud es anónima, el `User` 0. No se guarda en la tabla
+*token*; si la solicitud es anónima, el `User` 0. No se guarda en la tabla
 `orders` porque esa tabla es una proyección que `POST
 /orders/projections/rebuild` borra y reconstruye -ver [Event
 Sourcing](#event-sourcing)-. Sin el encabezado, todo sigue como antes, para que
@@ -1395,7 +1428,7 @@ Los proyectores son los únicos que escriben la vista, y los únicos que llaman 
 cambia el nombre de un `Product` y la vista lo refleja. Con `Products` fallando
 siempre, la consulta síncrona responde "no disponible" y la vista sigue
 respondiendo con los nombres. Después detiene los proyectores, hace que `Users`
-demore 1,5 segundos y crea una `Order`: la `Order` se confirma, pero la vista no
+demore 1.5 segundos y crea una `Order`: la `Order` se confirma, pero la vista no
 la tiene y sus eventos esperan en la cola. Al levantar las tres réplicas,
 `order.created` y `order.confirmed` llegan a la vez a réplicas distintas.
 Mientras una espera a `Users`, la otra crea la fila con el estado final, y la
@@ -1413,8 +1446,6 @@ la vista se queda con el nombre más nuevo.
 
 ## Demos de seguridad
 
-**Estado: implementada en este repositorio, sobre las demos de rendimiento.**
-
 Escenario: la aplicación se abre a clientes reales. Cada usuario tiene que
 identificarse, ver solo lo suyo y no poder hacer más de lo que le corresponde, y
 nada tiene que llegar a los servicios sin control.
@@ -1422,19 +1453,19 @@ nada tiene que llegar a los servicios sin control.
 Qué se muestra:
 
 * Inicio de sesión en un proveedor de identidad externo, y decisiones tomadas
-  con los claims del token.
-* [TLS](https://datatracker.ietf.org/doc/html/rfc8446), validación de tokens y
-  compresión en el gateway, sin código en los servicios.
+  con los claims del *token*.
+* [TLS](https://datatracker.ietf.org/doc/html/rfc8446), validación de *tokens* y
+  compresión en el *gateway*, sin código en los servicios.
 * Validación y limpieza de cada solicitud antes de que llegue a un servicio, y
-  servicios que solo se alcanzan a través del gateway.
-* Un proxy junto a `Products` que le agrega autenticación y autorización sin
+  servicios que solo se alcanzan a través del *gateway*.
+* Un *proxy* junto a `Products` que le agrega autenticación y autorización sin
   cambiar su código.
 * Acceso directo, temporal y acotado al almacenamiento de las imágenes.
 
 Resultado observable: por la entrada
-[HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del gateway, cualquiera
+[HTTP](https://datatracker.ietf.org/doc/html/rfc9110) del *gateway*, cualquiera
 llega a cualquier ruta, incluidas las de administración; por la entrada HTTPS,
-cada solicitud necesita un token, los servicios no implementan autenticación ni
+cada solicitud necesita un *token*, los servicios no implementan autenticación ni
 TLS, las políticas se aplican en el borde y cada acceso tiene el mínimo
 privilegio necesario.
 
@@ -1443,11 +1474,11 @@ privilegio necesario.
 | Componente | Para qué |
 | ---------- | -------- |
 | `keycloak` | Proveedor de identidad. El realm `andis` tiene los usuarios, sus roles y el cliente `andis-cli`, la aplicación de línea de comandos de las demos; se importa al arrancar desde [andis-realm.json](src/Keycloak/andis-realm.json). Consola en <http://localhost:8080> -usr: `admin` pwd: `Pa55w0rd`-. |
-| Entrada HTTPS del gateway | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
-| `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al sidecar; la HTTP, directamente a `Products`. Está en [envoy.yaml](src/ProductsSidecar/envoy.yaml). |
+| Entrada HTTPS del *gateway* | `https://localhost`, con los patrones de seguridad. La entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), `http://localhost`, queda como estaba, para las demos anteriores y para comparar; en producción quedaría solo la HTTPS. Está en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf). |
+| `products-sidecar` | [Envoy](https://www.envoyproxy.io/), junto a `products-service` y en su mismo espacio de red. La entrada HTTPS le envía `/products/` al *sidecar*; la HTTP, directamente a `Products`. Está en [envoy.yaml](src/ProductsSidecar/envoy.yaml). |
 | `azurite` | El emulador de [Azure Storage](https://azure.microsoft.com/products/storage/), con las imágenes de los `Products`, en <http://localhost:10000>. |
 | Imágenes de los `Products` | `PUT /products/{id}/image` sube la imagen a través de `Products`; `POST /products/{id}/image/upload-url` entrega una URL firmada para subirla directamente a [Azurite](https://github.com/Azure/Azurite); `GET /products/{id}/image` redirige a una URL firmada para bajarla. |
-| [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) | Deja de publicar en el host los puertos de los servicios y de las bases: la única entrada a los servicios es el gateway. |
+| [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) | Deja de publicar en el *host* los puertos de los servicios y de las bases: la única entrada a los servicios es el *gateway*. |
 
 Los usuarios de [Keycloak](https://www.keycloak.org/), todos con la contraseña
 `Pa55w0rd`:
@@ -1482,7 +1513,7 @@ curl --cacert gateway.crt -H "Authorization: Bearer $alice" \
 
 ### Patrones de seguridad
 
-Cada patrón tiene un script en [demos](demos/), del `18` al `22`, y un paso a
+Cada patrón tiene un *script* en [demos](demos/), del `18` al `22`, y un paso a
 paso en [04-security.azcli](commands/04-security.azcli) que compara la
 misma solicitud por la entrada
 [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin el patrón, y por la
@@ -1492,7 +1523,7 @@ eventos con una etiqueta: `[HTTPS]` en `api-gateway`, una línea por solicitud;
 `[VALET KEY]` en `products-service`.
 
 Los patrones están en el orden en que se apoyan unos en otros, que no es el de
-la lectura: Gateway Offloading y Gatekeeper usan los tokens de Federated
+la lectura: Gateway Offloading y Gatekeeper usan los *tokens* de Federated
 Identity.
 
 #### Federated Identity
@@ -1505,7 +1536,7 @@ falla en cualquiera de ellas expone las contraseñas.
 **Implementación:** la autenticación se delega en
 [Keycloak](https://www.keycloak.org/), un proveedor de identidad que habla
 [OpenID Connect](https://openid.net/developers/how-connect-works/). El usuario
-inicia sesión en Keycloak, que emite un token firmado -un JWT- con sus claims:
+inicia sesión en Keycloak, que emite un *token* firmado -un JWT- con sus claims:
 
 * `preferred_username`: el nombre de usuario, por ejemplo `alice`.
 * `user_id`: el `User` de la aplicación. Keycloak lo agrega a partir de un
@@ -1516,7 +1547,7 @@ inicia sesión en Keycloak, que emite un token firmado -un JWT- con sus claims:
 La aplicación no guarda contraseñas: la tabla `users` tiene solo el nombre y el
 correo. Confía en la firma de Keycloak y usa los claims:
 
-* El gateway valida el token en cada solicitud por la entrada HTTPS y les pasa
+* El *gateway* valida el *token* en cada solicitud por la entrada HTTPS y les pasa
   los claims a los servicios en los encabezados `X-User-Name`, `X-User-Id` y
   `X-User-Roles` -ver [Gateway Offloading](#gateway-offloading)-.
 * `Orders` decide con esos claims. Un cliente crea `Orders` solo para él y
@@ -1534,24 +1565,24 @@ dispositivo -*device authorization grant*-, el que usan las aplicaciones de
 línea de comandos y los televisores, el usuario inicia sesión en el navegador,
 en la página de Keycloak, y la aplicación nunca ve la contraseña: es el que usa
 el paso a paso. Con el *grant type* `password`, la aplicación recibe el usuario
-y la contraseña y se los pasa a Keycloak: es más corto, y lo usan los scripts,
+y la contraseña y se los pasa a Keycloak: es más corto, y lo usan los *scripts*,
 pero no se usaría en una aplicación real.
 
 **Cómo funciona:**
 
 ![Inicio de sesión con el flujo de dispositivo y una solicitud con el
-token](assets/18-federated-identity.svg)
+*token*](assets/18-federated-identity.svg)
 
-El token dura 15 minutos. Keycloak no interviene en cada decisión: `Orders`
-decide con los claims que trae el token.
+El *token* dura 15 minutos. Keycloak no interviene en cada decisión: `Orders`
+decide con los claims que trae el *token*.
 
 **Código:**
 
 ![Clases de la identidad en Orders](assets/18-federated-identity-clases.svg)
 
-`Orders` no conoce a Keycloak ni valida tokens: lee los encabezados que arma el
-gateway. Esa confianza depende del [Gatekeeper](#gatekeeper): si alguien llega a
-`Orders` sin pasar por el gateway, puede mandar esos encabezados con cualquier
+`Orders` no conoce a Keycloak ni valida *tokens*: lee los encabezados que arma el
+*gateway*. Esa confianza depende del [Gatekeeper](#gatekeeper): si alguien llega a
+`Orders` sin pasar por el *gateway*, puede mandar esos encabezados con cualquier
 valor.
 
 **Cómo verlo:** la demo [18 de Federated Identity](demos/18-federated-identity.sh)
@@ -1559,8 +1590,8 @@ crea una `Order` para el `User` 2 por la entrada HTTP, sin identificarse.
 Después bob inicia sesión y, por la entrada HTTPS, crea una `Order` sin indicar
 el `User`: es de bob; si indica el `User` 1, `Orders` responde 403. bob consulta
 sus `Orders` y no las de alice, y alice, al revés; carol consulta las de los
-dos, pero no puede crear. Sin token, o con el `user_id` del token cambiado por
-el de alice, el gateway responde 401, porque la firma ya no corresponde a los
+dos, pero no puede crear. Sin *token*, o con el `user_id` del *token* cambiado por
+el de alice, el *gateway* responde 401, porque la firma ya no corresponde a los
 claims. Como en las demás demos, las `Orders` se crean solo para el `User` 2:
 las del `User` 1 son la base de las demos de disponibilidad. En
 [Grafana](https://grafana.com/oss/grafana/), el panel "Eventos de Keycloak por
@@ -1577,16 +1608,16 @@ segundo" muestra los inicios de sesión.
 #### Gateway Offloading
 
 **Problema:** [TLS](https://datatracker.ietf.org/doc/html/rfc8446), la
-validación de tokens y la compresión son funciones especializadas, que necesitan
+validación de *tokens* y la compresión son funciones especializadas, que necesitan
 configuración y certificados. Si cada servicio las implementa, cada uno lo hace
 a su manera, en su lenguaje, y actualizar un certificado o una política obliga a
 cambiar todos los servicios.
 
-**Implementación:** el gateway se hace cargo de esas funciones en la entrada
+**Implementación:** el *gateway* se hace cargo de esas funciones en la entrada
 HTTPS, en
 [nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
-* **TLS:** el gateway termina TLS con su certificado; los servicios siguen
+* **TLS:** el *gateway* termina TLS con su certificado; los servicios siguen
   hablando HTTP dentro de la red de Docker, sin certificados. El certificado es
   autofirmado y se genera al construir la imagen, en
   [Dockerfile](src/ApiGateway/Dockerfile), para no guardar una clave
@@ -1594,21 +1625,21 @@ HTTPS, en
   certificación.
 * **Validación de tokens:** antes de reenviar cada solicitud,
   [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html#auth_request)
-  hace una subsolicitud a `/userinfo` de Keycloak con el token. Si Keycloak
-  responde 200, la solicitud sigue; si no, el gateway responde 401 y la
+  hace una subsolicitud a `/userinfo` de Keycloak con el *token*. Si Keycloak
+  responde 200, la solicitud sigue; si no, el *gateway* responde 401 y la
   solicitud no llega al servicio. Después, `identity.js`, en
   [identity.js](src/ApiGateway/nginxconf/identity.js), lee
-  los claims del token, ya validado, y el gateway se los pasa al servicio en los
+  los claims del *token*, ya validado, y el *gateway* se los pasa al servicio en los
   encabezados `X-User-Name`, `X-User-Id` y `X-User-Roles`.
-* **Compresión:** el gateway comprime con
+* **Compresión:** el *gateway* comprime con
   [gzip](https://nginx.org/en/docs/http/ngx_http_gzip_module.html) las
   respuestas de más de 1 KB, si el cliente lo acepta.
 * **Throttling por cliente:** el de la [demo de Throttling](#throttling), que el
-  gateway ya aplicaba en la entrada HTTP.
+  *gateway* ya aplicaba en la entrada HTTP.
 
-El costo es que el gateway le pregunta a Keycloak por cada solicitud: si
-Keycloak no responde, nadie entra. El [sidecar](#sidecar) muestra la
-alternativa: verificar la firma del token con las claves públicas de Keycloak,
+El costo es que el *gateway* le pregunta a Keycloak por cada solicitud: si
+Keycloak no responde, nadie entra. El [*sidecar*](#sidecar) muestra la
+alternativa: verificar la firma del *token* con las claves públicas de Keycloak,
 sin preguntarle cada vez, a cambio de no enterarse si se cerró la sesión.
 
 **Cómo funciona:**
@@ -1616,7 +1647,7 @@ sin preguntarle cada vez, a cambio de no enterarse si se cerró la sesión.
 ![Funciones que el gateway les quita a los
 servicios](assets/19-gateway-offloading.svg)
 
-**Código:** la validación del token, en
+**Código:** la validación del *token*, en
 [nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
 
 ```nginx
@@ -1635,11 +1666,11 @@ proxy_set_header X-User-Id $user_id;
 ```
 
 **Cómo verlo:** la demo [19 de Gateway Offloading](demos/19-gateway-offloading.sh)
-muestra que `Orders` no habla TLS y que el gateway sí, con su certificado. Sin
-token, el gateway responde 401, y su *log* muestra que la solicitud no llegó a
-ningún servicio; con token, la reenvía. La lista de `Orders` llega unas 15 veces
-más chica por HTTPS que por HTTP, comprimida por el gateway. En Grafana, el
-panel "Eventos de Keycloak por segundo" muestra una validación de token,
+muestra que `Orders` no habla TLS y que el *gateway* sí, con su certificado. Sin
+*token*, el *gateway* responde 401, y su *log* muestra que la solicitud no llegó a
+ningún servicio; con *token*, la reenvía. La lista de `Orders` llega unas 15 veces
+más chica por HTTPS que por HTTP, comprimida por el *gateway*. En Grafana, el
+panel "Eventos de Keycloak por segundo" muestra una validación de *token*,
 `user_info_request`, por cada solicitud HTTPS.
 
 > [!TIP]
@@ -1658,7 +1689,7 @@ rutas de administración, métodos inesperados, cuerpos enormes o mal formados,
 encabezados falsos. Una falla en cualquiera de esas defensas deja expuesto al
 servicio y a sus datos.
 
-**Implementación:** en la entrada HTTPS, el gateway es el intermediario entre
+**Implementación:** en la entrada HTTPS, el *gateway* es el intermediario entre
 los clientes y los servicios, y valida y sanea cada solicitud antes de
 reenviarla, en
 [nginx.conf](src/ApiGateway/nginxconf/nginx.conf):
@@ -1672,20 +1703,20 @@ reenviarla, en
   responde 403.
 * **Cuerpo:** los `POST` y `PUT` tienen que ser [JSON](https://www.json.org/)
   -415 si no- y medir hasta 64 KB -413 si no-.
-* **Encabezados de identidad:** el gateway arma `X-User-Name`, `X-User-Id` y
-  `X-User-Roles` con los claims del token y reemplaza los que haya mandado el
+* **Encabezados de identidad:** el *gateway* arma `X-User-Name`, `X-User-Id` y
+  `X-User-Roles` con los claims del *token* y reemplaza los que haya mandado el
   cliente. Un cliente no se puede hacer pasar por otro.
 
-El gateway no tiene credenciales de las bases ni acceso a los datos: si alguien
+El *gateway* no tiene credenciales de las bases ni acceso a los datos: si alguien
 lo compromete, no obtiene más que lo que ya podía pedir a través de él.
 
 Para que sirva, los servicios no tienen que poder alcanzarse sin pasar por el
-gateway. [docker-compose.yaml](docker-compose.yaml) publica en el host el puerto
+*gateway*. [docker-compose.yaml](docker-compose.yaml) publica en el *host* el puerto
 de cada servicio y de cada base, para las demos anteriores; por ahí, cualquiera
 llega a la administración o manda encabezados de identidad falsos.
 [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) deja de
 publicarlos: los servicios siguen hablando entre sí por la red de Docker, pero
-desde afuera la única entrada es el gateway. Se aplica junto con el otro
+desde afuera la única entrada es el *gateway*. Se aplica junto con el otro
 archivo, y [Docker Compose](https://docs.docker.com/compose/) vuelve a crear
 solo los contenedores que cambian:
 
@@ -1724,11 +1755,11 @@ location / {
 **Cómo verlo:** la demo [20 de Gatekeeper](demos/20-gatekeeper.sh) compara las dos
 entradas. Por HTTP, las rutas de administración responden 200, y los métodos,
 los cuerpos y los ids inválidos llegan a `Orders`, que los rechaza después de
-recibirlos. Por HTTPS, el gateway los rechaza sin llegar a los servicios. alice
+recibirlos. Por HTTPS, el *gateway* los rechaza sin llegar a los servicios. alice
 no puede hacerse pasar por bob con encabezados falsos por HTTPS, pero sí por el
-puerto 8000, sin token. Al aplicar `docker-compose.gatekeeper.yaml`, el puerto
+puerto 8000, sin *token*. Al aplicar `docker-compose.gatekeeper.yaml`, el puerto
 8000 deja de responder, y la entrada HTTPS sigue funcionando. Al terminar, el
-script vuelve a publicar los puertos. En Grafana, el panel "Solicitudes por
+*script* vuelve a publicar los puertos. En Grafana, el panel "Solicitudes por
 segundo, por servicio y código HTTP" muestra los rechazos de `Orders` por HTTP;
 los de HTTPS no aparecen, porque no llegaron a `Orders`.
 
@@ -1746,46 +1777,46 @@ los de HTTPS no aparecen, porque no llegaron a `Orders`.
 **Problema:** agregarle a un servicio funciones transversales -autenticación,
 autorización, registro de accesos- obliga a cambiar su código, en su lenguaje, y
 a repetirlo en cada servicio; y un servicio de terceros o legado tal vez no se
-pueda cambiar. Además, el gateway protege solo lo que entra por el gateway:
+pueda cambiar. Además, el *gateway* protege solo lo que entra por el *gateway*:
 dentro de la red, cualquier contenedor llama a cualquier servicio.
 
-**Implementación:** un proxy [Envoy](https://www.envoyproxy.io/),
+**Implementación:** un *proxy* [Envoy](https://www.envoyproxy.io/),
 `products-sidecar`, corre junto a `products-service`, en su mismo espacio de red
 -[`network_mode:
 service:products-service`](https://docs.docker.com/reference/compose-file/services/#network_mode)
 en [docker-compose.yaml](docker-compose.yaml)-. Para Envoy, `Products` es
-`127.0.0.1:8000`; para los demás contenedores, el sidecar es
+`127.0.0.1:8000`; para los demás contenedores, el *sidecar* es
 `products-service:9000`. Envoy es otra tecnología, escrita en C++, y se
 configura con [envoy.yaml](src/ProductsSidecar/envoy.yaml):
 
 * **Autenticación:** el filtro
   [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
-  verifica la firma del token con las claves públicas de Keycloak, que pide una
-  vez cada 5 minutos, además del emisor y el vencimiento. Un token inválido
-  recibe 401; sin token, la solicitud sigue como anónima.
+  verifica la firma del *token* con las claves públicas de Keycloak, que pide una
+  vez cada 5 minutos, además del emisor y el vencimiento. Un *token* inválido
+  recibe 401; sin *token*, la solicitud sigue como anónima.
 * **Autorización:** el filtro
   [`rbac`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter)
   deja leer a cualquiera -`GET`- y exige el rol `admin` para todo lo demás. Si
   no, 403.
 * **Registro de accesos:** una línea `[SIDECAR]` por solicitud, con el código,
-  el usuario del token y el motivo del rechazo.
+  el usuario del *token* y el motivo del rechazo.
 
 `Products` no cambió: `ProductsController` no verifica roles. La entrada HTTPS
-del gateway le envía `/products/` al sidecar, y la HTTP, directamente a
+del *gateway* le envía `/products/` al *sidecar*, y la HTTP, directamente a
 `Products`, para comparar. En producción, `Products` escucharía solo en
-`127.0.0.1` y el sidecar sería su única entrada; acá sigue escuchando en el
+`127.0.0.1` y el *sidecar* sería su única entrada; acá sigue escuchando en el
 puerto 8000 para las demos anteriores.
 
 Una *service mesh*, como [Istio](https://istio.io/) o
-[Linkerd](https://linkerd.io/), pone un sidecar como este junto a cada servicio,
-y agrega TLS mutuo entre los sidecars; acá hay uno solo, sin TLS mutuo.
+[Linkerd](https://linkerd.io/), pone un *sidecar* como este junto a cada servicio,
+y agrega TLS mutuo entre los *sidecars*; acá hay uno solo, sin TLS mutuo.
 
 **Cómo funciona:**
 
 ![El sidecar de Products y quién lo llama](assets/21-sidecar.svg)
 
 Cada solicitud pasa por los filtros de Envoy, en orden: primero `jwt_authn`, que
-verifica el token y guarda sus claims; después `rbac`, que usa esos claims para
+verifica el *token* y guarda sus claims; después `rbac`, que usa esos claims para
 decidir si la deja pasar; y por último `router`, que la envía a `Products`. Si
 un filtro la rechaza, los siguientes no se ejecutan y `Products` no se entera.
 Al terminar, con cualquier resultado, Envoy escribe la línea `[SIDECAR]`.
@@ -1820,9 +1851,9 @@ policies:
 **Cómo verlo:** la demo [21 de Sidecar](demos/21-sidecar.sh) cambia el nombre de
 un `Product` por HTTP, sin identificarse. Por HTTPS, alice lo lee pero no lo
 puede cambiar, y carol sí. Desde adentro de la red, `products-service:8000`
-acepta cualquier cambio, y el sidecar, `products-service:9000`, lo rechaza: 403
-sin token, y 401 con un token al que alice se agregó el rol `admin` sin poder
-volver a firmarlo. El registro del sidecar muestra cada decisión. En Grafana, el
+acepta cualquier cambio, y el *sidecar*, `products-service:9000`, lo rechaza: 403
+sin *token*, y 401 con un *token* al que alice se agregó el rol `admin` sin poder
+volver a firmarlo. El registro del *sidecar* muestra cada decisión. En Grafana, el
 panel "Solicitudes en el sidecar de Products, por resultado" muestra las
 permitidas y las rechazadas.
 
@@ -1832,13 +1863,13 @@ permitidas y las rechazadas.
 > Authentication](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter)
 > y [Role Based Access Control -RBAC-
 > Filter](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter)
-> para tener más información sobre los dos filtros de Envoy que usa el sidecar.
+> para tener más información sobre los dos filtros de Envoy que usa el *sidecar*.
 
 #### Valet Key
 
 **Problema:** si los archivos de los clientes -imágenes, documentos- pasan por
 la aplicación, la aplicación gasta red, memoria y tiempo en mover bytes, y el
-gateway tiene que aceptar cuerpos grandes. Si en cambio el cliente accede
+*gateway* tiene que aceptar cuerpos grandes. Si en cambio el cliente accede
 directamente al almacenamiento con las credenciales de la aplicación, puede
 hacer cualquier cosa con todos los datos.
 
@@ -1849,7 +1880,7 @@ clave de la cuenta, pero no la entrega: le da al cliente una URL firmada -una
 SAS, *Shared Access Signature*- que permite una sola operación, sobre la imagen
 de un solo `Product`, durante 2 minutos como máximo. Con esa URL, el cliente
 sube o baja la imagen directamente de Azurite, y los bytes no pasan por el
-gateway ni por `Products`. En AWS, el equivalente de una SAS es una URL
+*gateway* ni por `Products`. En AWS, el equivalente de una SAS es una URL
 prefirmada de [Amazon S3](https://aws.amazon.com/s3/) -*presigned URL*-, que
 también permite una operación sobre un objeto durante un tiempo acotado:
 
@@ -1859,7 +1890,7 @@ también permite una operación sobre un objeto durante un tiempo acotado:
 * `GET /products/{id}/image` redirige, con 302, a una URL para leer la imagen.
 * `PUT /products/{id}/image` es la forma sin Valet Key, para comparar:
   `Products` recibe la imagen y la sube él mismo, con su clave. Por la entrada
-  HTTP, el gateway acepta hasta 20 MB en esa ruta; por la HTTPS, el
+  HTTP, el *gateway* acepta hasta 20 MB en esa ruta; por la HTTPS, el
   [Gatekeeper](#gatekeeper) no deja pasar más de 64 KB.
 
 Lo hace la clase `ProductImages`, en
@@ -1870,9 +1901,9 @@ de lectura, y `UploadAsync` sube la imagen sin Valet Key. Los usan los métodos
 `ProductsController`, en
 [ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs).
 La firma se calcula con la clave de la cuenta, sin llamar a Azurite, y no
-incluye el host: `Products` llega a Azurite como `azurite:10000`, y la URL que
+incluye el *host*: `Products` llega a Azurite como `azurite:10000`, y la URL que
 entrega dice `localhost:10000`, la dirección que usa el cliente. Como en
-cualquier cambio del catálogo, el sidecar exige el rol `admin` para pedir una
+cualquier cambio del catálogo, el *sidecar* exige el rol `admin` para pedir una
 URL de escritura.
 
 **Cómo funciona:**
@@ -1884,7 +1915,7 @@ URL de escritura.
 ![Clases de las imágenes de Products](assets/22-valet-key-clases.svg)
 
 **Cómo verlo:** la demo [22 de Valet Key](demos/22-valet-key.sh) sube una imagen
-de 5 MB a través de `Products`, por HTTP; por HTTPS, el gateway la rechaza con
+de 5 MB a través de `Products`, por HTTP; por HTTPS, el *gateway* la rechaza con
 413. Después carol pide una URL firmada y sube la imagen directamente a Azurite.
 Con esa URL no se puede leer la imagen, ni escribir la de otro `Product`, y sin
 la firma no se puede nada. Una URL que vence a los 5 segundos funciona enseguida
@@ -1904,8 +1935,6 @@ URL firmadas.
 
 ## Demos de facilidad de modificación
 
-**Estado: implementada en este repositorio, sobre las demos de seguridad.**
-
 Escenario: la aplicación crece y tiene que cambiar sin detenerse. Hay que sumar
 un cliente que usa datos de otros servicios sin adoptar su modelo, ajustar el
 comportamiento sin redesplegar, integrarse con un sistema legado que no se puede
@@ -1917,31 +1946,31 @@ Qué se muestra:
 * Configuración central que se recarga sin reiniciar.
 * Un puente de mensajería entre la aplicación y un ERP legado simulado.
 * Migración progresiva de rutas desde un monolito.
-* Un backend para la web y otro para la app móvil.
+* Un *backend* para la web y otro para la app móvil.
 
 Resultado observable: un cliente nuevo que se agrega sin conocer el modelo de
 `Orders` ni el [SOAP](https://www.w3.org/TR/soap/) de `Users`, cambios de
 configuración sin reiniciar ningún contenedor, una `Order` que se factura en un
-ERP aunque el broker del ERP haya estado caído, un monolito que se apaga sin que
-el cliente lo note, y un backend que se redespliega sin que el otro cliente lo
+ERP aunque el *broker* del ERP haya estado caído, un monolito que se apaga sin que
+el cliente lo note, y un *backend* que se redespliega sin que el otro cliente lo
 note.
 
 ### Qué agrega a las demos de seguridad
 
 | Componente | Para qué |
 | ---------- | -------- |
-| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService](src/PurchasesService/). El gateway lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
+| `purchases-service` | `Purchases`, con su capa anticorrupción, en [PurchasesService](src/PurchasesService/). El *gateway* lo publica en `/purchases/`, solo en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110). |
 | `consul` | El almacén de configuración, con la consola en <http://localhost:8500>. |
-| `legacy-broker` | [ActiveMQ](https://activemq.apache.org/), el broker del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
+| `legacy-broker` | [ActiveMQ](https://activemq.apache.org/), el *broker* del ERP, con la consola en <http://localhost:8161/admin/> -usr: `admin` pwd: `admin`-. |
 | `legacy-erp` | Un ERP simulado, en [Program.cs](src/LegacyErp/Program.cs). |
 | `messaging-bridge` | El puente entre [RabbitMQ](https://www.rabbitmq.com/) y ActiveMQ, en [MessagingBridge](src/MessagingBridge/). |
 | `monolith` | El sistema que se reemplaza, en [Program.cs](src/Monolith/Program.cs). |
-| Fachada del gateway | `http://localhost:8090`, con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
-| `bff-web` y `bff-mobile` | Un backend para la web y otro para la app móvil, en [BffWeb](src/BffWeb/) y [BffMobile](src/BffMobile/). El gateway los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
+| Fachada del *gateway* | `http://localhost:8090`, con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf). |
+| `bff-web` y `bff-mobile` | Un *backend* para la web y otro para la app móvil, en [BffWeb](src/BffWeb/) y [BffMobile](src/BffMobile/). El *gateway* los publica en `/web/` y `/mobile/`, solo en la entrada HTTP. |
 
 ### Patrones de facilidad de modificación
 
-Cada patrón tiene un script en [demos](demos/), del `23` al `27`, y un paso a
+Cada patrón tiene un *script* en [demos](demos/), del `23` al `27`, y un paso a
 paso en [05-modifiability.azcli](commands/05-modifiability.azcli). Los
 *logs* de [Docker](https://www.docker.com/) muestran los eventos con una
 etiqueta: `[EXTERNAL CONFIG]` en los servicios, `[MESSAGING BRIDGE]` en
@@ -1988,10 +2017,10 @@ de `Purchases` de la capa que traduce.
   * La clase `OrdersPurchaseSource` las combina, y le pregunta a `Users` una
     sola vez por comprador.
 * **Lo que se descarta:** la capa lee solo los campos que usa. Si `Orders`
-  agrega campos, como la fecha de creación que la demo le agrega con un flag, la
+  agrega campos, como la fecha de creación que la demo le agrega con un *flag*, la
   capa no cambia.
 * **El endpoint:** `GET /purchases/product/{productId}`, publicado por el
-  gateway en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).
+  *gateway* en la entrada [HTTP](https://datatracker.ietf.org/doc/html/rfc9110).
 
 La capa puede ser parte del servicio, como acá, o un servicio aparte que
 comparten varios clientes. En Azure, una capa compartida podría ser una
@@ -2002,7 +2031,7 @@ función de [AWS Lambda](https://aws.amazon.com/lambda/) o [Amazon API
 Gateway](https://aws.amazon.com/api-gateway/).
 
 La clase `ErpFormat` de [Messaging Bridge](#messaging-bridge) también traduce,
-pero formatos de mensajes entre dos brokers. Esta capa protege el modelo de un
+pero formatos de mensajes entre dos *brokers*. Esta capa protege el modelo de un
 servicio.
 
 **Cómo funciona:**
@@ -2028,7 +2057,7 @@ return orders
 **Cómo verlo:**
 la demo [23 de Anti-corruption Layer](demos/23-anti-corruption-layer.sh) muestra,
 para el mismo `Product`, la respuesta de `Orders`, la de `Users` por SOAP y la
-de `Purchases`. Después cambia el modelo de `Orders`: prende un flag en
+de `Purchases`. Después cambia el modelo de `Orders`: prende un *flag* en
 [Consul](https://developer.hashicorp.com/consul) con el que cada `Order` trae su
 fecha de creación, y muestra que la respuesta de `Purchases` es idéntica a la de
 antes. Crea una `Order` para el `User` 2 y la muestra como una compra de bob. Al
@@ -2108,10 +2137,12 @@ que leerla en cada uso, y no guardarla al arrancar. Los valores de la demo:
 | Clave en Consul | Quién la usa | Para qué |
 | --------------- | ------------ | -------- |
 | `andis/Orders/MaxQuantity` | El método `CreateOrder` de la clase `OrdersController` | Límite: cuántas unidades de un `Product` se pueden pedir en una `Order`. Sin valor, no hay límite |
-| `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | Feature flag: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
-| `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | Feature flag: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 23, para cambiar el modelo de `Orders` |
+| `andis/Features/ProductPrices` | El método `GetOrdersForUser` de la clase `OrdersController` | *Feature flag*: si el detalle de las `Orders` de un `User` muestra el precio unitario. Sin valor, no lo muestra |
+| `andis/Features/OrderDates` | El método `ListOrders` de la clase `OrdersController` | *Feature flag*: si la lista de `Orders` trae la fecha de creación de cada una. Lo usa la demo 23, para cambiar el modelo de `Orders` |
 | `andis/Products/CacheTtlSeconds` | El método `GetOrLoadAsync` de la clase `ProductCache` | Un valor de otro servicio: cuántos segundos dura un `Product` en la caché de [Redis](https://redis.io/) |
 | `andis/ProductsService/BaseUrl` | El `HttpClient` de `Products`, en [Program.cs](src/OrdersService/Program.cs) | Una URL: la dirección con la que `Orders` llama a `Products`. Sirve para mover una dependencia sin tocar la imagen |
+| `andis/Energy/WindowOpen` | El método `GetWindow` de la clase `EnergyController` | Si la ventana de [Queue Non-Urgent Processing Requests](#queue-non-urgent-processing-requests) está abierta. Lo usa la demo 37. Sin valor, está cerrada |
+| `andis/Energy/WindowReplicas` | El método `GetWindow` de la clase `EnergyController` | Cuántas réplicas del *worker* pide la ventana abierta. Sin valor, 3 |
 
 **Cómo funciona:**
 
@@ -2168,7 +2199,7 @@ auditoría.
 pueden cambiar. Integrarlos por HTTP obliga a modificar a los dos, los acopla en
 el tiempo y hay que construir los reintentos a mano.
 
-**Qué es [ActiveMQ](https://activemq.apache.org/):** un broker de mensajes de
+**Qué es [ActiveMQ](https://activemq.apache.org/):** un *broker* de mensajes de
 código abierto de Apache Foundation, escrito en Java. Es un intermediario que
 recibe mensajes, los guarda y los entrega, para que quien envía y quien recibe
 no tengan que estar disponibles al mismo tiempo. Implementa
@@ -2178,10 +2209,10 @@ dos variantes: Classic, la que usa la demo, y Artemis, la de nueva generación.
 
 * **Colas y tópicos:** el mensaje de una cola lo recibe un solo consumidor, y el
   de un tópico todos los suscriptores. La demo usa colas.
-* **Confirmaciones:** si el consumidor no confirma un mensaje, el broker lo
+* **Confirmaciones:** si el consumidor no confirma un mensaje, el *broker* lo
   vuelve a entregar.
 * **Persistencia:** los mensajes persistentes se guardan en disco y sobreviven a
-  un reinicio del broker.
+  un reinicio del *broker*.
 * **Protocolos:** el nativo es
   [OpenWire](https://activemq.apache.org/components/classic/documentation/openwire),
   y también admite [AMQP](https://www.amqp.org/),
@@ -2210,7 +2241,7 @@ muestra las colas y sus mensajes.
 | Modelo | Se publica a un exchange, que enruta a las colas | Se publica directamente a una cola o a un tópico |
 | En la demo | La mensajería de la aplicación | La mensajería del ERP |
 
-Ninguno es mejor por sí mismo. La demo necesita dos brokers porque el patrón
+Ninguno es mejor por sí mismo. La demo necesita dos *brokers* porque el patrón
 existe para conectar infraestructuras incompatibles: con uno solo no habría nada
 que puentear. En Azure, el lado moderno sería [Azure Service
 Bus](https://azure.microsoft.com/products/service-bus/), y en AWS, [Amazon
@@ -2233,15 +2264,15 @@ El método `ExecuteAsync` de la clase `Erp` repite este ciclo:
 
 Tres detalles del ciclo:
 
-* **Consumidor suscripto:** no consulta la cola cada tanto. El broker le entrega
+* **Consumidor suscripto:** no consulta la cola cada tanto. El *broker* le entrega
   cada mensaje en cuanto llega, y la espera de 1 segundo solo sirve para revisar
   si el servicio se está deteniendo.
 * **Transacción:** el pedido se consume y la factura se envía juntos, o nada. Si
-  el ERP se cae en el medio, el broker vuelve a entregar el pedido.
+  el ERP se cae en el medio, el *broker* vuelve a entregar el pedido.
 * **Registros inválidos:** solo se registra un aviso y el mensaje se descarta,
   sin reintentos ni cola de errores.
 
-**Implementación:** el único componente que conoce los dos brokers es
+**Implementación:** el único componente que conoce los dos *brokers* es
 `messaging-bridge`:
 
 * **De RabbitMQ a ActiveMQ:** la clase `OrdersToErpBridge`, en
@@ -2254,7 +2285,7 @@ Tres detalles del ciclo:
   clase `OrderDetailsProjector` la agrega al historial de la `Order`. Los
   rechazos los publica como `order.invoice-failed`, y el *worker* cancela la
   `Order`.
-* **Entrega al menos una vez:** el puente confirma en un broker recién después
+* **Entrega al menos una vez:** el puente confirma en un *broker* recién después
   de que el otro recibió. Si un lado no está, los mensajes esperan. Si el puente
   se cae en el medio, el mensaje se repite: el ERP emite la misma factura,
   porque su número sale del pedido, y `Orders` no la registra dos veces. Los
@@ -2302,7 +2333,7 @@ factura.
 | Cambio | ¿Lo anticipa? | Qué implica |
 | ------ | ------------- | ----------- |
 | Cambiar el formato de los registros del ERP | Sí | Solo la clase `ErpFormat` |
-| Reemplazar ActiveMQ por otro broker | Sí | Solo `messaging-bridge`; `Orders` no se entera |
+| Reemplazar ActiveMQ por otro *broker* | Sí | Solo `messaging-bridge`; `Orders` no se entera |
 | Cambiar el flujo interno de `Orders` | Sí | El ERP no se entera, mientras `Orders` siga publicando `order.confirmed` |
 | Reenviar otro evento | En parte | Otro suscriptor en el puente, sin tocar a quien lo publica, pero el ERP tiene que entenderlo |
 | Enviarle al ERP un dato que el evento no trae | No | Hay que cambiar el evento y a `Orders`: ya pasó con `OrderConfirmed` |
@@ -2312,7 +2343,7 @@ factura.
 
 | Alternativa | A favor | En contra |
 | ----------- | ------- | ---------- |
-| Puente | No cambia a los sistemas, tolera caídas y permite migrar de a poco | Un componente más, sin *features* que no existan en los dos brokers, y duplicados que hay que tolerar. El de la demo es una sola instancia |
+| Puente | No cambia a los sistemas, tolera caídas y permite migrar de a poco | Un componente más, sin *features* que no existan en los dos *brokers*, y duplicados que hay que tolerar. El de la demo es una sola instancia |
 | Integración directa por HTTP | Sin componentes nuevos, respuesta inmediata | Hay que modificar los dos sistemas, los acopla en el tiempo y los reintentos son a mano |
 | Cambiar el ERP para que use RabbitMQ | Una sola infraestructura | Muchas veces es imposible, y siempre es lo más caro y riesgoso |
 
@@ -2322,7 +2353,7 @@ factura.
 > pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/messaging-bridge)
 > para tener más información sobre el patrón, la [documentación de ActiveMQ
 > Classic](https://activemq.apache.org/components/classic/documentation) sobre
-> el broker, y [Message
+> el *broker*, y [Message
 > Translator](https://www.enterpriseintegrationpatterns.com/patterns/messaging/MessageTranslator.html)
 > sobre la traducción.
 
@@ -2430,7 +2461,7 @@ para el monolito:
 | El monolito le pregunta al servicio | Al migrar `Products`, el monolito deja de leer su tabla y llama a `Products` por HTTP | No hay copia, así que no hay divergencia | Hay que cambiar el monolito, se pierde el JOIN, y depende de que `Products` responda |
 | Base compartida durante la transición | El servicio nuevo usa la base del monolito, y se separa después | No hay divergencia y se migra primero el código | Acopla el servicio al esquema del monolito, y la separación queda pendiente |
 | Sincronización con eventos | El monolito se suscribe a `product.updated` y actualiza su copia | Reutiliza la mensajería, y `Products` no conoce al monolito | Hay que cambiar el monolito, y la consistencia es eventual |
-| Captura de cambios | Una herramienta como [Debezium](https://debezium.io/) lee el log de la base del dueño y aplica los cambios en la otra | No cambia el código del sistema de origen | Otra infraestructura que operar, y hay que traducir entre esquemas |
+| Captura de cambios | Una herramienta como [Debezium](https://debezium.io/) lee el *log* de la base del dueño y aplica los cambios en la otra | No cambia el código del sistema de origen | Otra infraestructura que operar, y hay que traducir entre esquemas |
 | Escritura doble | Cada escritura va a las dos bases | Parece lo más simple | Si falla la segunda escritura, las bases divergen sin aviso; no se recomienda sin un [Transactional Outbox](#transactional-outbox) |
 
 Para esta aplicación, la opción con mejor relación entre costo y resultado es
@@ -2480,7 +2511,7 @@ muestra una tabla con el precio de cada `Product` y el total. La app, en una
 pantalla chica y con una red que puede ser lenta, muestra solo el `Product` y el
 estado.
 
-**Implementación:** un backend por cliente, que mantiene el equipo de ese
+**Implementación:** un *backend* por cliente, que mantiene el equipo de ese
 cliente.
 
 * **`bff-web`:** [Program.cs](src/BffWeb/Program.cs). Pide las `Orders` a
@@ -2493,8 +2524,8 @@ cliente.
 * **El despliegue:** cada BFF es un contenedor aparte, así que se cambia y se
   redespliega sin tocar al otro ni a los servicios.
 
-No es lo mismo que el gateway: el gateway es uno solo para todos los clientes, y
-acá hay un backend por cliente. El gateway solo enruta a cada uno.
+No es lo mismo que el *gateway*: el *gateway* es uno solo para todos los clientes, y
+acá hay un *backend* por cliente. El *gateway* solo enruta a cada uno.
 
 En Azure, cada BFF podría correr en [Azure Container
 Apps](https://azure.microsoft.com/products/container-apps/) y publicarse con
@@ -2529,11 +2560,11 @@ app puede recibir algún `502 Bad Gateway`; la web sigue respondiendo `200 OK`, 
 | Cambio | ¿Lo anticipa? | Qué implica |
 | ------ | ------------- | ----------- |
 | Cambiar lo que muestra un cliente | Sí | Solo su BFF, que se despliega sin coordinar con el otro |
-| Agregar un cliente nuevo, como un reloj | Sí | Un BFF nuevo y una ruta en el gateway; los demás no cambian |
+| Agregar un cliente nuevo, como un reloj | Sí | Un BFF nuevo y una ruta en el *gateway*; los demás no cambian |
 | Que un cliente use otra fuente de datos | Sí | Solo su BFF |
 | Cambiar una regla de negocio de `Orders` | No | Hay que cambiar `Orders`, y cada BFF que la haya repetido |
 | Cambiar el contrato de `Orders` o de `Products` | No | El patrón lo encarece: cada BFF que lo usa tiene que adaptarse |
-| Algo que necesitan todos los clientes, como la autenticación | No | Se repite en cada BFF, o va al gateway |
+| Algo que necesitan todos los clientes, como la autenticación | No | Se repite en cada BFF, o va al *gateway* |
 
 **Ventajas y desventajas:**
 
@@ -2560,9 +2591,9 @@ El beneficio de estos patrones se ve en lo que no pasa: no hay errores, cortes
 ni reinicios. Para mostrarlo,
 [load-modifiability.sh](demos/load-modifiability.sh) lanza un escenario de
 [k6](https://k6.io/) y hace los cambios mientras corre. Cada cambio queda
-marcado con una línea vertical en el dashboard, con una anotación de
+marcado con una línea vertical en el *dashboard*, con una anotación de
 [Grafana](https://grafana.com/oss/grafana/), para distinguir el antes y el
-después. Los scripts del `23` al `27` también marcan sus pasos si Grafana está
+después. Los *scripts* del `23` al `27` también marcan sus pasos si Grafana está
 levantado.
 
 ```bash
@@ -2622,26 +2653,26 @@ Cómo se calcula:
   proyectos, `Dockerfile`, YAML de [Docker
   Compose](https://docs.docker.com/compose/) y configuración de
   [nginx](https://nginx.org/). No se cuentan la documentación, los diagramas,
-  los scripts de `demos/`, los escenarios de `k6/`, el dashboard ni el archivo
+  los *scripts* de `demos/`, los escenarios de `k6/`, el *dashboard* ni el archivo
   `.sln`: son parte de la demostración, no de la aplicación.
 * **Líneas nuevas:** las líneas efectivas de los archivos que el patrón agrega.
 * **Líneas en archivos existentes:** las agregadas más las borradas según un
-  `diff` contra el commit `3a02c77`, el último sin estos patrones. Una línea
+  `diff` contra el *commit* `3a02c77`, el último sin estos patrones. Una línea
   modificada cuenta dos veces, como una borrada y una agregada. No cuentan los
   cambios que son solo de mayúsculas y minúsculas, como pasar las variables de
   entorno a mayúsculas.
 * **Archivos compartidos:** `docker-compose.yaml` y `nginx.conf` los tocan
   varios patrones, y cada línea se le asigna al patrón al que pertenece: por el
-  servicio en `docker-compose.yaml`, y por el bloque en `nginx.conf`. El script
+  servicio en `docker-compose.yaml`, y por el bloque en `nginx.conf`. El *script*
   verifica que lo repartido, más las 51 líneas que quedan fuera de los patrones,
   sume lo que dice `git`: 145 líneas en ambos casos. Lo que agregan las [demos
   de facilidad de despliegue](#demos-de-facilidad-de-despliegue) no se cuenta:
   el servicio `users-service-v2`, el puerto 8091 y su bloque en `nginx.conf`.
   Los archivos de `Orders` y `Products` también se reparten, por su contenido.
-* **Lo que queda fuera:** no se cuentan el ERP, su broker ni el monolito, porque
+* **Lo que queda fuera:** no se cuentan el ERP, su *broker* ni el monolito, porque
   representan sistemas que ya existirían, ni `Purchases`, que es el cliente
   nuevo: de Anti-corruption Layer se cuenta solo la capa. Tampoco se cuenta el
-  flag de la fecha de creación en el método `ListOrders`, que simula un cambio
+  *flag* de la fecha de creación en el método `ListOrders`, que simula un cambio
   de otro equipo. El control los incluye, para que la suma coincida con `git`.
 * **Qué incluye de más:** el proveedor de configuración incluye su métrica para
   Grafana.
@@ -2650,9 +2681,9 @@ Cómo se calcula:
 
 | Cambio | Líneas | Contenedores reiniciados | Demora |
 | ------ | ------ | ------------------------ | ------ |
-| Cambiar un límite en el almacén | 0 | 0 | 1,0 a 2,2 segundos |
-| Cambiar un límite en una variable de entorno | 1 | 1 | 1,3 a 1,7 segundos |
-| Migrar una ruta del monolito | 1 | 0 | 1,4 segundos |
+| Cambiar un límite en el almacén | 0 | 0 | 1.0 a 2.2 segundos |
+| Cambiar un límite en una variable de entorno | 1 | 1 | 1.3 a 1.7 segundos |
+| Migrar una ruta del monolito | 1 | 0 | 1.4 segundos |
 
 Cómo se calcula:
 
@@ -2661,7 +2692,7 @@ Cómo se calcula:
   contenedor antes y después del cambio.
 * **Demora:** desde que se aplica el cambio hasta que se observa su efecto. Para
   el límite, hasta que una `Order` de 10 unidades responde `400 Bad Request`,
-  consultando cada 0,2 segundos; para la ruta, hasta que `X-Served-By` cambia.
+  consultando cada 0.2 segundos; para la ruta, hasta que `X-Served-By` cambia.
   Es el rango de tres ejecuciones, con las imágenes ya construidas.
 
 Cómo leerlo:
@@ -2686,9 +2717,6 @@ Cómo leerlo:
 
 ## Demos de facilidad de despliegue
 
-**Estado: implementada en este repositorio, sobre las demos de facilidad de
-modificación.**
-
 Escenario: `Users` tiene una versión nueva, que agrega un campo a la respuesta y
 trae un experimento. Hay que ponerla en producción sin cortar el servicio, con
 la posibilidad de volver atrás, exponiendo primero a pocos clientes y comparando
@@ -2703,6 +2731,26 @@ despliegan una nueva versión, los contenedores de la nueva versión configuran
 Desplegar un servicio sin tocar los demás es una de las ventajas de una
 arquitectura de microservicios: estas estrategias cambian solo `Users`, y
 `Orders`, `Products` y los demás servicios no se enteran.
+
+Las demos están en dos grupos, con enfoques distintos:
+
+* **Manual, con [Docker Compose](https://docs.docker.com/compose/):** cada paso de la estrategia lo hace el
+  *script*: levantar los contenedores de la versión nueva, esperar a que estén
+  sanos, cambiar la configuración del *gateway* para que les mande tráfico, mirar
+  los errores y, si hace falta, volver atrás. Así se ve cómo funciona cada
+  estrategia por dentro, pero cada paso depende de que alguien -o un *script*- lo
+  haga bien y a tiempo.
+* **Automático, con [Kubernetes](https://kubernetes.io/) y [Argo Rollouts](https://argoproj.github.io/rollouts/):**
+  se declara qué versión tiene que estar en producción y con qué estrategia, y
+  la plataforma hace los pasos. Es como se despliega en producción, por ejemplo
+  en [Azure Kubernetes
+  Service](https://azure.microsoft.com/products/kubernetes-service/) o en
+  [Amazon EKS](https://aws.amazon.com/eks/). Kubernetes reemplaza los
+  contenedores de a uno y verifica que cada uno esté listo, pero solo trae esa
+  estrategia, Rolling Upgrade, y no sabe si la versión nueva responde con
+  errores. Argo Rollouts agrega lo que falta: Blue/Green y Canary Testing, y un
+  análisis de las métricas de la versión nueva que decide si el despliegue
+  sigue o vuelve atrás solo.
 
 Qué se muestra:
 
@@ -2721,19 +2769,39 @@ con errores solo en porcentaje de solicitudes que Canary Testing manda a la
 versión nueva, el 10% o el 50% en la demo; y cada respuesta dice qué versión y
 qué variante la atendió.
 
+### Conceptos de Kubernetes
+
+Las demos automáticas usan un clúster de [Kubernetes](https://kubernetes.io/).
+Cada concepto tiene un análogo en Docker Compose -ver [Contenedores y Docker
+Compose](#contenedores-y-docker-compose)-:
+
+| Concepto | Qué es | En Docker Compose |
+| -------- | ------ | ----------------- |
+| [Clúster y nodo](https://kubernetes.io/docs/concepts/architecture/) | El clúster es el conjunto de máquinas que maneja Kubernetes, y cada máquina es un nodo. El de las demos tiene un solo nodo, creado con [kind](https://kind.sigs.k8s.io/), que corre Kubernetes dentro de contenedores de Docker. | La máquina donde corre Docker |
+| [Pod](https://kubernetes.io/docs/concepts/workloads/pods/) | Lo que Kubernetes ejecuta: uno o más contenedores que comparten red y se crean y se borran juntos. En las demos, cada pod tiene un solo contenedor. | Un contenedor |
+| [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) | Declara cuántas réplicas de un pod tiene que haber y con qué imagen. Kubernetes crea, borra y reemplaza pods hasta cumplirlo, y si uno se cae, levanta otro. | Un servicio, con `--scale` |
+| [Service](https://kubernetes.io/docs/concepts/services-networking/service/) | Un nombre y una dirección estables para un grupo de pods, elegidos por sus etiquetas, por ejemplo `app: users`. Reparte las solicitudes entre ellos. | El nombre de un servicio en la red |
+| [readinessProbe](https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/) | La prueba con la que Kubernetes decide si un pod está listo para recibir solicitudes. Hasta que la pasa, el Service no le manda ninguna. | El `healthcheck` |
+| [Manifiesto](https://kubernetes.io/docs/concepts/overview/working-with-objects/) | Un archivo YAML que declara un recurso: un Deployment o un Service. Los de las demos están en [k8s](k8s/). | `docker-compose.yaml` |
+| [kubectl](https://kubernetes.io/docs/reference/kubectl/) | La línea de comandos de Kubernetes: `kubectl apply` crea o actualiza los recursos de un manifiesto, y `kubectl get` los consulta. | `docker compose` |
+| [Namespace](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/) | Un espacio de nombres dentro del clúster, para separar recursos. Los de las demos están en `andis`. | Un proyecto de Docker Compose |
+| [Gateway API](https://gateway-api.sigs.k8s.io/) | La entrada de las solicitudes desde fuera del clúster: un Gateway es la entrada, y cada `HTTPRoute` dice a qué Service va cada ruta. | El *gateway* nginx y su configuración |
+| [Recurso personalizado](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) | Un tipo de recurso que una herramienta agrega a Kubernetes. Se declara en un manifiesto y se maneja con `kubectl`, como los propios de Kubernetes. | — |
+| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Agrega dos recursos personalizados: el `Rollout`, que reemplaza al Deployment y despliega con Blue/Green o Canary; y el `AnalysisTemplate`, la consulta a Prometheus que decide si el despliegue sigue o vuelve atrás. | Los *scripts* de las demos manuales |
+
 ### Qué agrega a las demos de facilidad de modificación
 
 | Componente | Para qué |
 | ---------- | -------- |
 | `users-service-v2` | La versión `v2` de `Users`: la misma imagen que `users-service`, con `RELEASE__VERSION: "2"`, y la misma base. No publica puertos, y tiene el [alias de red](https://docs.docker.com/reference/compose-file/services/#aliases) `users-pool`. Solo lo usan estas demos; `Orders`, `Purchases` y la fachada siguen llamando a `users-service`. |
-| Entrada de despliegue del gateway | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
+| Entrada de despliegue del *gateway* | `http://localhost:8091`, solo para `/users/`. A qué versión va cada solicitud lo define [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf). |
 | Encabezado `X-Version` | Cada respuesta de `Users` dice qué versión la atendió. Lo agrega el método `UseReleaseHeader` de la clase `ReleaseExtensions`, en [Release.cs](src/UsersService/Release.cs). |
 | El experimento | La clase `Experiment`, en [Experiment.cs](src/UsersService/Experiment.cs). Solo lo usa la versión `v2` de `Users`. |
 | `unleash` y `unleash-db` | [Unleash](https://www.getunleash.io/) decide qué variante del experimento ve cada `User`. Están en el perfil `feature-flags` de [docker-compose.yaml](docker-compose.yaml), con la consola en `http://localhost:4242`; la demo 31 los levanta sola. |
 | El clúster de [Kubernetes](https://kubernetes.io/) | Un clúster de [kind](https://kind.sigs.k8s.io/), de un nodo, para las demos 32 a 34. Lo crea [k8s-up.sh](demos/k8s-up.sh) y lo borra [k8s-down.sh](demos/k8s-down.sh); los manifiestos están en [k8s](k8s/). Tiene su propia base de `Users`, y no usa nada de Docker Compose. |
 | Una imagen por versión de `Users` | `users-service:v1`, `users-service:v2` y `users-service:v3-bad`, construidas con los argumentos `RELEASE_VERSION` y `CHAOS_FAILURE_RATE` de [Dockerfile](src/UsersService/Dockerfile). La `v3-bad` falla en el 30% de las solicitudes desde que arranca, porque el método `UseChaos` de la clase `ChaosExtensions`, en [Chaos.cs](src/Common/Chaos.cs), toma de la configuración las fallas iniciales. |
-| El *Gateway* del clúster | La entrada de los clientes en el puerto 8092: un *Gateway* de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [gateway.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
-| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el plugin `kubectl argo rollouts`. |
+| El Gateway del clúster | La entrada de los clientes en el puerto 8092: un Gateway de [Gateway API](https://gateway-api.sigs.k8s.io/), implementado con [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/), en [*gateway*.yaml](k8s/base/gateway.yaml). Cumple el papel de la entrada de despliegue del puerto 8091. |
+| [Argo Rollouts](https://argoproj.github.io/rollouts/) | Despliega cada versión con una estrategia, y en las demos 33 y 34 decide si sigue o vuelve atrás con el análisis de [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml), que consulta al [Prometheus](https://prometheus.io/) del clúster. Se maneja con el *plugin* `kubectl argo rollouts`. |
 
 La versión `v2` de `Users` es el mismo código -la misma imagen- de la versión
 `v1` con otra configuración y en otros contenedores, para simplificar las demos
@@ -2744,14 +2812,14 @@ de Kubernetes, o un `Rollout` de Argo Rollouts, cuyos pods cambian de imagen.
 
 ### Patrones de facilidad de despliegue
 
-Cada estrategia tiene un script en [demos](demos/), del `28` al `31`, y un paso
+Cada estrategia tiene un *script* en [demos](demos/), del `28` al `31`, y un paso
 a paso en [06-deployability.azcli](commands/06-deployability.azcli).
 Blue/Green, Rolling Upgrade y Canary Testing tienen además una versión con
 [Kubernetes](https://kubernetes.io/), del `32` al `34`, análoga a la demo de
 [Docker Compose](https://docs.docker.com/compose/) pero automatizando el
 despliegue. Necesitan el clúster, que se crea una vez con `./demos/k8s-up.sh`, y
 además de Docker, [kind](https://kind.sigs.k8s.io/),
-[kubectl](https://kubernetes.io/docs/reference/kubectl/) y el [plugin de Argo
+[kubectl](https://kubernetes.io/docs/reference/kubectl/) y el [*plugin* de Argo
 Rollouts](https://argoproj.github.io/argo-rollouts/features/kubectl-plugin/)
 para kubectl. Los *logs* de `api-gateway` muestran cada solicitud de la entrada
 de despliegue publicada en el puerto 8091 con la etiqueta `[DEPLOY]`, la
@@ -2764,9 +2832,9 @@ estrategias en Grafana](#las-estrategias-en-grafana).
 
 Cambiar de estrategia de despliegue -pasar de Blue/Green a Canary, o cambiar la
 configuración de Canary- es reescribir `deployment-routes.conf` en el contenedor
-del gateway y recargar [nginx](https://nginx.org/), sin cortar el servicio. La
+del *gateway* y recargar [nginx](https://nginx.org/), sin cortar el servicio. La
 función `deploy_routes` de [common.sh](demos/common.sh) lo hace en los
-scripts; el archivo del repositorio no cambia.
+*scripts*; el archivo del repositorio no cambia.
 
 Las cuatro estrategias de despliegue facilitan el mismo tipo de despliegue: una
 versión nueva de un servicio que es compatible con la anterior. Ninguna resuelve
@@ -2808,7 +2876,7 @@ son -resumidas-:
   3. Migrar la base en el momento de conmutar: simple, pero con un corte, y la
      vuelta atrás necesita revertir la migración.
   4. Separar el cambio de esquema del cambio de código, en despliegues
-     distintos, a veces con un feature flag que activa el uso de lo nuevo.
+     distintos, a veces con un *feature flag* que activa el uso de lo nuevo.
 
 En Azure, [Azure Container
 Apps](https://learn.microsoft.com/en-us/azure/container-apps/blue-green-deployment)
@@ -2856,15 +2924,15 @@ sonda pide el `User` 1 cada 0.1 segundos: las respuestas pasan de la versión
 
 ##### Cómo verlo con Kubernetes
 
-Lo que la demo 28 hace a mano, con [Kubernetes](https://kubernetes.io/) lo hace
+Lo que la demo 28 hace a mano, con Kubernetes lo hace
 [Argo Rollouts](https://argoproj.github.io/rollouts/), con un comando por paso.
-En Kubernetes, un `Rollout` es como un Deployment, pero con una estrategia de
+En Kubernetes, un `Rollout` es como un [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/), pero con una estrategia de
 despliegue.
 
 * **Los dos entornos:** al cambiar la imagen, Argo levanta los pods de la
   versión `v2` al lado de los de la `v1`, y se detiene a esperar, por
   `autoPromotionEnabled: false`.
-* **El conmutador:** la dirección de los clientes es el *Gateway*, publicado en
+* **El conmutador:** la dirección de los clientes es el Gateway, publicado en
   el puerto 8092, y su ruta, en [Gateway API](https://gateway-api.sigs.k8s.io/),
   manda siempre las solicitudes al Service `users-active`. El componente que
   elige el entorno es ese Service: Argo cambia su selector para que apunte a los
@@ -2896,7 +2964,7 @@ La demo [32 de Blue/Green Deployment con Kubernetes](demos/32-argo-blue-green.sh
 mismos pasos que la demo 28, y en cada uno muestra el estado del `Rollout` como
 lo muestra Argo: cada versión con sus pods y su papel, `stable`, `active` o
 `preview`. La conmutación y la vuelta atrás, con una sonda pidiendo el `User` 1
-cada 0,1 segundos, responden todas `200 OK`.
+cada 0.1 segundos, responden todas `200 OK`.
 
 En Azure, se hace igual en [Azure Kubernetes
 Service](https://azure.microsoft.com/products/kubernetes-service/) con Argo
@@ -2959,7 +3027,7 @@ Upgrade no las agrega-.
     Balancer de AWS.
 
 Es la estrategia por defecto de un Deployment de
-[Kubernetes](https://kubernetes.io/), de Azure Container Apps y de los
+Kubernetes, de Azure Container Apps y de los
 [servicios de
 ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html).
 En Kubernetes, cuántas instancias se reemplazan a la vez lo dicen `maxSurge` y
@@ -2992,7 +3060,7 @@ docker stop "users-v1-$1"
   [resolver](https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver)
   de nginx.conf, y así se entera de las instancias que entran y salen.
 * **La versión `v1`:** `users-service` publica el puerto 8002 y lo usan las
-  demás demos, así que no entra en el grupo. El script crea tres instancias a
+  demás demos, así que no entra en el grupo. El *script* crea tres instancias a
   partir de su definición, con [`docker compose
   run`](https://docs.docker.com/reference/cli/docker/compose/run/), y les agrega
   el alias `users-pool`.
@@ -3018,10 +3086,10 @@ segundos: todas las respuestas son `200 OK`, de las dos versiones.
 <!-- markdownlint-disable-next-line MD024 -->
 ##### Cómo verlo con Kubernetes
 
-En dos partes, para comparar lo que trae Kubernetes con lo que agrega [Argo
-Rollouts](https://argoproj.github.io/rollouts/).
+En dos partes, para comparar lo que trae Kubernetes con lo que agrega Argo
+Rollouts.
 
-* **El grupo:** la dirección de los clientes es el *Gateway*, publicado en el
+* **El grupo:** la dirección de los clientes es el Gateway, publicado en el
   puerto 8092, que manda las solicitudes al Service `users`. La marca del grupo
   es la etiqueta `app: users`: el Service reparte entre todos los pods que la
   tienen, de cualquier versión, y el Deployment y el `Rollout` se la ponen a
@@ -3042,7 +3110,7 @@ Rollouts](https://argoproj.github.io/rollouts/).
   5% o más, falla. Prometheus distingue los pods de cada versión por la etiqueta
   `rollouts_pod_template_hash` que Argo les pone.
 * **Los pods que se van:** cada pod espera 5 segundos antes de detenerse, con un
-  `preStop`, para que el *Gateway* deje de mandarle solicitudes antes. Es lo que
+  `preStop`, para que el Gateway deje de mandarle solicitudes antes. Es lo que
   en la demo 29 resuelve `proxy_next_upstream`.
 
 | Qué | Dónde |
@@ -3161,7 +3229,7 @@ split_clients "${request_id}" $users_target {
   publicada en el puerto 8091. El componente que reparte es el nginx de
   `api-gateway`, con
   [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html),
-  que elige el destino según un hash de `$request_id`, distinto en cada
+  que elige el destino según un *hash* de `$request_id`, distinto en cada
   solicitud. Cambiar el porcentaje es cambiar una línea y recargar nginx, con la
   función `deploy_canary`.
 * **La métrica por versión:** con `X-Version`, cada respuesta dice qué versión
@@ -3171,8 +3239,8 @@ split_clients "${request_id}" $users_target {
   Docker: esa versión responde `503 Service Unavailable` a todo.
 
 El reparto es por solicitud: el mismo cliente puede recibir una versión y
-después la otra. Para que cada cliente vea siempre la misma, el hash puede usar
-una cookie o el `User`.
+después la otra. Para que cada cliente vea siempre la misma, el *hash* puede usar
+una *cookie* o el `User`.
 
 La demo [30 de Canary Testing](demos/30-canary.sh) manda a la versión `v2` el 10%,
 el 50% y el 100% de las solicitudes, y con cada porcentaje cuenta cuántas
@@ -3184,16 +3252,16 @@ versión `v1`.
 ##### Cómo verlo con Kubernetes
 
 Lo que la demo 30 hace a mano -cambiar el porcentaje, mirar los errores,
-decidir- lo hace [Argo Rollouts](https://argoproj.github.io/rollouts/), con un
+decidir- lo hace Argo Rollouts, con un
 análisis después de cada paso.
 
-* **El reparto:** la dirección de los clientes es el *Gateway*, publicado en el
-  puerto 8092. El componente que reparte es el mismo *Gateway*, implementado con
+* **El reparto:** la dirección de los clientes es el Gateway, publicado en el
+  puerto 8092. El componente que reparte es el mismo Gateway, implementado con
   [NGINX Gateway Fabric](https://docs.nginx.com/nginx-gateway-fabric/): su ruta
   tiene dos destinos, `users-stable` y `users-canary`, cada uno con un peso, y
   reparte las solicitudes según esos pesos. Es el `split_clients` de la demo 30,
-  en [Gateway API](https://gateway-api.sigs.k8s.io/). Argo cambia los pesos con
-  su [plugin de Gateway
+  en Gateway API. Argo cambia los pesos con
+  su [*plugin* de Gateway
   API](https://rollouts-plugin-trafficrouter-gatewayapi.readthedocs.io/en/latest/).
 * **Los pasos:** 10% a la versión nueva, análisis, 50%, análisis, y 100%. Cada
   análisis es el mismo de la demo 33: los errores de los pods nuevos en
@@ -3209,7 +3277,7 @@ análisis después de cada paso.
 | El `Rollout`, con los pasos y el análisis | [rollout.yaml](k8s/canary/rollout.yaml) |
 | `users-stable` y `users-canary` | [services.yaml](k8s/canary/services.yaml) |
 | La ruta con los pesos | [httproute.yaml](k8s/canary/httproute.yaml) |
-| El permiso del plugin para cambiar la ruta | [argo-rollouts-gateway-api.yaml](k8s/base/argo-rollouts-gateway-api.yaml) |
+| El permiso del *plugin* para cambiar la ruta | [argo-rollouts-gateway-api.yaml](k8s/base/argo-rollouts-gateway-api.yaml) |
 
 ```yaml
 strategy:
@@ -3279,19 +3347,19 @@ Algunos `Users` se anotaron para probar lo nuevo y ven siempre la B.
 `Experiment`, que usa el método `GetUser` de la clase `UserService`. Qué
 variante ve cada `User` no lo decide ese código: lo decide
 [Unleash](https://www.getunleash.io/), un servicio de *feature flags* de código
-abierto, en el flag `users-display-name`. `Users` se lo pregunta a
+abierto, en el *flag* `users-display-name`. `Users` se lo pregunta a
 [OpenFeature](https://openfeature.dev/), el estándar abierto de *feature flags*
 de la [CNCF](https://www.cncf.io/).
 
-* **Por segmento:** la primera estrategia del flag tiene una restricción: si la
+* **Por segmento:** la primera estrategia del *flag* tiene una restricción: si la
   solicitud trae `X-Segment: beta`, la variante es la B.
 * **Por porcentaje:** si no, la segunda estrategia reparte los `Users` entre A y
-  B, la mitad en cada una. Unleash calcula un hash del id del `User`: el reparto
+  B, la mitad en cada una. Unleash calcula un *hash* del id del `User`: el reparto
   es aleatorio entre los `Users`, pero el mismo `User` cae siempre en la misma
   variante, y todas las réplicas eligen la misma, sin guardar nada en memoria
   -ver [Stateless y estado por réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
 * **El cambio del reparto:** se hace en Unleash, con la consola o con su API,
-  sin desplegar. `Users` vuelve a leer el flag cada 2 segundos.
+  sin desplegar. `Users` vuelve a leer el *flag* cada 2 segundos.
 * **Si Unleash no responde:** `Users` sigue con la última configuración que
   leyó. Si nunca la leyó, OpenFeature devuelve la variante A, el valor por
   omisión. Unleash no está en el camino de cada solicitud: la variante se
@@ -3301,7 +3369,7 @@ de la [CNCF](https://www.cncf.io/).
 * **La medida:** la métrica `users_experiment_total`, por variante y por
   segmento.
 
-A diferencia de Canary Testing, el reparto no está en el gateway, sino en un
+A diferencia de Canary Testing, el reparto no está en el *gateway*, sino en un
 servicio de *feature flags* que consulta la versión que trae el experimento.
 Canary decide qué versión atiende; A/B, qué variante ve cada `User` dentro de
 una versión.
@@ -3354,7 +3422,7 @@ por porcentaje](assets/31-ab-testing.svg)
 
 **Código:** la elección de la variante, en el método `ApplyAsync` de la clase
 `Experiment`. El contexto de la evaluación lleva el id del `User`, que fija la
-variante, y el segmento, que usa la restricción del flag:
+variante, y el segmento, que usa la restricción del *flag*:
 
 ```csharp
 var evaluation = EvaluationContext.Builder().SetTargetingKey(user.Id.ToString());
@@ -3379,7 +3447,7 @@ await Api.Instance.SetProviderAsync(new UnleashProvider(new UnleashSettings
 }));
 ```
 
-El feature flag y sus estrategias los crean las funciones `experiment_start` y
+El *feature flag* y sus estrategias los crean las funciones `experiment_start` y
 `experiment_split` de [common.sh](demos/common.sh), con la API de
 administración de Unleash.
 
@@ -3397,7 +3465,7 @@ cada variante, según las métricas de `Users`.
 | Situación | ¿La facilita? | Cómo |
 | --------- | ------------- | ---- |
 | Desplegar dos formas de una funcionalidad y compararlas | Sí | Cada `User` ve siempre la misma variante, y se cuenta cuántas veces se mostró cada una |
-| Mostrarle una variante a un segmento | Sí | Una restricción en el flag, sobre un campo del contexto de la evaluación |
+| Mostrarle una variante a un segmento | Sí | Una restricción en el *flag*, sobre un campo del contexto de la evaluación |
 | Cambiar el reparto o terminar el experimento | Sí | Un cambio en Unleash, sin desplegar |
 | Agregar una tercera variante | En parte | La variante se agrega en Unleash, pero mostrarla es un cambio en la clase `Experiment` y una versión nueva |
 | Saber qué variante funciona mejor | No | La demo cuenta cuántas veces se mostró cada una; falta medir qué hizo cada `User` después |
@@ -3422,8 +3490,8 @@ cada variante, según las métricas de `Users`.
 
 La demo [despliegue con carga](demos/load-deployment.sh) lanza un escenario de
 [k6](https://k6.io/) y despliega la versión `v2` mientras corre. Cada paso queda
-marcado con una línea vertical en el dashboard, con la etiqueta `despliegue`.
-Los scripts del `28` al `31` también marcan sus pasos si
+marcado con una línea vertical en el *dashboard*, con la etiqueta `despliegue`.
+Los *scripts* del `28` al `31` también marcan sus pasos si
 [Grafana](https://grafana.com/oss/grafana/) está levantado.
 
 ```bash
@@ -3454,8 +3522,8 @@ Compose, solo el perfil `observability`:
 ./demos/load-deployment.sh k8s-bluegreen   # también: k8s-rolling, k8s-canary
 ```
 
-k6 corre en Docker Compose y llega al *Gateway* del clúster por la red de
-Docker: el script suma el nodo de [kind](https://kind.sigs.k8s.io/) a esa red.
+k6 corre en Docker Compose y llega al Gateway del clúster por la red de
+Docker: el *script* suma el nodo de [kind](https://kind.sigs.k8s.io/) a esa red.
 Sus métricas van al mismo Prometheus, así que se ven en los mismos paneles. El
 panel "Errores de cada versión, según Users" lee el Prometheus del clúster:
 muestra lo que mide el análisis de [Argo
@@ -3464,12 +3532,467 @@ Rollouts](https://argoproj.github.io/rollouts/), con una línea roja en el 5%.
 | Estrategia | Qué se hace | Qué mirar | Resultado |
 | ---------- | ----------- | --------- | --------- |
 | Blue/Green, demo 32 | La versión `v2` en *preview*, `promote` y, 20 segundos después, `undo` | "Solicitudes por versión" y "Respuestas con error, por versión" | El tráfico pasa de una versión a la otra de una vez. Las 1201 solicitudes respondieron `200 OK` |
-| Rolling Upgrade, demo 33 | Con el Deployment: la versión `v2`, después la `v3-bad`, y `undo` a mano | Lo mismo | Cada reemplazo tarda unos 7 segundos. La versión `v3` respondió `503 Service Unavailable` 195 veces, hasta el `undo` |
+| Rolling Upgrade, demo 33 | Con el [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/): la versión `v2`, después la `v3-bad`, y `undo` a mano | Lo mismo | Cada reemplazo tarda unos 7 segundos. La versión `v3` respondió `503 Service Unavailable` 195 veces, hasta el `undo` |
 | Canary Testing, demo 34 | La versión `v2` hasta el 100%, y después la `v3-bad` | Lo mismo, y "Errores de cada versión, según Users" | La versión `v2` sigue a los pesos del 10% y el 50%, sin errores. La `v3` supera la línea del 5%, y Argo vuelve atrás: 17 respuestas `503` de 3999, todas de la `v3` |
 
 Además de los `503` de la versión `v3`, hubo unas pocas solicitudes sin
 respuesta: 6 de 2400 en Rolling Upgrade y 1 de 3999 en Canary. Coinciden con los
 cambios de pods: NGINX Gateway Fabric recarga nginx cada vez que cambian los
 pods detrás de un Service, y una recarga puede cortar alguna conexión que k6
-tenía abierta para reutilizar. En la demo 29, el gateway de Docker Compose no se
+tenía abierta para reutilizar. En la demo 29, el *gateway* de Docker Compose no se
 recarga: encuentra las instancias nuevas por DNS.
+
+## Demos de eficiencia energética
+
+Escenario: el *worker* de `Orders` procesa picos de `Orders` y entre un pico y
+otro no tiene nada que hacer. Con réplicas fijas, la máquina queda encendida
+para la CPU que reservan, aunque nadie la use. Hay que saber cuánta energía
+consume el *worker* y consumir menos sin perder ninguna `Order`.
+
+Qué se muestra:
+
+* Una estimación de la potencia de cada pod del *worker*, tanto ocioso como
+  procesando un pico.
+* Un *worker* que se apaga cuando la cola está vacía y se enciende cuando llegan
+  mensajes.
+* Un *worker* que solo procesa dentro de una ventana de tiempo, la de la energía
+  más limpia, y deja esperando en la cola lo que llega fuera de esa ventana.
+* Cuándo cada alternativa consume menos y qué consecuencias tiene: la demora en
+  procesar.
+
+Resultado observable: con 3 réplicas fijas, el *worker* consume alrededor de 1.1
+W aunque no haya `Orders`. Con escalado a cero, no consume nada entre un pico y
+otro. En una corrida de 10 minutos con tres picos, el escalado a cero consumió
+un 26% menos que las réplicas fijas.
+
+### Qué agrega a las demos de facilidad de despliegue
+
+| Componente | Para qué |
+| ---------- | -------- |
+| El *worker* en el clúster | El [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) `orders-worker` de [worker.yaml](k8s/energy/worker.yaml): la misma imagen que `orders-worker` de [Docker Compose](https://docs.docker.com/compose/), con 3 réplicas que reservan 0.25 vCPU cada una: sus [`requests`](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/), la CPU que Kubernetes aparta para cada pod en el nodo, la use o no. Corre en el clúster de [Kubernetes](https://kubernetes.io/) de las demos 32 a 34 -ver [Conceptos de Kubernetes](#conceptos-de-kubernetes)-, porque ahí se puede medir y escalar cada pod. |
+| La conexión con Docker Compose | El *worker* usa [RabbitMQ](https://www.rabbitmq.com/), la base de `Orders`, `Users` y `Products` de Docker Compose: el nodo de [kind](https://kind.sigs.k8s.io/) se conecta a la red de Docker Compose, y los pods llegan a cada servicio por su nombre -ver [worker-config.yaml](k8s/energy/worker-config.yaml)-. Mientras corre el del clúster, el `orders-worker` de Docker Compose queda en 0 réplicas, para que no compitan por la cola `orders.process`. |
+| [KEDA](https://keda.sh/) | Cambia las réplicas del *worker* según el largo de la cola, en la demo 36, o según una ventana de tiempo, en la 37, y lo puede bajar a 0 réplicas. Se configura con un [ScaledObject](https://keda.sh/docs/latest/reference/scaledobject-spec/), un recurso personalizado que dice qué Deployment escalar y según qué métrica. Por cada ScaledObject, KEDA crea un [HorizontalPodAutoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/), el recurso de Kubernetes que cambia las réplicas según una métrica, y se encarga él mismo del paso de 0 a 1 réplica. Lo instala [k8s-up.sh](demos/k8s-up.sh). |
+| La estimación de la energía | [Prometheus](https://prometheus.io/) del clúster lee la CPU que usa cada contenedor y la que reserva. La que usa sale de [cAdvisor](https://github.com/google/cadvisor), incluido en el [kubelet](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/), el agente de Kubernetes que arranca los pods en cada nodo. La que reserva sale de [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics), que publica como métricas el estado de los recursos del clúster. Con las dos calcula la potencia de cada pod, con las reglas de `energy.rules.yml`, en [prometheus.yaml](k8s/base/prometheus.yaml). |
+| Fila "Eficiencia energética" en [Grafana](https://grafana.com/oss/grafana/) | Las réplicas del *worker*, la cola `orders.process`, la potencia estimada de cada pod y la energía del período. |
+
+Las demos 35 a 37 necesitan a la vez Docker Compose y el clúster: Docker
+necesita al menos 12 GB de memoria. Con menos, la máquina virtual de Docker se
+queda sin memoria, los servicios dejan de responder sus *health checks* y la CPU
+que se mide deja de ser la del *worker*.
+
+### Patrones de eficiencia energética
+
+Cada patrón tiene un *script* en [demos](demos/), del `35` al `37`, y un paso a
+paso en [07-energy-efficiency.azcli](commands/07-energy-efficiency.azcli).
+Necesitan el clúster, que se crea una vez con `./demos/k8s-up.sh`, y Docker
+Compose levantado. Cada *script* marca sus pasos en el *dashboard* de Grafana, con
+la etiqueta `energía`. Cómo ver los tres bajo la misma carga está en [La
+eficiencia energética en Grafana](#la-eficiencia-energética-en-grafana).
+
+Como las demás demos, estas no se conectan a ninguna nube. Cada patrón nombra
+los servicios equivalentes de Azure y de AWS.
+
+**La energía se estima, no se mide.** Medir la energía de un proceso necesita
+contadores en el hardware, como
+[RAPL](https://www.kernel.org/doc/html/latest/power/powercap/powercap.html) en
+los procesadores de Intel y AMD. Casi ninguna máquina virtual los expone, y el
+nodo de [kind](https://kind.sigs.k8s.io/) tampoco: es un contenedor dentro de la máquina virtual de Docker.
+[Kepler](https://sustainable-computing.io/), el medidor de energía más usado en
+[Kubernetes](https://kubernetes.io/), necesita esos contadores. Sin ellos, las demos usan el modelo de
+[Cloud Carbon Footprint](https://www.cloudcarbonfootprint.org/docs/methodology/),
+que estima la potencia de una vCPU a partir de su uso:
+
+```math
+P = \text{vCPU}_{\text{reservadas}} \times W_{\min} + \text{vCPU}_{\text{usadas}} \times (W_{\max} - W_{\min})
+```
+
+$P$ es la potencia del pod, en watts. $W_{\min}$ y $W_{\max}$ son los watts de
+una vCPU ociosa y al 100%: $W_{\min} = 0.78$ y $W_{\max} = 3.76$ en Azure,
+los que usan las demos; $W_{\min} = 0.74$ y $W_{\max} = 3.5$ en AWS. Los
+números sirven para comparar dos configuraciones del mismo *worker* en la misma
+máquina, no como valores absolutos.
+
+#### Power Monitor
+
+**Problema:** sin medir el consumo no se puede saber qué lo reduce. Las réplicas
+de un servicio parecen gratis cuando no tienen trabajo, pero la máquina tiene
+que estar encendida para la CPU y la memoria que reservan. Y el consumo de un
+pico se confunde con el de lo que estaba encendido antes.
+
+**Implementación:** un monitor de energía estima, en forma continua, la potencia
+de cada componente, para decidir con esos datos qué apagar o qué reducir.
+
+* **Qué se mide:** la CPU que usa cada pod, con `rate()` sobre los segundos de
+  CPU que informa [cAdvisor](https://github.com/google/cadvisor), y la que reserva, de los `requests` de su [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/),
+  con [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics).
+* **Cómo se convierte en energía:** con el modelo de Cloud Carbon Footprint, en
+  tres reglas de Prometheus. Una réplica ociosa consume la parte reservada.
+* **Dónde se ve:** en el panel "Potencia estimada del worker, por pod" de
+  Grafana, y en Prometheus del clúster, en <http://localhost:30090>.
+
+En Azure, la [Emissions Impact
+Dashboard](https://learn.microsoft.com/en-us/power-bi/connect-data/service-connect-to-emissions-impact-dashboard)
+estima las emisiones de cada suscripción; en AWS, la [Customer Carbon Footprint
+Tool](https://aws.amazon.com/aws-cost-management/aws-customer-carbon-footprint-tool/).
+Las dos informan por mes y por servicio, no por pod.
+
+**Cómo funciona:**
+
+![Prometheus estima la potencia de cada pod con la CPU que usa y la que
+reserva](assets/35-power-monitor.svg)
+
+**Código:** las reglas de `energy.rules.yml`, en
+[prometheus.yaml](k8s/base/prometheus.yaml):
+
+```yaml
+- record: pod:cpu_used:vcpu
+  expr: sum by (pod) (rate(container_cpu_usage_seconds_total{job="cadvisor"}[1m]))
+- record: pod:cpu_reserved:vcpu
+  expr: sum by (pod) (kube_pod_container_resource_requests{resource="cpu"})
+- record: pod:power:watts
+  expr: |
+    pod:cpu_reserved:vcpu * 0.78
+      + on (pod) (pod:cpu_used:vcpu * (3.76 - 0.78) or pod:cpu_reserved:vcpu * 0)
+```
+
+* La CPU usada se calcula sobre un minuto: cAdvisor actualiza la de cada
+  contenedor cada 10 a 15 segundos, y `rate()` necesita al menos dos muestras.
+* Un pod recién creado todavía no tiene dos muestras: mientras tanto se cuenta
+  solo su parte reservada.
+* La CPU reservada sale de kube-state-metrics y no de cAdvisor, porque si bien
+  cAdvisor también la informa, su resultado en este contexto es incorrecto.
+
+**Cómo verlo:** la demo [35 de Power Monitor](demos/35-power-monitor.sh) aplica
+el *worker* con 3 réplicas y muestra la CPU y la potencia de cada pod:
+
+| Momento | vCPU usadas por pod | Potencia de las 3 réplicas |
+| ------- | ------------------- | -------------------------- |
+| Ociosas | 0.05 a 0.06 | 1.09 W, de los que 0.58 W son de la CPU reservada |
+| Procesando un pico de 30 `Orders` | 0.08 | Hasta 1.37 W |
+
+La potencia sube poco con el pico: procesar una `Order` es casi todo esperar a
+`Users` y a `Products`. Lo que más pesa es la CPU reservada, que se consume haya
+o no `Orders`. Esa es la oportunidad que aprovecha la demo 36.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Evaluación
+
+**Qué facilita en la eficiencia energética:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| Saber qué componente consume más | Sí | La potencia de cada pod, en el mismo *dashboard* que el resto de las métricas |
+| Comparar dos configuraciones del mismo componente | Sí | La energía de cada una en el mismo período, con el mismo modelo |
+| Saber cuánta energía consume de verdad la máquina | No | Es una estimación: sin contadores de hardware, el modelo no ve la memoria, el disco ni la red |
+| Reducir el consumo | No, por sí solo | Mide; reducir lo hacen los patrones de las demos 36 y 37, con estos datos |
+| Medir sin consumir | No | Prometheus y kube-state-metrics están encendidos todo el tiempo, y Prometheus lee el kubelet cada 5 segundos. Conviene si lo que se mide permite ahorrar más que eso |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Estimar con un modelo, como en las demos | Funciona en cualquier máquina, también en una virtual | Los valores sirven para comparar, no como absolutos |
+| Medir con contadores de hardware, como Kepler con RAPL | Valores reales de la CPU y la memoria | Necesita acceso al hardware: en una nube pública, casi nunca |
+| Los informes del proveedor de nube | Incluyen todo lo que el proveedor sabe de su infraestructura | Llegan por mes y por servicio: no sirven para ver el efecto de un cambio |
+
+> [!TIP]
+>
+> Consulta la sección 6.4 de Bass, Clements y Kazman, *Software Architecture in
+> Practice*, 4.ª edición, sobre las tácticas y los patrones de eficiencia
+> energética, y la [metodología de Cloud Carbon
+> Footprint](https://www.cloudcarbonfootprint.org/docs/methodology/) sobre el
+> modelo que usan las demos.
+
+#### Use Serverless Cloud Services
+
+**Problema:** un servicio con réplicas fijas consume lo mismo con trabajo que sin
+él. Si el trabajo llega en picos, la mayor parte del tiempo las réplicas
+esperan y la máquina está encendida para nada. Agregar réplicas a mano para
+cada pico, como en la demo
+[13 de Competing Consumers para rendimiento](#competing-consumers-para-rendimiento),
+tampoco sirve: alguien tiene que mirar la cola.
+
+**Implementación:** el servicio no tiene réplicas encendidas cuando no hay
+trabajo y la plataforma las enciende cuando llegan solicitudes. Es lo que hacen
+los servicios *serverless*. El patrón es del catálogo de la [Green Software
+Foundation](https://patterns.greensoftware.foundation/architecture/technology-selection/use-serverless),
+y la demo muestra también otro de ese catálogo, [Scale logical components
+independently](https://patterns.greensoftware.foundation/architecture/system-topology/scale-logical-components-independently):
+el *worker* escala sin tocar `orders-service` ni los demás.
+
+* **Qué decide las réplicas:** el largo de la cola `orders.process`, que
+  incluye los mensajes que un *worker* está procesando sin confirmar. Así no se
+  apaga un *worker* que está trabajando.
+* **Cuántas:** 0 con la cola vacía, y una cada 5 mensajes, hasta 6.
+* **Cuándo se apagan:** 30 segundos después de que la cola se vacía, para no
+  apagar y encender entre dos mensajes seguidos.
+
+Escalar a cero solo es posible porque el *worker* es *stateless*: las `Orders`
+están en MySQL y los mensajes en RabbitMQ, y apagar una réplica no pierde nada
+-ver [Stateless y estado por
+réplica](ARCHITECTURE.md#stateless-y-estado-por-réplica) en ARCHITECTURE.md-.
+
+En Azure, [Azure Container
+Apps](https://learn.microsoft.com/en-us/azure/container-apps/scale-app) escala a
+cero con [KEDA](https://keda.sh/), y KEDA también está en [Azure Kubernetes
+Service](https://azure.microsoft.com/products/kubernetes-service/). En AWS,
+[AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) procesa
+una cola de SQS sin instancias encendidas, y KEDA funciona en [Amazon
+EKS](https://aws.amazon.com/eks/).
+
+**Cómo funciona:**
+
+![KEDA mira la cola y enciende o apaga el worker](assets/36-scale-to-zero.svg)
+
+**Código:** el [ScaledObject](https://keda.sh/docs/latest/reference/scaledobject-spec/) de
+[scaledobject-queue.yaml](k8s/energy/scaledobject-queue.yaml), con el
+[*scaler* de RabbitMQ](https://keda.sh/docs/latest/scalers/rabbitmq-queue/):
+
+```yaml
+spec:
+  scaleTargetRef:
+    name: orders-worker
+  minReplicaCount: 0
+  maxReplicaCount: 6
+  cooldownPeriod: 30
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: http
+        queueName: orders.process
+        mode: QueueLength
+        value: "5"
+```
+
+KEDA hace dos cosas: enciende y apaga el *worker*, de 0 a 1 réplica y de 1 a 0,
+y crea un
+[HorizontalPodAutoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
+de Kubernetes, que decide las réplicas de 1 a 6 con el largo de la cola. Cómo
+llega KEDA a RabbitMQ está en [rabbitmq-auth.yaml](k8s/energy/rabbitmq-auth.yaml).
+
+**Cómo verlo:** la demo [36 de escalado a cero](demos/36-scale-to-zero.sh)
+empieza con 3 réplicas fijas, como la 35, y mide su potencia. Al aplicar el
+ScaledObject, KEDA baja el *worker* a 0 réplicas. Un pico de 30 `Orders` lo
+enciende: unos 10 segundos después hay una réplica, y Kubernetes suma hasta 4 o
+6. Cuando la cola se vacía, KEDA espera 30 segundos y lo vuelve a apagar. Al
+final, la demo compara la energía del pico con la de las réplicas fijas:
+
+| Qué | Resultado |
+| --- | --------- |
+| Energía del *worker*, desde el pico hasta volver a 0 réplicas | 133 J en 69 segundos |
+| Tiempo en que las 3 réplicas fijas, ociosas, consumen lo mismo | 106 segundos |
+
+Durante el pico, el escalado a cero consume más que las réplicas fijas: llega a
+más réplicas, y cada pod nuevo usa mucha CPU al arrancar. Conviene si el
+*worker* pasa ocioso más de unos 100 segundos entre un pico y otro. Con picos
+más seguidos, conviene dejar réplicas encendidas.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Evaluación
+
+**Qué facilita en la eficiencia energética:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| No consumir cuando no hay trabajo | Sí | 0 réplicas con la cola vacía |
+| Atender un pico sin que nadie agregue réplicas | Sí | KEDA y el HorizontalPodAutoscaler las agregan según la cola |
+| Consumir menos con picos muy seguidos | No | Cada arranque cuesta energía: con menos de unos 100 segundos ociosos entre picos, consume más que las réplicas fijas |
+| Procesar enseguida el primer mensaje | No | Espera a que arranque un pod: unos 10 segundos |
+| Ahorrar sin agregar componentes | No | KEDA -su operador, su servidor de métricas y su *webhook*- está encendido todo el tiempo, y consulta RabbitMQ cada 5 segundos. Conviene si escala varios servicios, o si el servicio que apaga consume más que KEDA |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Escalado a cero | No consume entre picos, y se adapta solo a cada pico | El primer mensaje espera a que arranque un pod, y cada arranque consume |
+| Réplicas fijas | El primer mensaje se procesa enseguida | Consume lo mismo con trabajo que sin él |
+| Escalar según la cola, con un mínimo de 1 | Sin demora en el primer mensaje | Una réplica siempre encendida |
+
+> [!TIP]
+>
+> Consulta [Use serverless cloud
+> services](https://patterns.greensoftware.foundation/architecture/technology-selection/use-serverless)
+> en el catálogo de la Green Software Foundation, y [Scaling with
+> KEDA](https://keda.sh/docs/latest/concepts/scaling-deployments/) en la
+> documentación de KEDA.
+
+#### Queue Non-Urgent Processing Requests
+
+**Problema:** la energía de la red eléctrica no es igual de limpia en todo
+momento: depende de cuánta energía sale de fuentes renovables en cada hora. Un
+servicio que procesa todo apenas llega, usa la energía que haya en ese momento;
+si una parte del trabajo no es urgente, procesarlo en otro momento consume lo
+mismo, pero con menos emisiones.
+
+**Implementación:** el trabajo que no es urgente se encola, y se procesa solo
+dentro de una ventana de tiempo: las horas en que la energía es más limpia, o
+más barata. Es un patrón del catálogo de la [Green Software
+Foundation](https://patterns.greensoftware.foundation/architecture/system-topology/queue-non-urgent-requests).
+Usa la misma cola que [Queue-Based Load
+Leveling](#queue-based-load-leveling), pero con otra intención: no absorber un
+pico, sino elegir cuándo procesar.
+
+* **La ventana:** la clave `andis/Energy/WindowOpen` del almacén de
+  configuración de [External Configuration
+  Store](#external-configuration-store). Simula el pronóstico de las horas de
+  energía más limpia, y se abre y se cierra a mano para que la demo no tarde
+  horas.
+* **Fuera de la ventana:** el *worker* tiene 0 réplicas, y las `Orders` esperan
+  en la cola como `Pending`. `POST /orders/` responde `202 Accepted` igual,
+  porque solo guarda la `Order`.
+* **Dentro de la ventana:** 3 réplicas, que vacían la cola.
+
+En producción, la ventana sale de un pronóstico de la intensidad de carbono de
+la red. En Azure, el [carbon-aware KEDA
+operator](https://github.com/Azure/carbon-aware-keda-operator) cambia el máximo
+de réplicas de KEDA según ese pronóstico, en Azure Kubernetes Service. En AWS,
+una regla programada de [Amazon
+EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/using-eventbridge-scheduler.html)
+puede habilitar y deshabilitar al consumidor.
+
+**Cómo funciona:**
+
+![El worker solo procesa la cola dentro de la
+ventana](assets/37-deferred-processing.svg)
+
+**Código:** el método `GetWindow` de la clase `EnergyController`, en
+[EnergyController.cs](src/OrdersService/Controllers/EnergyController.cs), publica
+la ventana en `GET /energy/window`: `{"open": true, "replicas": 3}` con la
+ventana abierta y `{"open": false, "replicas": 0}` con la ventana cerrada. Lee la
+clave en cada consulta, como el resto de la configuración externa. Está en
+`orders-service` y no en el *worker*: con la ventana cerrada, el *worker* no
+tiene réplicas que respondan.
+
+El ScaledObject de
+[scaledobject-window.yaml](k8s/energy/scaledobject-window.yaml) consulta ese
+*endpoint* con el [*scaler*
+metrics-api](https://keda.sh/docs/latest/scalers/metrics-api/), cada 5
+segundos, y pide tantas réplicas como indica `replicas`:
+
+```yaml
+spec:
+  minReplicaCount: 0
+  maxReplicaCount: 3
+  triggers:
+    - type: metrics-api
+      metadata:
+        url: http://orders-service:8000/energy/window
+        valueLocation: replicas
+        targetValue: "1"
+```
+
+No tiene el *trigger* de la cola: si lo tuviera, KEDA encendería el *worker*
+apenas llegara un mensaje, y la ventana no serviría. De paso, KEDA depende de
+`orders-service` para saber si la ventana está abierta.
+
+**Cómo verlo:** la demo [37 de procesamiento diferido](demos/37-deferred-processing.sh)
+cierra la ventana y crea 10 `Orders`: quedan `Pending`, con los 10 mensajes en
+la cola y sin réplicas. Al abrir la ventana, KEDA enciende el *worker* y llega a
+3 réplicas, que procesan las 10 `Orders` en unos 20 segundos. Las `Orders`
+esperaron unos 30 a 40 segundos desde que se crearon. Al cerrar la ventana, KEDA
+vuelve a apagar el *worker*. La demo tarda un minuto y medio.
+
+<!-- markdownlint-disable-next-line MD024 -->
+##### Evaluación
+
+**Qué facilita en la eficiencia energética:**
+
+| Situación | ¿La facilita? | Cómo |
+| --------- | ------------- | ---- |
+| Usar la energía más limpia o más barata | Sí | El trabajo se hace dentro de la ventana |
+| Consumir menos energía | Menos que las réplicas fijas; en la demo, casi lo mismo que el escalado a cero | El trabajo es el mismo: lo que baja es el tiempo con réplicas encendidas. Pero la ventana enciende réplicas aunque la cola esté vacía |
+| Procesar enseguida | No | Una `Order` puede esperar hasta que se abra la ventana |
+| Trabajo urgente | No | Tiene que ir por otro camino, o por otra cola con su propio *worker* |
+| Ahorrar sin agregar componentes | No | KEDA está encendido todo el tiempo, como en la demo 36, y la cola tiene que guardar todo lo que llega fuera de la ventana |
+
+**Ventajas y desventajas:**
+
+| Alternativa | A favor | En contra |
+| ----------- | ------- | ---------- |
+| Procesar dentro de una ventana | Menos emisiones con el mismo trabajo | La demora: la confirmación de la `Order` llega tarde, y el stock queda reservado mientras tanto |
+| Procesar apenas llega | Sin demora | Usa la energía que haya en ese momento |
+
+> [!TIP]
+>
+> Consulta [Queue non-urgent processing
+> requests](https://patterns.greensoftware.foundation/architecture/system-topology/queue-non-urgent-requests)
+> en el catálogo de la Green Software Foundation, y [Carbon aware
+> scaling](https://github.com/Azure/carbon-aware-keda-operator) sobre cómo
+> obtener la ventana de un pronóstico de intensidad de carbono.
+
+### Patrones existentes y la eficiencia energética
+
+Varios patrones de las demos anteriores también reducen el consumo, aunque se
+hayan mostrado por otro atributo de calidad. La táctica es la de Bass, Clements
+y Kazman; la relación entre cada patrón y su táctica es una propuesta del curso.
+
+| Patrón | Demo | Táctica | Cómo reduce el consumo | Qué agrega, que también consume | Fuente |
+| ------ | ---- | ------- | ---------------------- | ------------------------------- | ------ |
+| [Queue-Based Load Leveling](#queue-based-load-leveling) | 12 | Gestionar la llegada de eventos | Los *workers* procesan a ritmo fijo: no hace falta capacidad para el pico. Es la base de las demos 36 y 37 | RabbitMQ, encendido todo el tiempo. Conviene si los picos son mucho mayores que la carga media; con carga pareja, el *broker* consume y no ahorra capacidad | [AWS SUS02-BP06](https://docs.aws.amazon.com/wellarchitected/latest/sustainability-pillar/sus_sus_user_a7.html) |
+| [Throttling](#throttling) | 4 | Limitar la respuesta a eventos | El trabajo que se rechaza no consume CPU, ni en `Orders` ni en los servicios a los que llama | Casi nada: un limitador en la memoria de `Orders` y una directiva del *gateway*, que ya existía | AWS SUS02-BP06; [Azure Well-Architected, sostenibilidad](https://learn.microsoft.com/en-us/azure/well-architected/sustainability/sustainability-performance-efficiency-recommendations) |
+| [Rate Limiting](#rate-limiting) | 5 | Limitar la respuesta a eventos | El cliente no manda trabajo que el servicio va a rechazar | Nada en el servicio. El cliente tarda más en mandar su trabajo, y si espera con réplicas encendidas, consume él | AWS SUS02-BP06 |
+| [Competing Consumers](#competing-consumers-para-rendimiento) | 7 y 13 | Calendarizar recursos | La capacidad se ajusta con réplicas. En la demo 13 se hace a mano; la 36 lo automatiza | Cada réplica reserva su CPU y su memoria, haya o no mensajes. Con réplicas fijas no ahorra: solo si se ajustan a la carga, como en la demo 36 | AWS SUS02-BP06 |
+| [Cache-Aside](#cache-aside) | 11 | Reducir la sobrecarga computacional | Cada acierto de la caché evita una consulta a PostgreSQL | [Redis](https://redis.io/), encendido todo el tiempo, y una llamada de red por lectura. Conviene si casi todas las lecturas son aciertos y la consulta que evitan es cara; con pocas lecturas repetidas, Redis consume más de lo que ahorra | Azure Well-Architected, sostenibilidad |
+| [Materialized View](#materialized-view) | 17 | Reducir la sobrecarga computacional | El detalle se calcula una vez por evento, y no en cada `GET` | Las 3 réplicas de `orders-projector`, la cola `orders.details-view` y la tabla `order_details`, que se actualizan con cada evento aunque nadie lea el detalle. Conviene si se lee mucho más de lo que se escribe | Azure Well-Architected, sostenibilidad |
+| [Circuit Breaker](#circuit-breaker) | 2 | Reducir la sobrecarga computacional; limitar los tiempos de ejecución | No se gastan llamadas, ni esperas, en una dependencia que probablemente falle | Casi nada: el estado del circuito, en la memoria de cada réplica | Azure Well-Architected, diseño de aplicaciones |
+| [Gateway Offloading](#gateway-offloading) | 19 | Reducir la sobrecarga computacional | La compresión gzip reduce los bytes que viajan por la red | CPU para comprimir en el *gateway*, y para descomprimir en el cliente. Conviene con respuestas grandes; con respuestas chicas, comprimir cuesta más de lo que ahorra la red | [Green Software Foundation](https://patterns.greensoftware.foundation/development/data-handling/compress-transmitted-data) |
+| *Stateless* -ver [ARCHITECTURE.md](ARCHITECTURE.md#stateless-y-estado-por-réplica)- | — | Incrementar la eficiencia en el uso de recursos | Sin estado en memoria, cualquier réplica se puede apagar o encender: es lo que permite escalar a cero en la demo 36 | El estado vive en otro componente -una base, una caché compartida, una cola-, que tiene que estar encendido, y cada réplica lo consulta por la red | [Green Software Foundation](https://patterns.greensoftware.foundation/architecture/system-topology/implement-stateless-design) |
+| Contenedores, en toda la aplicación | — | Incrementar la eficiencia en el uso de recursos | Varios servicios comparten la misma máquina, y cada uno usa solo lo que pide | El motor de contenedores y, en [Kubernetes](https://kubernetes.io/), el plano de control, que consumen aunque no corra ningún servicio | [Green Software Foundation](https://patterns.greensoftware.foundation/architecture/system-topology/containerize-your-workload-where-applicable) |
+
+Casi todos estos patrones ahorran energía en un lugar agregando un componente en
+otro: una caché, una cola, una vista, réplicas. Si conviene depende de la carga
+-cuántas lecturas se repiten, cuánto más grande es el pico que la carga media,
+cuánto más se lee que se escribe- y hay que medir los dos lados: la energía de
+lo que se agrega y la de lo que se evita. Es lo que permite un [Power
+Monitor](#power-monitor). El de las demos solo mide los pods del clúster: para
+comparar, por ejemplo, la energía de Redis con la de las consultas que evita en
+PostgreSQL, habría que medir también los contenedores de Docker Compose.
+
+Otros patrones hacen lo contrario: mejoran otro atributo de calidad a costa de
+consumir más. [Retry](#retry) multiplica las llamadas a una dependencia que
+falla; [Bulkhead](#bulkhead) y las réplicas de [Competing
+Consumers](#competing-consumers-para-disponibilidad) reservan capacidad que
+puede quedar ociosa; y [Blue/Green](#bluegreen-deployment) mantiene encendidas
+dos versiones a la vez. El catálogo de Azure lo trata en [Sustainable
+workloads](https://learn.microsoft.com/en-us/azure/well-architected/sustainability/overview),
+y el de AWS, en el [pilar de
+sostenibilidad](https://docs.aws.amazon.com/wellarchitected/latest/sustainability-pillar/sustainability-pillar.html)
+de Well-Architected.
+
+### La eficiencia energética en Grafana
+
+La demo [eficiencia energética con carga](demos/load-energy.sh) prepara el
+*worker* en una de las tres configuraciones y lanza un escenario de
+[k6](https://k6.io/), [energy.js](k6/energy.js): tres picos de 30 `Orders`,
+cada 4 minutos, con el *worker* ocioso entre uno y otro. Cada corrida dura 10
+minutos, aunque k6 termine antes: hay que esperar a que termine para comparar la
+energía. En macOS, el *script* impide que la máquina se duerma mientras corre:
+dormida, se pausan Docker y k6, y los picos llegan tarde.
+
+```bash
+docker compose --profile observability up -d --wait
+./demos/load-energy.sh fixed    # también: queue, window
+```
+
+Los paneles están en la fila "Eficiencia energética". Con el rango del
+*dashboard* en 10 minutos, el panel "Energía estimada del worker en el período"
+muestra la de toda la corrida. Cada pico, cada cambio en las réplicas del
+*worker* y, con `window`, cada apertura y cierre de la ventana quedan marcados
+con la etiqueta `energía`. Como en las demás demos, son resultados de una
+corrida en una sola máquina: ilustran el efecto y no son una prueba de
+rendimiento.
+
+| Configuración | Qué se hace | Qué mirar | Energía en 10 minutos |
+| ------------- | ----------- | --------- | --------------------- |
+| `fixed`, como la demo 35 | 3 réplicas fijas | "Potencia estimada del worker, por pod": un piso de 1.1 W que no baja nunca | 625 J |
+| `queue`, como la demo 36 | [KEDA](https://keda.sh/) según la cola | "Réplicas del worker en el clúster": 0 entre picos, y hasta 6 en cada uno; en la potencia, un salto al arrancar cada pod | 465 J, un 26% menos que `fixed` |
+| `window`, como la demo 37 | KEDA según la ventana | Las réplicas: 3 mientras la ventana está abierta, un minuto de cada dos; la cola crece fuera de la ventana y se vacía dentro | 470 J, un 25% menos que `fixed`, casi lo mismo que `queue` |
+
+`window` consume casi lo mismo que `queue` por caminos distintos: tiene 3
+réplicas encendidas la mitad del tiempo, haya o no `Orders` en la cola, mientras
+que `queue` las enciende solo en cada pico, pero hasta 6, y cada pod nuevo usa
+mucha CPU al arrancar. Lo que gana `window` es cuándo consume, no cuánto. Con
+picos cada 90 segundos, en una corrida de 5 minutos, `queue` consumió 473 J,
+más que las réplicas fijas: entre un pico y otro no alcanzaba a recuperar la
+energía de encender las réplicas. Por eso el escenario separa los picos.
+

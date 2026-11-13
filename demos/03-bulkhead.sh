@@ -32,7 +32,7 @@ only_pattern ninguno
 
 warm_up
 
-step "Products responde lento: 1,5\" por solicitud"
+step "Products responde lento: 1.5\" por solicitud"
 chaos products 0 1500
 
 step "Se lanzan 15 consultas de detalle simultáneas"

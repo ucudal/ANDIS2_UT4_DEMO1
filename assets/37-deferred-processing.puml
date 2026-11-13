@@ -1,0 +1,16 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Orders\nPOST /orders/\n202 Accepted" as C
+queue "Cola\norders.process" as Q
+database "Consul\nEnergy/WindowOpen" as S
+rectangle "Orders\nGET /energy/window" as E
+rectangle "KEDA\nScaledObject\ntrigger metrics-api" as K
+rectangle "orders-worker\n0 o 3 réplicas" as W
+
+C --> Q : en cualquier momento
+S --> E : abierta o cerrada
+E --> K : replicas: 3 o 0
+K --> W : 3 con la ventana abierta\n0 con la ventana cerrada
+Q --> W : solo dentro\nde la ventana
+@enduml

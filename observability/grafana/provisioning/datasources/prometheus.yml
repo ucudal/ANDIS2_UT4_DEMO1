@@ -11,9 +11,9 @@ datasources:
       # Igual al scrape_interval: Grafana lo usa para calcular $__rate_interval.
       timeInterval: 5s
 
-  # El Prometheus del clúster de las demos de Kubernetes, de la 32 a la 34,
+  # El Prometheus del clúster de las demos de Kubernetes, de la 32 a la 37,
   # publicado por kind en el puerto 30090 de la máquina -ver k8s/kind.yaml-. Sin
-  # el clúster, el panel que lo usa queda vacío.
+  # el clúster, los paneles que lo usan quedan vacíos.
   - name: Prometheus del clúster
     uid: prometheus-k8s
     type: prometheus

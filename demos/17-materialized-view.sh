@@ -40,7 +40,7 @@ echo "  details/view: los nombres ya están en la vista"
 view
 reset_chaos
 
-step "Se detienen los proyectores, Users demora 1,5\" y se crea una Order para bob"
+step "Se detienen los proyectores, Users demora 1.5\" y se crea una Order para bob"
 docker compose stop orders-projector 2>&1 | sed 's/^/  /'
 chaos users 0 1500
 id=$(create_order "$BOB" "$PRODUCT")

@@ -1,12 +1,17 @@
 # Procesamiento diferido: la demo 37. El worker solo está encendido dentro de
-# una ventana de tiempo, con 3 réplicas; fuera de ella, 0. Las Orders que llegan
-# fuera de la ventana esperan en la cola orders.process hasta que se abre.
+# una ventana, con 3 réplicas; fuera de ella, 0. Las Orders que llegan fuera de
+# la ventana esperan en la cola orders.process hasta que se abre.
 #
 # La ventana simula las horas en que la energía de la red es más limpia, o más
-# barata. Dura un minuto de cada dos, en los minutos pares, porque cron no tiene
-# unidades menores que un minuto. En producción, la ventana sale de un pronóstico
-# de intensidad de carbono: en AKS, el carbon-aware KEDA operator; en AWS, una
-# regla programada de EventBridge.
+# barata. Se abre y se cierra con la clave Energy/WindowOpen del almacén de
+# configuración, Consul, y orders-service la publica en GET /energy/window -ver
+# src/OrdersService/Controllers/EnergyController.cs-. En producción, la ventana
+# sale de un pronóstico de intensidad de carbono: en AKS, el carbon-aware KEDA
+# operator; en AWS, una regla programada de EventBridge.
+#
+# KEDA consulta el endpoint cada 5 segundos y pide tantas réplicas como indica
+# replicas: con targetValue en 1, 3 réplicas para un valor de 3. De paso, KEDA
+# depende de orders-service para saber si la ventana está abierta.
 #
 # No hay trigger de la cola: si lo hubiera, KEDA encendería el worker apenas
 # llegara un mensaje, y la ventana no serviría.
@@ -23,9 +28,8 @@ spec:
   pollingInterval: 5
   cooldownPeriod: 10
   triggers:
-    - type: cron
+    - type: metrics-api
       metadata:
-        timezone: Etc/UTC
-        start: "*/2 * * * *"
-        end: "1-59/2 * * * *"
-        desiredReplicas: "3"
+        url: http://orders-service:8000/energy/window
+        valueLocation: replicas
+        targetValue: "1"

@@ -3004,6 +3004,232 @@
           "range": true
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 51,
+      "title": "Eficiencia energética",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 115,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 52,
+      "title": "Réplicas del worker en el clúster [Demos 35-37]",
+      "description": "Las réplicas listas del Deployment orders-worker del clúster, según kube-state-metrics. En la demo 35 son 3 fijas; en la 36 las decide KEDA según la cola, de 0 a 6; en la 37, según la ventana de tiempo, 0 o 3. Necesita el clúster: ./demos/k8s-up.sh.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-k8s"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 116,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-k8s"
+          },
+          "expr": "sum(kube_deployment_status_replicas_ready{deployment=\"orders-worker\"})",
+          "legendFormat": "réplicas",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 53,
+      "title": "Cola orders.process [Demos 12, 13, 35-37]",
+      "description": "Mensajes de la cola orders.process, los que esperan más los entregados a un worker sin confirmar. Es lo que mira KEDA en la demo 36 para decidir las réplicas.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 116,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rabbitmq_detailed_queue_messages{queue=\"orders.process\"})",
+          "legendFormat": "mensajes",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 54,
+      "title": "Potencia estimada del worker, por pod [Demos 35-37]",
+      "description": "La potencia de cada pod del worker según el modelo de Cloud Carbon Footprint -k8s/base/prometheus.yaml-: vCPU reservadas × 0,78 W más vCPU usadas × 2,98 W. Es una estimación para comparar configuraciones, no una medición: el nodo de kind no tiene contadores de energía. Las áreas se apilan: el borde de arriba es el total.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-k8s"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 116,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-k8s"
+          },
+          "expr": "sum by (pod) (pod:power:watts{pod=~\"orders-worker-.*\"})",
+          "legendFormat": "{{pod}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "id": 55,
+      "title": "Energía estimada del worker en el período [Demos 35-37]",
+      "description": "La energía del worker en el período que muestra el dashboard: la suma de la potencia estimada de sus pods, una muestra cada 5 segundos. Para comparar dos configuraciones, elegir períodos de la misma duración.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-k8s"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 116,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "joule",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-k8s"
+          },
+          "expr": "sum_over_time(sum(pod:power:watts{pod=~\"orders-worker-.*\"})[$__range:5s]) * 5",
+          "instant": true,
+          "range": false
+        }
+      ]
     }
   ],
   "description": "Entre corchetes, al final del título de cada panel, las demos que lo usan: el número es el del script en demos/, por ejemplo [Demo 1] es 01-retry.sh.",

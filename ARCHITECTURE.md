@@ -22,6 +22,7 @@ que implementa están en [PATTERNS.md](PATTERNS.md).
 * [Seguridad](#seguridad)
 * [Facilidad de modificación](#facilidad-de-modificación)
 * [Facilidad de despliegue](#facilidad-de-despliegue)
+* [Eficiencia energética](#eficiencia-energética)
 * [Decisiones abiertas a discusión](#decisiones-abiertas-a-discusión)
 
 ## Servicios y datos
@@ -392,7 +393,7 @@ cadena, y la aplicación usa las tres:
 
 * **Degradar la respuesta:** la consulta de detalle responde aunque falten
   `Users` o `Products`, con "no disponible" en lugar del nombre. La respuesta
-  completa sigue en 99,3%, pero una respuesta útil depende solo de gateway,
+  completa sigue en 99.3%, pero una respuesta útil depende solo de gateway,
   `orders-service` y `orders-db`.
 * **Comunicarse de forma asíncrona:** aceptar una `Order` no depende de `Users`
   ni de `Products`; si no están, la `Order` se confirma más tarde. Gracias al
@@ -448,7 +449,7 @@ cadena, y la aplicación usa las tres:
   Keycloak, pero acepta un token hasta que vence aunque se haya revocado; por
   eso los tokens duran poco. Si el gateway hiciera lo mismo, Keycloak saldría de
   la cadena de cada operación: la consulta desde la vista por HTTPS volvería a
-  gateway, orders-service y orders-db, unos 99,7%, y Keycloak haría falta solo
+  gateway, orders-service y orders-db, unos 99.7%, y Keycloak haría falta solo
   para iniciar sesión. -->
 
 ## Consistencia de los datos
@@ -684,6 +685,10 @@ vive en la instancia.
   lo que aprovechan [Competing
   Consumers](PATTERNS.md#competing-consumers-para-disponibilidad) y estrategias
   de despliegue como [Rolling Upgrade](PATTERNS.md#rolling-upgrade).
+* Una réplica se puede apagar cuando no tiene trabajo, y encender otra cuando
+  llega. Es lo que aprovecha el escalado a cero de [Use Serverless Cloud
+  Services](PATTERNS.md#use-serverless-cloud-services): con estado en memoria,
+  apagar el *worker* perdería lo que estaba procesando.
 * Alcanzan instancias más chicas, que se agregan o se quitan según la carga.
 
 **Qué componentes son *stateless*.** Casi todos, con el estado por réplica que
@@ -692,7 +697,7 @@ se describe más abajo:
 | Componente | Réplicas | Dónde está su estado |
 | ---------- | -------- | -------------------- |
 | `orders-service` | 1 | [MySQL](https://www.mysql.com/): `orders`, `order_events`, `outbox_messages` e `idempotency_keys` |
-| `orders-worker` | 3 | MySQL y la cola `orders.process` |
+| `orders-worker` | 3; en el clúster de [Kubernetes](https://kubernetes.io/), de 0 a 6 en las demos 36 y 37 | MySQL y la cola `orders.process` |
 | `orders-projector` | 3 | MySQL, `order_details`, y la cola `orders.details-view` |
 | `users-service` y `users-service-v2` | 1 de cada versión | [MongoDB](https://www.mongodb.com/); la variante de cada `User`, en [Unleash](https://www.getunleash.io/) |
 | `products-service` | 1, por el *sidecar* | [PostgreSQL](https://www.postgresql.org/): `products`, `stock_reservations` y `outbox_messages`; la cola `products.stock`; la caché en [Redis](https://redis.io/) y las imágenes en [Azurite](https://github.com/Azure/Azurite) |
@@ -725,7 +730,7 @@ de `products-service` -`network_mode` en
 *sidecar* acompaña a una sola réplica. Para tener varias, cada réplica
 necesitaría su propio [Envoy](https://www.envoyproxy.io/), y el gateway
 tendría que repartir las solicitudes entre los pares de servicio y *sidecar*.
-En [Kubernetes](https://kubernetes.io/) es lo que hace un pod con dos
+En Kubernetes es lo que hace un pod con dos
 contenedores: cada réplica del pod trae su *sidecar*.
 
 ***Stateless* no alcanza.** Los proyectores no guardan nada en memoria, y aun
@@ -1139,6 +1144,81 @@ componentes:
   comparar por variante con suficientes Users para que la diferencia no sea
   casual. El segmento beta no sirve para comparar: no es representativo. -->
 
+## Eficiencia energética
+
+Las demos 35 a 37 miden la energía que consume el *worker* de `Orders`, y la
+reducen. Cómo
+se implementó cada patrón está en [Demos de eficiencia
+energética](PATTERNS.md#demos-de-eficiencia-energética), en PATTERNS.md.
+
+El *worker* es el componente donde más se nota: recibe el trabajo en picos, a
+través de la cola `orders.process`, y entre un pico y otro no tiene nada que
+hacer. Con réplicas fijas, la máquina queda encendida para la CPU que reservan.
+Los tres patrones dependen de dos propiedades que el *worker* ya tenía:
+
+* **El trabajo llega por una cola.** `POST /orders/` responde sin esperar al
+  *worker* -ver [Creación de una Order: asíncrona](#creación-de-una-order-asíncrona)-,
+  así que el *worker* puede estar apagado, o procesar más tarde, sin que el
+  cliente espere.
+* **Es *stateless*.** Una réplica se apaga o se enciende sin perder nada -ver
+  [Stateless y estado por réplica](#stateless-y-estado-por-réplica)-.
+
+En las demos, el *worker* corre en el clúster de [kind](https://kind.sigs.k8s.io/)
+de las demos 32 a 34, y usa el resto de la aplicación de [Docker
+Compose](https://docs.docker.com/compose/):
+
+| Componente | Es dueño de | Lo llaman | Llama a |
+| ---------- | ----------- | --------- | ------- |
+| `orders-worker` del clúster | Nada propio: el estado está en MySQL y en la cola | Nadie: consume `orders.process` | MySQL, `Users`, `Products` y RabbitMQ de Docker Compose, por la red de Docker |
+| [KEDA](https://keda.sh/) | Las réplicas del *worker*, en las demos 36 y 37 | Nadie | La API de administración de RabbitMQ, para saber el largo de la cola, en la 36; `GET /energy/window` de `orders-service`, para saber si la ventana está abierta, en la 37; y la API de [Kubernetes](https://kubernetes.io/) |
+| Prometheus del clúster | La potencia estimada de cada pod | Grafana | El [kubelet](https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/), por la CPU usada, y [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics), por la reservada |
+
+Los tres patrones agregan componentes que también consumen, encendidos todo el
+tiempo: Prometheus y kube-state-metrics para medir, y KEDA para escalar. El
+ahorro tiene que ser mayor que lo que consumen ellos.
+
+Mejorar la eficiencia energética cambia otros atributos de calidad:
+
+| Patrón | Qué empeora | Por qué |
+| ------ | ----------- | ------- |
+| [Use Serverless Cloud Services](PATTERNS.md#use-serverless-cloud-services) | El rendimiento del primer mensaje después de un período ocioso | Espera a que arranque un pod: unos 10 segundos |
+| [Queue Non-Urgent Processing Requests](PATTERNS.md#queue-non-urgent-processing-requests) | El tiempo hasta que la `Order` se confirma, y la consistencia | La `Order` queda `Pending` hasta la ventana, y su stock reservado mientras tanto |
+
+Y al revés: varios patrones de disponibilidad consumen más energía.
+[Retry](PATTERNS.md#retry) multiplica las llamadas, y las réplicas de [Competing
+Consumers](PATTERNS.md#competing-consumers-para-disponibilidad) reservan CPU
+aunque no tengan trabajo -ver [Patrones existentes y la eficiencia
+energética](PATTERNS.md#patrones-existentes-y-la-eficiencia-energética), en
+PATTERNS.md-.
+
+**Para analizar:**
+
+* El escalado a cero de la demo 36 consumió más que las réplicas fijas cuando
+  los picos llegaban cada 90 segundos, y menos cuando llegaban cada 4 minutos.
+  ¿De qué depende el punto de equilibrio?
+  <!-- → De cuánto consume una réplica ociosa, que es lo que se ahorra entre
+  picos, y de cuánto consume encender las réplicas para cada pico: el arranque
+  de .NET usa mucha CPU. Con réplicas que arrancan más rápido, o con un
+  cooldownPeriod más largo que evite apagar y encender entre picos cercanos, el
+  punto de equilibrio baja. -->
+* ¿Qué `Orders` podrían procesarse dentro de una ventana, como en la demo 37, y
+  cuáles no?
+  <!-- → Las que el cliente no necesita confirmadas enseguida: compras
+  programadas, reposiciones entre empresas, facturación. No las de un cliente que
+  espera en la página de pago. Se separan con dos colas, cada una con su worker
+  y su ScaledObject, o con Priority Queue. -->
+* La demo 36 escala según el largo de la cola. ¿Qué pasa si un mensaje falla
+  siempre y vuelve a la cola?
+  <!-- → La cola nunca queda vacía, así que KEDA nunca apaga el worker: el
+  escalado a cero deja de ahorrar. Es otra razón para mandar los mensajes que
+  fallan siempre a una cola aparte, una dead-letter queue, después de algunos
+  intentos. -->
+* El modelo de las demos solo mira la CPU. ¿Qué consumo queda afuera?
+  <!-- → La memoria, el disco y la red, y lo que consumen las demás partes de
+  la máquina, como la refrigeración. También la energía de fabricar el hardware,
+  que la Green Software Foundation llama carbono incorporado: una réplica que no
+  se enciende no lo ahorra, pero una máquina menos sí. -->
+
 ## Decisiones abiertas a discusión
 
 Algunas decisiones simplifican la demo y no son las que se tomarían en
@@ -1167,6 +1247,9 @@ producción.
 | La versión `v2` de `Users` es la misma imagen con otra configuración | No hace falta construir otra imagen | No se ve un cambio de código real entre versiones, ni el tiempo de construir y publicar una imagen | Demos 32 a 34: una imagen por versión, `users-service:v1`, `v2` y `v3-bad` |
 | La estrategia de despliegue se cambia a mano en el gateway | Se ve cada paso | Nadie decide con las métricas: en producción, una herramienta avanza o vuelve atrás sola | Demos 33 y 34: [Argo Rollouts](https://argoproj.github.io/rollouts/) avanza o vuelve atrás según un análisis en Prometheus |
 | El clúster de las demos 32 a 34 es de un solo nodo, con su propia base de `Users` | Se levanta en una máquina, sin tocar Docker Compose | No se ve qué pasa cuando se cae un nodo, y los datos se pierden si se borra el pod de la base | — |
+| La energía se estima con la CPU de cada pod, no se mide | Funciona en cualquier máquina, también en la virtual de Docker | El modelo no ve la memoria, el disco ni la red, y sus valores solo sirven para comparar | [Power Monitor](PATTERNS.md#power-monitor); con contadores de hardware, [Kepler](https://sustainable-computing.io/) |
+| El *worker* del clúster usa RabbitMQ, MySQL, `Users` y `Products` de Docker Compose, por la red de Docker | No hay que copiar al clúster el resto de la aplicación | El clúster y Docker Compose tienen que estar en la misma máquina, y el *worker* depende de nombres de host de Docker Compose | — |
+| La ventana de la demo 37 se abre y se cierra a mano, con una clave de Consul | La demo dura minutos, no horas | No sigue la energía real de la red | [Queue Non-Urgent Processing Requests](PATTERNS.md#queue-non-urgent-processing-requests): en producción, un pronóstico de intensidad de carbono |
 | Una sola instancia de RabbitMQ y de cada base | Menos recursos | Puntos únicos de falla | — |
 | Métricas y logs de [Docker](https://www.docker.com/), sin trazas distribuidas | Menos infraestructura | Es difícil seguir una solicitud a través de varios servicios | — |
 
@@ -1194,7 +1277,7 @@ producción.
   atómica; el relay busca los Users con mensajes pendientes, los publica y los
   quita con una actualización condicional. Para Products, cada réplica necesita
   su propio sidecar: varios pares de products-service y Envoy detrás del
-  gateway, o un pod con los dos contenedores en Kubernetes. Lo demás ya
+  gateway, o un pod con los dos contenedores en [Kubernetes](https://kubernetes.io/). Lo demás ya
   funciona con varias réplicas: el estado está en PostgreSQL y Redis, el relay
   toma los mensajes con SKIP LOCKED y la reserva repetida falla por la clave
   primaria. Los ajustes de chaos y de la caché quedarían en cada réplica. -->
@@ -1224,3 +1307,4 @@ producción.
   de cada base: clústeres y réplicas, como colas quorum de RabbitMQ y réplicas
   de PostgreSQL, MySQL y MongoDB. Sin trazas: trazas distribuidas con
   OpenTelemetry y Jaeger o Grafana Tempo. -->
+

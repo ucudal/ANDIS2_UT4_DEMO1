@@ -8,12 +8,13 @@ width="150"/>
 
 # Demo de patrones de arquitectura en una arquitectura de microservicios
 
-Esta demo es la aplicación base de la UT4, una pequeña aplicación de comercio
-electrónico, con los patrones de disponibilidad, rendimiento, seguridad y
-facilidad de modificación, y las estrategias de despliegue, implementados.
+Esta demo es la aplicación base del tema de patrones de arquitectura, una
+pequeña aplicación de comercio electrónico, con los patrones de disponibilidad,
+rendimiento, seguridad, facilidad de modificación y eficiencia energética, y las
+estrategias de despliegue, implementados.
 
-También es la demo de la [arquitectura de microservicios](ARCHITECTURE.md) en la
-UT5.
+También es una demo de arquitectura de microservicios. La descripción de la
+arquitectura esta en [ARCHITECTURE.md](ARCHITECTURE.md).
 
 El panorama de la demo y la explicación de cada patrón está en
 [PATTERNS.md](PATTERNS.md).
@@ -22,16 +23,20 @@ El panorama de la demo y la explicación de cada patrón está en
 
 La aplicación tiene tres servicios de dominio, cada uno con su propia base de
 datos, detrás de un API Gateway. Las `Orders` se procesan en segundo plano por
-varias réplicas de un *worker* que consumen una cola de [RabbitMQ](https://www.rabbitmq.com/). Los servicios
-publican eventos en RabbitMQ, y los proyectores los usan para mantener una vista
-materializada del detalle de las `Orders`. `Products` usa [Redis](https://redis.io/) como caché.
+varias réplicas de un *worker* que consumen una cola de
+[RabbitMQ](https://www.rabbitmq.com/). Los servicios publican eventos en
+RabbitMQ, y los proyectores los usan para mantener una vista materializada del
+detalle de las `Orders`. `Products` usa [Redis](https://redis.io/) como caché.
 
-El gateway tiene dos entradas: [HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin los patrones de seguridad, y HTTPS,
-con ellos. Por la entrada HTTPS, los usuarios se identifican con un token de
-[Keycloak](https://www.keycloak.org/), el proveedor de identidad; el gateway valida cada solicitud antes de
-reenviarla; `Products` tiene un *sidecar* que exige el rol `admin` para
-cambiar el catálogo; y las imágenes de los `Products` se suben y se bajan
-directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azure Storage](https://azure.microsoft.com/products/storage/), con URL firmadas.
+El gateway tiene dos entradas:
+[HTTP](https://datatracker.ietf.org/doc/html/rfc9110), sin los patrones de
+seguridad, y HTTPS, con ellos. Por la entrada HTTPS, los usuarios se identifican
+con un token de [Keycloak](https://www.keycloak.org/), el proveedor de
+identidad; el gateway valida cada solicitud antes de reenviarla; `Products`
+tiene un *sidecar* que exige el rol `admin` para cambiar el catálogo; y las
+imágenes de los `Products` se suben y se bajan directamente de
+[Azurite](https://github.com/Azure/Azurite), el emulador de [Azure
+Storage](https://azure.microsoft.com/products/storage/), con URL firmadas.
 
 | Componente | Responsabilidad | Tecnología | Puerto en el host |
 | ---------- | --------------- | ---------- | ----------------- |
@@ -62,10 +67,10 @@ directamente de [Azurite](https://github.com/Azure/Azurite), el emulador de [Azu
 | `orders-db` | `Orders`, sus eventos, el *outbox* y la vista materializada | [MySQL](https://www.mysql.com/) 26 | 3306 |
 
 Endpoints disponibles a través del gateway, en `http://localhost`. Por la
-entrada HTTPS, `https://localhost`, son los mismos, salvo los de
-administración -`/chaos`, `/patterns`, `/cache` y `/orders/projections/rebuild`-,
-y necesitan un token de Keycloak: ver [Demos de
-seguridad](PATTERNS.md#demos-de-seguridad) en PATTERNS.md.
+entrada HTTPS, `https://localhost`, son los mismos, salvo los de administración
+-`/chaos`, `/patterns`, `/cache` y `/orders/projections/rebuild`-, y necesitan
+un token de Keycloak: ver [Demos de seguridad](PATTERNS.md#demos-de-seguridad)
+en PATTERNS.md.
 
 | Método | Ruta | Descripción |
 | ------ | ---- | ----------- |
@@ -107,7 +112,7 @@ nombres en la vista.
 | [`column`](https://man7.org/linux/man-pages/man1/column.1.html) | Alinear las columnas de esas tablas | Incluido | En WSL, incluido en la mayoría de las distribuciones; si falta, `sudo apt install bsdextrautils`; ver la nota sobre Git Bash |
 | [`xmllint`](https://gnome.pages.gitlab.gnome.org/libxml2/xmllint.html) | Indentar las respuestas [SOAP](https://www.w3.org/TR/soap/) de `Users` en `commands/01-api-gateway.azcli` y los errores de [Azurite](https://github.com/Azure/Azurite) en `commands/04-security.azcli` | Incluido | En WSL, `sudo apt install libxml2-utils`; en Git Bash no viene incluido: usar WSL o ver el [XML](https://www.w3.org/XML/) sin indentar |
 | Visual Studio Code[^vscode] con la extensión Azure CLI Tools[^azcli] | Opcional: abrir los archivos de [commands](commands/) con resaltado de sintaxis y ejecutar cada comando en la terminal | Instalar Visual Studio Code y, dentro de él, la extensión | Igual que en macOS |
-| kind[^kind], kubectl[^kubectl] y el plugin de Argo Rollouts para kubectl[^argorollouts] | Solo para las demos de despliegue con Kubernetes, de la 32 a la 34: crear el clúster y manejar los despliegues | `brew install kind kubectl argoproj/tap/kubectl-argo-rollouts` | En WSL, con los binarios para Linux de cada sitio |
+| kind[^kind], kubectl[^kubectl] y el plugin de Argo Rollouts para kubectl[^argorollouts] | Solo para las demos con [Kubernetes](https://kubernetes.io/): las de despliegue, de la 32 a la 34, y las de eficiencia energética, de la 35 a la 37. Crear el clúster y manejar los despliegues | `brew install kind kubectl argoproj/tap/kubectl-argo-rollouts` | En WSL, con los binarios para Linux de cada sitio |
 | Extensión Database Client[^dbclient] de Visual Studio Code | Opcional: ver las tablas, colecciones y claves de [MySQL](https://www.mysql.com/), [PostgreSQL](https://www.postgresql.org/), [MongoDB](https://www.mongodb.com/) y [Redis](https://redis.io/); los datos para conectarse están en [Conectarse a las bases de datos](#conectarse-a-las-bases-de-datos) | Instalar la extensión dentro de Visual Studio Code | Igual que en macOS |
 
 [^docker]: Docker Desktop: <https://www.docker.com/products/docker-desktop/>
@@ -121,14 +126,18 @@ nombres en la vista.
 [^argorollouts]: Plugin de Argo Rollouts para kubectl: <https://argoproj.github.io/argo-rollouts/installation/#kubectl-plugin-installation>
 [^dbclient]: Database Client para Visual Studio Code: <https://marketplace.visualstudio.com/items?itemName=cweijan.vscode-database-client2>
 
-`jq` y `column` solo hacen falta para ver las respuestas como tabla. Los
-scripts de `demos/` también los usan, pero si falta alguno muestran el JSON tal
-cual; las excepciones son `03-bulkhead.sh`, `04-throttling.sh`,
-`05-rate-limiting.sh` y los demos del `09` en adelante, que necesitan `jq`.
+Las demos de eficiencia energética, de la 35 a la 37, necesitan a la vez Docker
+Compose y el clúster de Kubernetes: Docker necesita al menos 12 GB de memoria,
+en Docker Desktop, en Settings, Resources. Para las demás alcanza con 8 GB.
 
-En Windows conviene usar WSL, porque se comporta igual que Linux y macOS. Si Git Bash
-no tiene `column`, la función `table` falla con `column: command not found`.
-En ese caso hay dos opciones:
+`jq` y `column` solo hacen falta para ver las respuestas como tabla. Los scripts
+de `demos/` también los usan, pero si falta alguno muestran el JSON tal cual;
+las excepciones son `03-bulkhead.sh`, `04-throttling.sh`, `05-rate-limiting.sh`
+y los demos del `09` en adelante, que necesitan `jq`.
+
+En Windows conviene usar WSL, porque se comporta igual que Linux y macOS. Si Git
+Bash no tiene `column`, la función `table` falla con `column: command not
+found`. En ese caso hay dos opciones:
 
 * Quitar `| column -t -s $'\t'` de la función: se ven los mismos datos, con las
   columnas separadas por tabuladores pero sin alinear.
@@ -136,7 +145,7 @@ En ese caso hay dos opciones:
 
 ### Cómo ejecutarla
 
-Los comandos están en la carpeta [commands](commands/), en seis archivos:
+Los comandos están en la carpeta [commands](commands/), en siete archivos:
 
 * [01-api-gateway.azcli](commands/01-api-gateway.azcli): probar los servicios a
   través del API Gateway.
@@ -152,7 +161,12 @@ Los comandos están en la carpeta [commands](commands/), en seis archivos:
   estrategias de despliegue, de la 28 a la 34. Las demos 32 a 34 corren en un
   clúster de [Kubernetes](https://kubernetes.io/), que se crea con
   `./demos/k8s-up.sh`, y no usan Docker Compose: la entrada de los clientes al
-  clúster está en el puerto 8092, y su Prometheus, en el 30090.
+  clúster está en el puerto 8092, y su Prometheus, en el 30090. Qué es cada
+  concepto de Kubernetes, y su análogo en Docker Compose, está en [Conceptos de
+  Kubernetes](PATTERNS.md#conceptos-de-kubernetes), en PATTERNS.md.
+* [07-energy-efficiency.azcli](commands/07-energy-efficiency.azcli): demos de
+  los patrones de eficiencia energética, de la 35 a la 37. El *worker* de
+  `Orders` corre en el mismo clúster, y usa los servicios de Docker Compose.
 
 Cada archivo empieza levantando todos los servicios y termina con el *tear
 down*, así que se puede usar por separado. En resumen:
@@ -166,6 +180,9 @@ El comando [`docker compose
 up`](https://docs.docker.com/reference/cli/docker/compose/up/) con `--wait`
 espera a que todos los contenedores estén sanos según su
 [`healthcheck`](https://docs.docker.com/reference/compose-file/services/#healthcheck).
+Qué es cada concepto de Docker que usan las demos -imagen, contenedor,
+servicio, réplicas, red, volumen, perfil- está en [Contenedores y Docker
+Compose](PATTERNS.md#contenedores-y-docker-compose), en PATTERNS.md.
 
 Las bases de datos se crean con datos de ejemplo la primera vez que se levantan
 los contenedores, con los scripts de `src/*/mysqlinit`, `src/*/mongoinit` y
@@ -248,17 +265,21 @@ encuentran como `products-service:9000`.
 | Strangler Fig | La fachada del puerto 8090 en [nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con la tabla de rutas en [strangler-routes.conf](src/ApiGateway/nginxconf/strangler-routes.conf), y el monolito en [Program.cs](src/Monolith/Program.cs) |
 | Backends for Frontends | `bff-web`, en su [Program.cs](src/BffWeb/Program.cs), y `bff-mobile`, en su [Program.cs](src/BffMobile/Program.cs), publicados por el gateway en `/web/` y `/mobile/` |
 | Blue/Green Deployment | `users-service` y `users-service-v2` en [docker-compose.yaml](docker-compose.yaml); la entrada de despliegue, en el puerto 8091 de [nginx.conf](src/ApiGateway/nginxconf/nginx.conf), con el destino en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf); con [Kubernetes](https://kubernetes.io/), el `Rollout` de [Argo Rollouts](https://argoproj.github.io/rollouts/) en [rollout.yaml](k8s/blue-green/rollout.yaml) |
-| Rolling Upgrade | El alias `users-pool` de `users-service-v2` y las funciones `pool_start_v1` y `pool_replace` de [common.sh](demos/common.sh); [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream) en la entrada de despliegue; con Kubernetes, el Deployment de [deployment.yaml](k8s/rolling-upgrade/deployment.yaml) y el `Rollout` con análisis de [rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
+| Rolling Upgrade | El alias `users-pool` de `users-service-v2` y las funciones `pool_start_v1` y `pool_replace` de [common.sh](demos/common.sh); [`proxy_next_upstream`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_next_upstream) en la entrada de despliegue; con Kubernetes, el [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) de [deployment.yaml](k8s/rolling-upgrade/deployment.yaml) y el `Rollout` con análisis de [rollout.yaml](k8s/rolling-upgrade/rollout.yaml) |
 | Canary Testing | [`split_clients`](https://nginx.org/en/docs/http/ngx_http_split_clients_module.html#split_clients) en [deployment-routes.conf](src/ApiGateway/nginxconf/deployment-routes.conf), escrito por la función `deploy_canary` de [common.sh](demos/common.sh); el encabezado `X-Version`, en [Release.cs](src/UsersService/Release.cs); con Kubernetes, el `Rollout` de [rollout.yaml](k8s/canary/rollout.yaml), que cambia los pesos de una ruta de [Gateway API](https://gateway-api.sigs.k8s.io/) y decide con el análisis de [analysis-error-rate.yaml](k8s/base/analysis-error-rate.yaml) |
 | A/B Testing | La clase `Experiment`, en [Experiment.cs](src/UsersService/Experiment.cs), usada en el método `GetUser` de la clase `UserService`, en [UserService.cs](src/UsersService/Soap/UserService.cs); le pregunta la variante a [OpenFeature](https://openfeature.dev/), con el proveedor de [Unleash](https://www.getunleash.io/) registrado en [Program.cs](src/UsersService/Program.cs); el *flag* lo crean las funciones `experiment_start` y `experiment_split` de [common.sh](demos/common.sh) |
 | Valet Key | Los métodos `GetUploadKeyAsync` y `GetDownloadKeyAsync` de la clase `ProductImages`, en [ProductImages.cs](src/ProductsService/ProductImages.cs), usados en los métodos `GetImageUploadUrl` y `GetImage` de la clase `ProductsController`, en [ProductsController.cs](src/ProductsService/Controllers/ProductsController.cs) |
+| Power Monitor | Las reglas de `energy.rules.yml`, en [prometheus.yaml](k8s/base/prometheus.yaml), con la CPU de [cAdvisor](https://github.com/google/cadvisor) y de [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics); el panel "Potencia estimada del worker, por pod" de Grafana |
+| Use Serverless Cloud Services y Scale Logical Components Independently | El [ScaledObject](https://keda.sh/docs/latest/reference/scaledobject-spec/) de [KEDA](https://keda.sh/) en [scaledobject-queue.yaml](k8s/energy/scaledobject-queue.yaml), que escala el Deployment de [worker.yaml](k8s/energy/worker.yaml) de 0 a 6 réplicas según la cola `orders.process` |
+| Queue Non-Urgent Processing Requests | El ScaledObject de [scaledobject-window.yaml](k8s/energy/scaledobject-window.yaml), con un *trigger* metrics-api: el *worker* solo procesa la cola mientras la ventana está abierta, según la clave `andis/Energy/WindowOpen` de Consul, que publica el método `GetWindow` de la clase `EnergyController`, en [EnergyController.cs](src/OrdersService/Controllers/EnergyController.cs) |
 
 Qué problema resuelve cada patrón, cómo se implementó y qué muestra cada prueba
 está en las secciones [Demos de disponibilidad](PATTERNS.md#demos-de-disponibilidad),
 [Demos de rendimiento y procesamiento asíncrono](PATTERNS.md#demos-de-rendimiento-y-procesamiento-asíncrono),
 [Demos de seguridad](PATTERNS.md#demos-de-seguridad),
-[Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación) y
-[Demos de facilidad de despliegue](PATTERNS.md#demos-de-facilidad-de-despliegue)
+[Demos de facilidad de modificación](PATTERNS.md#demos-de-facilidad-de-modificación),
+[Demos de facilidad de despliegue](PATTERNS.md#demos-de-facilidad-de-despliegue) y
+[Demos de eficiencia energética](PATTERNS.md#demos-de-eficiencia-energética)
 de PATTERNS.md.
 
 ## Cómo probar los patrones
@@ -271,8 +292,9 @@ Las instrucciones para ejecutar estos scripts y la explicación de lo que sucede
 en cada uno está en [02-availability.azcli](commands/02-availability.azcli),
 [03-performance.azcli](commands/03-performance.azcli),
 [04-security.azcli](commands/04-security.azcli),
-[05-modifiability.azcli](commands/05-modifiability.azcli) y
-[06-deployability.azcli](commands/06-deployability.azcli).
+[05-modifiability.azcli](commands/05-modifiability.azcli),
+[06-deployability.azcli](commands/06-deployability.azcli) y
+[07-energy-efficiency.azcli](commands/07-energy-efficiency.azcli).
 
 Mientras corren las pruebas, también se puede mirar:
 
@@ -291,9 +313,13 @@ Mientras corren las pruebas, también se puede mirar:
 * El *flag* del experimento de A/B Testing en la consola de
   [Unleash](https://www.getunleash.io/): <http://localhost:4242>, usuario `admin`
   y contraseña `unleash4all`.
-* Con Kubernetes, cada versión de `Users` y su papel en el despliegue, en vivo:
+* Con [Kubernetes](https://kubernetes.io/), cada versión de `Users` y su papel en el despliegue, en vivo:
   `kubectl argo rollouts get rollout users -n andis --watch`, de [Argo
   Rollouts](https://argoproj.github.io/rollouts/).
+* Las réplicas del *worker* de `Orders` en el clúster, que cambia
+  [KEDA](https://keda.sh/), en vivo: `kubectl get deployment orders-worker -n andis --watch`.
+* La potencia estimada de cada pod, en el Prometheus del clúster:
+  <http://localhost:30090>, con la consulta `pod:power:watts`.
 
 ### Tests de las demos
 
@@ -323,7 +349,7 @@ no cambian. Algunos tienen una categoría, para elegir cuáles correr:
 | `Disruptive` | Detienen, escalan o recrean contenedores | `docker compose up` |
 | `FeatureFlags` | Levantan [Unleash](https://www.getunleash.io/), con el perfil `feature-flags` | `docker compose up` |
 | `Gatekeeper` | Recrean los servicios con [docker-compose.gatekeeper.yaml](docker-compose.gatekeeper.yaml) y los vuelven a la normalidad; tarda varios minutos | `docker compose up` |
-| `Kubernetes` | Las demos 32 a 34; si no está el clúster, se ignoran | `./demos/k8s-up.sh` |
+| `Kubernetes` | Las demos 32 a 37; si no está el clúster, se ignoran. Las de la 35 a la 37 tardan unos 2 minutos | `./demos/k8s-up.sh`; las de la 35 a la 37, también `docker compose up` |
 
 Para correr solo los tests de una demo, por ejemplo la de Retry:
 `dotnet test tests/DemoTests --filter "FullyQualifiedName~Demo01"`.
@@ -387,6 +413,16 @@ código a mano:
 | `k6_acl_duration_*`, `k6_bff_requests_total`, `k6_config_requests_total` | Los escenarios de k6 | Latencia de `Orders` y de `Purchases`, respuestas de cada BFF, y respuestas de `Orders` por operación y resultado |
 | `k6_deploy_requests_total` | Los escenarios de k6 | Respuestas de la entrada de despliegue por versión de `Users`, según `X-Version`, y por código HTTP |
 
+El Prometheus del clúster de [Kubernetes](https://kubernetes.io/), en <http://localhost:30090>, tiene
+además las métricas de las demos de eficiencia energética:
+
+| Métrica | Quién la publica | Qué muestra |
+| ------- | ---------------- | ----------- |
+| `container_cpu_usage_seconds_total` | [cAdvisor](https://github.com/google/cadvisor), en el kubelet | Segundos de CPU que usó cada contenedor |
+| `kube_pod_container_resource_requests` | [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) | CPU y memoria que reserva cada contenedor |
+| `kube_deployment_status_replicas_ready` | kube-state-metrics | Réplicas listas de cada [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) |
+| `pod:cpu_used:vcpu`, `pod:cpu_reserved:vcpu`, `pod:power:watts` | Las reglas de `energy.rules.yml`, en [prometheus.yaml](k8s/base/prometheus.yaml) | vCPU que usa y que reserva cada pod, y su potencia estimada con el modelo de [Cloud Carbon Footprint](https://www.cloudcarbonfootprint.org/docs/methodology/) |
+
 > [!TIP]
 >
 > Consulta [.NET Observability with OpenTelemetry](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/observability-with-otel)
@@ -404,10 +440,10 @@ dashboard.
 | Escenario | Qué hace | Qué hay que observar en [Grafana](https://grafana.com/oss/grafana/) |
 | --------- | -------- | ------------------------------- |
 | `circuit-breaker.js` | 5 consultas de detalle por segundo durante 80 segundos; `Products` falla siempre entre los 15 segundos y los 50 segundos | La latencia sube por los reintentos y vuelve a bajar cuando el circuito se abre; las respuestas siguen siendo 200, degradadas; el circuito se cierra después de la recuperación |
-| `bulkhead.js` | `Products` demora 1,5 segundos; 6 consultas de detalle por segundo durante 45 segundos | Rechazos del bulkhead solo en `Products`; `Users` sin rechazos |
+| `bulkhead.js` | `Products` demora 1.5 segundos; 6 consultas de detalle por segundo durante 45 segundos | Rechazos del bulkhead solo en `Products`; `Users` sin rechazos |
 | `throttling.js` | `Orders` demora 1 segundo; los usuarios virtuales suben de 0 a 40 | Las consultas en curso se estabilizan en 20 y el excedente recibe 503 |
 | `rate-limiting.js` | 5 `POST /orders/` por segundo durante 30 segundos, sin Rate Limiting; después, 1 por segundo durante 30 segundos, con Rate Limiting; 5 `GET /orders/` por segundo todo el tiempo | En la primera fase pasa un POST por segundo y el resto recibe 429; en la segunda no hay 429; los GET siempre responden 200 |
-| `competing-consumers.js` | Crea 60 `Orders` de golpe | La cola crece y se vacía a unas 1,5 `Orders` por segundo, repartidas entre las 3 réplicas |
+| `competing-consumers.js` | Crea 60 `Orders` de golpe | La cola crece y se vacía a unas 1.5 `Orders` por segundo, repartidas entre las 3 réplicas |
 | `load.js` | Carga base para las demos de rendimiento: lecturas mezcladas a una tasa configurable; con `-e DETAILS=view`, el detalle se lee de la vista | Throughput y latencia por servicio; [k6](https://k6.io/) termina con error si no se cumple el objetivo de p95 menor a 500 ms con menos de 1% de errores; comparando las dos corridas, la latencia de `details` contra la de `details view` |
 | `cache-aside.js` | 50 lecturas de `Products` por segundo, con una base que demora 100 ms: 30 segundos con la caché apagada y 30 segundos prendida | La latencia de `product` baja de unos 100 ms a unos 3 ms; las lecturas de la caché pasan de `disabled` a casi todas `hit` |
 | `load-leveling.js` | 10 `POST /orders/` por segundo durante 10 segundos, directamente en `orders-service` | La latencia de `create order` se mantiene baja; la cola `orders.process` crece durante el pico y se vacía a ritmo constante |
@@ -421,22 +457,28 @@ dashboard.
 | `rolling-upgrade.js` | Lo mismo, mientras se reemplazan tres instancias de la versión `v1` en tres lotes | La versión `v2` sube en escalones, sin errores |
 | `canary.js` | Lo mismo, mientras la versión `v2` recibe el 10% y el 50%, falla y se vuelve atrás | La versión `v2` sigue al porcentaje; los errores son solo suyos |
 | `ab-testing.js` | 20 lecturas por segundo de los dos `Users` a la versión `v2`; la mitad de las de bob, con `X-Segment: beta` | Cada `User` recibe siempre su variante, salvo con el segmento |
+| `energy.js` | Tres picos de 30 `POST /orders/`, cada 4 minutos, directamente en `orders-service`; la corrida dura 10 minutos | Las réplicas del *worker* del clúster y su potencia estimada; la energía de toda la corrida, para comparar las configuraciones |
 
 `blue-green.js`, `rolling-upgrade.js` y `canary.js` también sirven para las
 demos 32 a 34, con [Kubernetes](https://kubernetes.io/): el script los apunta al
 clúster, y el panel "Errores de cada versión, según Users" muestra lo que mide
-el análisis de Argo Rollouts.
+el análisis de [Argo Rollouts](https://argoproj.github.io/rollouts/).
 
-Los últimos nueve necesitan que alguien haga el cambio mientras corren. Los de
+Los nueve de facilidad de modificación y de despliegue, de `strangler-fig.js`
+a `ab-testing.js`, necesitan que alguien haga el cambio mientras corren. Los de
 facilidad de modificación se lanzan con
 [load-modifiability.sh](demos/load-modifiability.sh), y los de facilidad de
-despliegue, con [load-deployment.sh](demos/load-deployment.sh). Los dos
-marcan cada cambio en el dashboard:
+despliegue, con [load-deployment.sh](demos/load-deployment.sh). `energy.js`
+necesita el *worker* del clúster en una de tres configuraciones, y se lanza con
+[load-energy.sh](demos/load-energy.sh); hay que esperar los 10 minutos de la
+corrida para comparar la energía. Los tres scripts marcan cada cambio en el
+dashboard:
 
 ```bash
 ./demos/load-modifiability.sh strangler   # también: acl, config, bridge, bff
 ./demos/load-deployment.sh canary         # también: bluegreen, rolling, ab
 ./demos/load-deployment.sh k8s-canary     # también: k8s-bluegreen, k8s-rolling
+./demos/load-energy.sh queue              # también: fixed, window
 ```
 
 `load.js` acepta la tasa y la duración como parámetros:

@@ -7,6 +7,7 @@
 #   Gateway API, con el que cambia los pesos de una HTTPRoute.
 # - KEDA, que escala el worker de Orders según su cola, o según una ventana de
 #   tiempo.
+# - kube-state-metrics, que le dice a Prometheus cuánta CPU reserva cada pod.
 # - De k8s/base: la base de Users, su configuración, el Gateway, Prometheus y el
 #   análisis de errores.
 # - Las tres versiones de Users, como imágenes: v1, v2 y v3-bad, y la imagen de
@@ -24,6 +25,7 @@ NGINX_GATEWAY_FABRIC=v2.8.0
 ARGO_ROLLOUTS=v1.10.2
 ARGO_GATEWAY_API_PLUGIN=v0.17.0
 KEDA=v2.21.0
+KUBE_STATE_METRICS=v2.20.0
 
 step() { printf '\n\033[1m> %s\033[0m\n' "$*"; }
 
@@ -92,6 +94,17 @@ kubectl apply --server-side -f \
 kubectl -n keda rollout status deployment/keda-operator --timeout=180s
 kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
 
+# La CPU que reserva cada pod, para estimar su energía -ver
+# k8s/base/prometheus.yaml-. cAdvisor también la informa, pero mal: Kubernetes
+# la convierte en el cpu.weight de cgroup v2 con una fórmula, y cAdvisor la
+# vuelve a convertir con otra.
+step "kube-state-metrics $KUBE_STATE_METRICS"
+for file in service-account cluster-role cluster-role-binding deployment service; do
+    kubectl apply -f \
+        "https://raw.githubusercontent.com/kubernetes/kube-state-metrics/$KUBE_STATE_METRICS/examples/standard/$file.yaml" > /dev/null
+done
+kubectl -n kube-system rollout status deployment/kube-state-metrics --timeout=180s
+
 step "La base de Users, su configuración, el Gateway y Prometheus"
 kubectl apply -f k8s/base/namespace.yaml > /dev/null
 kubectl -n andis create configmap users-db-init --from-file=src/UsersService/mongoinit \
@@ -111,4 +124,4 @@ until kubectl -n andis get deployment/andis-nginx > /dev/null 2>&1; do sleep 1; 
 kubectl -n andis rollout status deployment/andis-nginx --timeout=180s
 
 step "Listo"
-echo "  Gateway: http://localhost:8092. Las demos: ./demos/32-argo-blue-green.sh"
+echo "  Gateway: http://localhost:8092. Las demos: ./demos/32-argo-blue-green.sh a ./demos/37-deferred-processing.sh"

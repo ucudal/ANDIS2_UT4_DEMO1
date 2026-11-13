@@ -134,3 +134,115 @@ worker_cpu() {
         "$(promql 'sum(pod:cpu_used:vcpu{pod=~"orders-worker-.*"})')" \
         "$(promql 'sum(pod:cpu_reserved:vcpu{pod=~"orders-worker-.*"})')"
 }
+
+# energy_setup [ScaledObject]: prepara una demo de eficiencia energética.
+# Conecta el nodo a la red de Docker Compose, deja en 0 el orders-worker de
+# Compose y aplica el del clúster.
+energy_setup() {
+    compose_network
+    compose_workers 0
+    worker_apply "${1:-}"
+}
+
+# energy_cleanup: borra el worker del clúster, devuelve el de Docker Compose a
+# 3 réplicas y borra la ventana de la demo 37 del almacén de configuración: sin
+# valor, la ventana está cerrada.
+energy_cleanup() {
+    worker_delete
+    compose_workers 3
+    curl -s -X DELETE "$CONSUL/v1/kv/andis/Energy/WindowOpen" > /dev/null
+}
+
+# burst <n>: crea n Orders de bob a la vez, directamente en orders-service, y
+# devuelve sus ids.
+burst() {
+    seq "$1" | xargs -P "$1" -I{} curl -s -X POST "$ORDERS_DIRECT/orders/" \
+        -H 'Content-Type: application/json' \
+        -d "{\"userId\": \"$BOB\", \"productId\": 3, \"quantity\": 1}" | jq -r .id
+}
+
+# pending <ids>: cuántas de esas Orders siguen Pending.
+pending() {
+    local n=0
+    for id in $1; do
+        curl -s "$ORDERS_DIRECT/orders/$id" | grep -q '"status":"Pending"' && n=$((n + 1))
+    done
+    echo "$n"
+}
+
+# worker_line: una línea con la hora, las réplicas del worker, los mensajes de
+# orders.process y la potencia estimada.
+worker_line() {
+    printf '  %s  réplicas %s  cola %3s  %5s W\n' "$(date +%T)" "$(worker_replicas)" \
+        "$(queue_length orders.process)" "$(worker_watts)"
+}
+
+# watch_worker <segundos> [ids]: muestra worker_line cada 5 segundos durante
+# ese tiempo, o hasta que no quede ninguna de esas Orders Pending. Deja en
+# MAX_REPLICAS el máximo de réplicas que vio.
+MAX_REPLICAS=0
+watch_worker() {
+    local until=$((SECONDS + $1)) replicas
+    MAX_REPLICAS=0
+    while [ "$SECONDS" -lt "$until" ]; do
+        replicas=$(worker_replicas)
+        [ "$replicas" -gt "$MAX_REPLICAS" ] && MAX_REPLICAS=$replicas
+        worker_line
+        if [ -n "${2:-}" ] && [ "$(pending "$2")" = 0 ]; then return; fi
+        sleep 5
+    done
+}
+
+# wait_no_power: espera a que Prometheus deje de contar los pods del worker que
+# se borraron. Tarda unos segundos en notar que ya no están.
+wait_no_power() {
+    until [ "$(worker_watts)" = "0.00" ]; do sleep 1; done
+}
+
+# worker_joules <segundos>: la energía estimada del worker en los últimos
+# segundos, en joules: la potencia de cada muestra, cada 5 segundos, por 5.
+worker_joules() {
+    printf '%.0f' "$(promql "sum_over_time(sum(pod:power:watts{pod=~\"orders-worker-.*\"})[$1s:5s]) * 5")"
+}
+
+# power_table: la CPU y la potencia de cada pod del worker, según el modelo de
+# k8s/base/prometheus.yaml.
+power_table() {
+    local query='label_join(pod:cpu_used:vcpu{pod=~"orders-worker-.*"}, "kind", "", "__name__")
+        or label_join(pod:cpu_reserved:vcpu{pod=~"orders-worker-.*"}, "kind", "", "__name__")
+        or label_join(pod:power:watts{pod=~"orders-worker-.*"}, "kind", "", "__name__")'
+    {
+        printf 'Pod\tvCPU usadas\tvCPU reservadas\tW\n'
+        curl -s "$PROMETHEUS_K8S/api/v1/query" --data-urlencode "query=$query" | jq -r '
+            [.data.result[] | {pod: .metric.pod, kind: .metric.kind, v: (.value[1] | tonumber)}]
+            | group_by(.pod)[]
+            | (map({(.kind): .v}) | add) as $m
+            | [.[0].pod,
+               ($m["pod:cpu_used:vcpu"] // 0 | . * 1000 | round / 1000),
+               ($m["pod:cpu_reserved:vcpu"] // 0),
+               ($m["pod:power:watts"] // 0 | . * 100 | round / 100)]
+            | @tsv'
+    } | column -t -s $'\t' | sed 's/^/  /'
+}
+
+# wait_rate: espera a que Prometheus tenga al menos dos muestras de la CPU de
+# cada pod del worker, las que necesita rate() para calcular la CPU usada.
+# cAdvisor las actualiza cada 10 a 15 segundos.
+wait_rate() {
+    note "Esperando 35 segundos a que Prometheus tenga muestras de los pods..."
+    sleep 35
+}
+
+# window_open: si la ventana de la demo 37 está abierta, según el endpoint que
+# consulta KEDA -ver k8s/energy/scaledobject-window.yaml-.
+window_open() { [ "$(curl -s "$ORDERS_DIRECT/energy/window" | jq -r .open)" = true ]; }
+
+# window_set <open|closed>: abre o cierra la ventana, con la clave
+# Energy/WindowOpen del almacén de configuración. Espera a que orders-service
+# la lea.
+window_set() {
+    case "$1" in
+        open) config_set Energy/WindowOpen true ;;
+        closed) config_set Energy/WindowOpen false ;;
+    esac
+}

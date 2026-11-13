@@ -94,7 +94,7 @@ rollout_tree
 versions 10
 
 step "Se despliega la versión v3 con el error: kubectl argo rollouts set image"
-note "Una sonda pide el User de alice cada 0,1\": el análisis necesita tráfico."
+note "Una sonda pide el User de alice cada 0.1\": el análisis necesita tráfico."
 : > "$PROBES"
 touch "$RUNNING"
 deploy_probe "$PROBES" "$RUNNING" &

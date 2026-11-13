@@ -1,0 +1,13 @@
+@startuml
+!include PlantUML.style
+left to right direction
+rectangle "Pico de Orders\nPOST /orders/" as C
+queue "Cola\norders.process" as Q
+rectangle "KEDA\nScaledObject\ntrigger rabbitmq" as K
+rectangle "orders-worker\nde 0 a 6 réplicas" as W
+
+C --> Q
+K ..> Q : ¿cuántos mensajes?
+K --> W : 0 con la cola vacía\n1 cada 5 mensajes
+Q --> W
+@enduml

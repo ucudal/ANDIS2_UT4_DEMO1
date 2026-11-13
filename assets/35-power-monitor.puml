@@ -1,0 +1,14 @@
+@startuml
+!include PlantUML.style
+rectangle "3 réplicas\norders-worker\n0,25 vCPU reservadas cada una" as W
+rectangle "cAdvisor\nen el kubelet" as A
+rectangle "kube-state-metrics" as K
+rectangle "Prometheus del clúster\nenergy.rules.yml" as P
+rectangle "Grafana\nfila Eficiencia energética" as G
+
+W ..> A : vCPU usadas
+W ..> K : vCPU reservadas
+A --> P
+K --> P
+P --> G : pod:power:watts =\nreservadas × 0,78 W +\nusadas × 2,98 W
+@enduml

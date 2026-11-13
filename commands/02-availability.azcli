@@ -749,7 +749,7 @@ docker compose up -d orders-worker
 #   en unos 40 segundos; "en proceso" queda en 3, una por réplica;
 #   "consumidores" baja a 2 si se detiene una réplica.
 # - "Orders procesadas por segundo, por réplica": tres franjas de igual
-#   altura, unas 0,5 por segundo cada una; si se detiene una réplica, su franja
+#   altura, unas 0.5 por segundo cada una; si se detiene una réplica, su franja
 #   desaparece y la cola tarda más en vaciarse.
 
 # -------------------------

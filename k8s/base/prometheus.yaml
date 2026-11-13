@@ -9,9 +9,10 @@
 # pod_template_hash con un Deployment. Así se separan las métricas de cada
 # versión.
 #
-# Para las demos de eficiencia energética, de la 35 a la 37, lee además el
-# cAdvisor del kubelet: cuánta CPU usa y cuánta reserva cada contenedor. Con eso
-# estima la energía de cada pod -ver las reglas de energy.rules.yml-.
+# Para las demos de eficiencia energética, de la 35 a la 37, lee además cuánta
+# CPU usa cada contenedor, del cAdvisor del kubelet, y cuánta reserva, de
+# kube-state-metrics. Con eso estima la energía de cada pod -ver las reglas de
+# energy.rules.yml-.
 #
 # Consola: http://localhost:30090, publicado por kind -ver k8s/kind.yaml-.
 apiVersion: v1
@@ -117,13 +118,25 @@ data:
         kubernetes_sd_configs:
           - role: node
         metric_relabel_configs:
-          # Solo la CPU usada y la reservada, de los contenedores del namespace
-          # andis. container="" es el pod entero o su contenedor pause.
+          # Solo la CPU usada, de los contenedores del namespace andis.
+          # container="" es el pod entero o su contenedor pause.
           - source_labels: [__name__]
-            regex: container_cpu_usage_seconds_total|container_spec_cpu_shares
+            regex: container_cpu_usage_seconds_total
             action: keep
           - source_labels: [namespace, container]
             regex: andis;.+
+            action: keep
+      # kube-state-metrics: la CPU que reserva cada contenedor, y las réplicas
+      # de cada Deployment. Sus series ya traen el namespace y el pod que
+      # describen: honor_labels evita que Prometheus los reemplace por los de
+      # kube-state-metrics.
+      - job_name: kube-state-metrics
+        honor_labels: true
+        static_configs:
+          - targets: [kube-state-metrics.kube-system.svc:8080]
+        metric_relabel_configs:
+          - source_labels: [__name__, namespace]
+            regex: (kube_pod_container_resource_requests|kube_deployment_status_replicas_ready);andis
             action: keep
   # Power Monitor: la energía de cada pod se estima, no se mide. El nodo de kind
   # no tiene contadores de energía -RAPL ni hwmon-, como pasa en casi cualquier
@@ -136,19 +149,25 @@ data:
   # https://www.cloudcarbonfootprint.org/docs/methodology/
   #
   # La parte reservada hace que un pod ocioso consuma: la máquina tiene que
-  # estar encendida para la CPU que el pod pidió, aunque no la use. Las vCPU
-  # reservadas salen de los shares del cgroup: 1024 por vCPU.
+  # estar encendida para la CPU que el pod pidió, aunque no la use.
   energy.rules.yml: |
     groups:
       - name: energy
         interval: 5s
         rules:
+          # cAdvisor actualiza cada contenedor cada 10 a 15 segundos, aunque
+          # Prometheus lo lea cada 5: en 30 segundos podría haber una sola
+          # muestra, y rate() necesita dos.
           - record: pod:cpu_used:vcpu
-            expr: sum by (pod) (rate(container_cpu_usage_seconds_total{job="cadvisor"}[30s]))
+            expr: sum by (pod) (rate(container_cpu_usage_seconds_total{job="cadvisor"}[1m]))
           - record: pod:cpu_reserved:vcpu
-            expr: sum by (pod) (container_spec_cpu_shares{job="cadvisor"}) / 1024
+            expr: sum by (pod) (kube_pod_container_resource_requests{resource="cpu"})
+          # Un pod nuevo no tiene CPU usada hasta que cAdvisor junta dos
+          # muestras: mientras tanto, se cuenta solo la parte reservada.
           - record: pod:power:watts
-            expr: pod:cpu_reserved:vcpu * 0.78 + on (pod) pod:cpu_used:vcpu * (3.76 - 0.78)
+            expr: |
+              pod:cpu_reserved:vcpu * 0.78
+                + on (pod) (pod:cpu_used:vcpu * (3.76 - 0.78) or pod:cpu_reserved:vcpu * 0)
 ---
 apiVersion: apps/v1
 kind: Deployment

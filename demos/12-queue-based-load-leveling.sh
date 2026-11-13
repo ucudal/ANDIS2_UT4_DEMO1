@@ -21,7 +21,7 @@ echo "  POST más lento: $(cut -d' ' -f2 "$dir/times" | sort -n | tail -1)\""
 rm -rf "$dir"
 
 step "La cola absorbe el pico y los workers la vacían a su ritmo"
-note "3 workers, 2\" por Order: unas 1,5 Orders por segundo, con cualquier pico."
+note "3 workers, 2\" por Order: unas 1.5 Orders por segundo, con cualquier pico."
 sleep 2
 while :; do
     length=$(queue_length orders.process)

@@ -59,7 +59,7 @@ public class Experiment
 
         // El contexto de la evaluación: el id del User, que fija la variante, y
         // el segmento, que usa la restricción del flag.
-        var evaluation = EvaluationContext.Builder().SetTargetingKey(user.Id.ToString());
+        var evaluation = EvaluationContext.Builder().SetTargetingKey((user.Id ?? string.Empty).ToString());
         if (!string.IsNullOrEmpty(segment))
             evaluation.Set("segment", segment);
         var variant = await _flags.GetStringValueAsync(Flag, "A", evaluation.Build());

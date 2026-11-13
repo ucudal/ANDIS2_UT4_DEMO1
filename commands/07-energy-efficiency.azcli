@@ -1,0 +1,293 @@
+# Parte 7: demos de los patrones de eficiencia energética, de la 35 a la 37
+#
+# Las demos de disponibilidad están en 02-availability.azcli, las de
+# rendimiento, en 03-performance.azcli, las de seguridad, en 04-security.azcli,
+# las de facilidad de modificación, en 05-modifiability.azcli y las de facilidad
+# de despliegue, en 06-deployability.azcli.
+#
+# Las tres demos usan el worker de Orders, que consume la cola orders.process.
+# El worker corre en el clúster de Kubernetes de las demos 32 a 34, y usa
+# RabbitMQ, la base de Orders, Users y Products de Docker Compose: el nodo de
+# kind se conecta a la red de Docker Compose. Mientras corre el worker del
+# clúster, el orders-worker de Docker Compose queda en 0 réplicas.
+#
+# La energía no se mide: se estima. El nodo de kind no tiene contadores de
+# energía, como casi cualquier máquina virtual. Prometheus del clúster calcula
+# la potencia de cada pod con el modelo de Cloud Carbon Footprint:
+#
+#   watts = vCPU reservadas × 0.78 + vCPU usadas × (3.76 − 0.78)
+#
+# Las fórmulas están en k8s/base/prometheus.yaml, en energy.rules.yml.
+#
+# Docker necesita al menos 12 GB de memoria para tener levantados a la vez
+# Docker Compose y el clúster.
+
+# ---------------------------------------------------------------------------
+# Levantar todos los servicios
+# ---------------------------------------------------------------------------
+
+# Estos comandos deben ejecutarse desde la raíz del repositorio. Usar el comando
+# 'Azure CLI: Run Line in Terminal'.
+
+# Inicia Docker si no está iniciado
+docker desktop start
+
+# Crear las carpetas que serán montadas como volúmenes para contener las bases
+# de datos
+mkdir -p src/UsersService/mongodbdata
+mkdir -p src/ProductsService/pgdata
+mkdir -p src/OrdersService/mysqldata
+
+# Levantar todos los contenedores
+docker compose build
+docker compose up -d --wait
+
+# Crear el clúster, una sola vez. Además de lo de las demos 32 a 34, instala
+# KEDA y kube-state-metrics, y carga la imagen de Orders, que usa el worker. Si
+# el clúster ya existe, solo agrega lo que falte. Necesita kind, kubectl y el
+# plugin de Argo Rollouts para kubectl:
+#   brew install kind kubectl argoproj/tap/kubectl-argo-rollouts
+./demos/k8s-up.sh
+
+# ---------------------------------------------------------------------------
+# Observabilidad -opcional, recomendada para las demos-
+# ---------------------------------------------------------------------------
+
+# Levantar también Prometheus y Grafana. Si la aplicación ya está levantada,
+# solo agrega los dos contenedores nuevos.
+docker compose --profile observability up -d --wait
+
+# Abrir en el navegador el dashboard de Grafana. Los paneles de estas demos están
+# en la fila "Eficiencia energética":
+#
+#    http://localhost:3000
+#
+# Prometheus del clúster, con la potencia estimada de cada pod -consultar
+# pod:power:watts-:
+#
+#    http://localhost:30090
+
+# ---------------------------------------------------------------------------
+# Preparar el worker del clúster
+# ---------------------------------------------------------------------------
+# Los mismos pasos para las tres demos.
+
+# Conectar el nodo de kind a la red de Docker Compose. Si ya está conectado, el
+# comando lo dice y no cambia nada
+network=$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' \
+  "$(docker compose ps -q rabbitmq)")
+docker network connect $network andis-control-plane
+
+# Dejar en 0 réplicas el orders-worker de Docker Compose, para que no compita
+# con el del clúster por la cola orders.process
+docker compose up -d --no-deps --scale orders-worker=0 orders-worker
+
+# Aplicar la configuración del worker -los nombres de host son los de Docker
+# Compose- y el Deployment, con 3 réplicas que reservan 0.25 vCPU cada una
+kubectl apply -f k8s/energy/worker-config.yaml -f k8s/energy/worker.yaml
+kubectl rollout status deployment/orders-worker -n andis
+
+# Los 3 consumidores de orders.process ahora son los pods del clúster
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Guardar en una variable la consulta de la potencia de cada pod del worker, en
+# watts, en Prometheus del clúster
+power='pod:power:watts{pod=~"orders-worker-.*"}'
+
+# ---------------------------------------------------------------------------
+# Demo 35: Power Monitor
+# ---------------------------------------------------------------------------
+# Antes de reducir el consumo hay que medirlo. Prometheus estima la potencia de
+# cada pod del worker, ocioso y procesando un pico.
+
+# Esperar unos 30 segundos después de aplicar el worker: cAdvisor actualiza la
+# CPU de cada contenedor cada 10 a 15 segundos, y Prometheus necesita dos
+# muestras para calcular la que usa. Ver la potencia de cada pod ocioso: unos
+# 0.35 W, de los que 0.195 W son de la CPU reservada -0.25 vCPU × 0.78 W-
+curl -s http://localhost:30090/api/v1/query --data-urlencode "query=$power" \
+  | jq -r '.data.result[] | "\(.metric.pod)  \(.value[1] | tonumber * 100 | round / 100) W"'
+
+# La potencia de las 3 réplicas juntas: alrededor de 1.1 W
+curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)" \
+  | jq -r '.data.result[0].value[1]'
+
+# Crear un pico de 30 Orders de 'bob', directamente en orders-service
+for i in $(seq 30); do
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}'
+done
+
+# Mientras se vacía la cola, repetir la consulta de la potencia de las 3
+# réplicas: sube poco, a 1.3 o 1.4 W. Procesar una Order es casi todo esperar a
+# Users y a Products; lo que más pesa sigue siendo la CPU reservada
+curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)" \
+  | jq -r '.data.result[0].value[1]'
+
+# La demo completa. Al terminar, borra el worker del clúster y devuelve el de
+# Docker Compose a 3 réplicas: antes de los comandos de la demo 36, repetir los
+# de "Preparar el worker del clúster"
+
+./demos/35-power-monitor.sh
+
+# ---------------------------------------------------------------------------
+# Demo 36: Escalado a cero
+# ---------------------------------------------------------------------------
+# KEDA cambia las réplicas del worker según el largo de la cola orders.process:
+# 0 con la cola vacía, y una cada 5 mensajes, hasta 6, durante un pico.
+
+# Aplicar cómo llega KEDA a RabbitMQ -un Secret y un TriggerAuthentication- y el
+# ScaledObject, que le dice a KEDA qué escalar y según qué
+kubectl apply -f k8s/energy/rabbitmq-auth.yaml -f k8s/energy/scaledobject-queue.yaml
+
+# La cola está vacía: KEDA baja el worker a 0 réplicas enseguida. Mirarlo en
+# vivo con '--watch' en otra terminal -en VS Code, 'Terminal: Split Terminal'-,
+# y dejarlo abierto durante toda la demo. Los demás comandos siguen en esta
+# terminal, donde está definida la variable 'power'
+kubectl get deployment orders-worker -n andis --watch
+
+# Sin réplicas no hay potencia: la consulta no devuelve nada
+curl -s http://localhost:30090/api/v1/query --data-urlencode "query=sum($power)" \
+  | jq -r '.data.result[0].value[1] // "0"'
+
+# Crear un pico de 30 Orders, y mirar las réplicas en la otra terminal: después
+# de unos segundos, KEDA enciende el worker y Kubernetes suma réplicas, hasta 4
+# o 6. Cuando la cola se vacía, KEDA espera 30 segundos -cooldownPeriod- y lo
+# vuelve a apagar
+for i in $(seq 30); do
+  curl -s -o /dev/null -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}'
+done
+
+# Lo que hizo KEDA: el ScaledObject crea un HorizontalPodAutoscaler de
+# Kubernetes, que usa como métrica el largo de la cola
+kubectl get scaledobject,hpa -n andis
+
+# La energía del worker en los últimos 2 minutos, en joules: la potencia de cada
+# muestra, cada 5 segundos, por 5. El escalado a cero no consume nada entre
+# picos, pero cada pod nuevo usa mucha CPU al arrancar: conviene si el worker
+# pasa ocioso más de unos 100 segundos entre un pico y otro
+curl -s http://localhost:30090/api/v1/query \
+  --data-urlencode "query=sum_over_time(sum($power)[2m:5s]) * 5" \
+  | jq -r '.data.result[0].value[1]'
+
+# Borrar el ScaledObject. El worker queda con las réplicas que tenga: volver a 3
+kubectl delete -f k8s/energy/scaledobject-queue.yaml
+kubectl scale deployment orders-worker -n andis --replicas=3
+
+# La demo completa. Al terminar, borra el worker del clúster y devuelve el de
+# Docker Compose a 3 réplicas: antes de los comandos de la demo 37, repetir los
+# de "Preparar el worker del clúster"
+
+./demos/36-scale-to-zero.sh
+
+# ---------------------------------------------------------------------------
+# Demo 37: Procesamiento diferido
+# ---------------------------------------------------------------------------
+# El worker solo está encendido dentro de una ventana, que simula las horas de
+# energía más limpia. Las Orders que llegan fuera de la ventana esperan en la
+# cola. La ventana es la clave Energy/WindowOpen de Consul, el almacén de
+# configuración de la demo 24: en producción la cambiaría un pronóstico de
+# intensidad de carbono; acá se cambia a mano.
+
+# Ver la ventana como la ve KEDA: orders-service la publica en
+# GET /energy/window. Sin la clave en Consul, está cerrada y pide 0 réplicas
+curl -s http://localhost:8000/energy/window | jq
+
+# Aplicar el ScaledObject de la ventana. En lugar de mirar la cola, como el de
+# la demo 36, KEDA consulta GET /energy/window cada 5 segundos con un trigger
+# metrics-api, y pone el worker en tantas réplicas como indica replicas: 3 con
+# la ventana abierta, 0 con la ventana cerrada. No tiene trigger de la cola a
+# propósito: con él, KEDA encendería el worker apenas llegara una Order, aunque
+# la ventana estuviera cerrada
+kubectl apply -f k8s/energy/scaledobject-window.yaml
+
+# Ver que KEDA encontró el worker: READY en True y TRIGGERS en metrics-api. Si
+# se aplicó el ScaledObject cuando el worker no estaba en el clúster, queda en
+# False y KEDA no lo vuelve a intentar: el worker no se apaga nunca. Se resuelve
+# borrándolo y volviéndolo a aplicar
+kubectl get scaledobject -n andis
+
+# Mirar las réplicas en vivo con '--watch' en otra terminal -en VS Code,
+# 'Terminal: Split Terminal'-, y dejarlo abierto durante toda la demo. Con la
+# ventana cerrada, KEDA baja el worker a 0. Los demás comandos siguen en esta
+# terminal
+kubectl get deployment orders-worker -n andis --watch
+
+# Con la ventana cerrada, crear 10 Orders y ver su estado: Pending, porque
+# nadie las procesa
+for i in $(seq 10); do
+  curl -s -X POST http://localhost:8000/orders/ \
+    -H "Content-Type: application/json" \
+    -d '{"userId": "665f1c2ab4e8d9a0c1f2e302", "productId": 3, "quantity": 1}' | jq -c '{id, status}'
+done
+
+# Listar las colas de RabbitMQ, con los mensajes que esperan en cada una y
+# cuántos consumidores la leen. En orders.process, la cola del worker, hay 10
+# mensajes, uno por Order, y 0 consumidores: el worker está apagado. Las demás
+# colas son de otros servicios y no cambian en esta demo
+docker compose exec rabbitmq rabbitmqctl list_queues -q name messages consumers | column -t
+
+# Abrir la ventana. orders-service lee la clave cada 2 segundos y KEDA consulta
+# el endpoint cada 5: en la otra terminal, después de unos segundos, el worker
+# pasa de 0 a 1 réplica y después a 3, que vacían la cola
+curl -s -X PUT http://localhost:8500/v1/kv/andis/Energy/WindowOpen -d true
+curl -s http://localhost:8000/energy/window | jq
+
+# Las últimas 10 Orders de bob en la tabla 'orders': ya no están Pending
+docker compose exec orders-db mysql -u ordersusr -pPa55w0rd ordersdb \
+  -e "SELECT id, status FROM orders WHERE user_id = '665f1c2ab4e8d9a0c1f2e302' ORDER BY id DESC LIMIT 10"
+
+# Cerrar la ventana: en la otra terminal, KEDA vuelve a apagar el worker
+curl -s -X PUT http://localhost:8500/v1/kv/andis/Energy/WindowOpen -d false
+
+# Borrar el ScaledObject y la clave de Consul
+kubectl delete -f k8s/energy/scaledobject-window.yaml
+curl -s -X DELETE http://localhost:8500/v1/kv/andis/Energy/WindowOpen
+
+# La demo completa: tarda un minuto y medio. Al terminar, borra el worker del
+# clúster, devuelve el de Docker Compose a 3 réplicas y borra la clave de Consul
+
+./demos/37-deferred-processing.sh
+
+# ---------------------------------------------------------------------------
+# Las tres configuraciones bajo carga
+# ---------------------------------------------------------------------------
+# Tres picos de 30 Orders, cada 4 minutos, con el worker ocioso entre uno y
+# otro. Cada corrida dura 10 minutos: hay que esperar a que termine para
+# comparar la energía. Con el rango de Grafana en 10 minutos, el panel "Energía
+# estimada del worker en el período" muestra la de toda la corrida. Cada pico,
+# cada cambio de réplicas y cada apertura de la ventana quedan marcados en el
+# dashboard. Con window, el script abre la ventana un minuto de cada dos.
+
+./demos/load-energy.sh fixed     # 3 réplicas fijas, como en la demo 35
+./demos/load-energy.sh queue     # KEDA según la cola, como en la demo 36
+./demos/load-energy.sh window    # KEDA según la ventana, como en la demo 37
+
+# ---------------------------------------------------------------------------
+# Dejar todo como estaba
+# ---------------------------------------------------------------------------
+
+# Borrar el worker del clúster, su configuración y la autenticación de KEDA
+kubectl delete -f k8s/energy/worker.yaml -f k8s/energy/worker-config.yaml -f k8s/energy/rabbitmq-auth.yaml
+
+# Volver a 3 réplicas el orders-worker de Docker Compose
+docker compose up -d --no-deps --scale orders-worker=3 orders-worker
+
+# Borrar la ventana de la demo 37 de Consul: sin valor, está cerrada
+curl -s -X DELETE http://localhost:8500/v1/kv/andis/Energy/WindowOpen
+
+# ---------------------------------------------------------------------------
+# Tear down
+# ---------------------------------------------------------------------------
+
+# Detener los contenedores sin borrarlos: conservan su estado y se pueden volver
+# a levantar con
+#   docker compose --profile observability start
+docker compose --profile observability stop
+
+# Borrar el clúster de Kubernetes, con todo lo que tiene adentro, y sus imágenes
+./demos/k8s-down.sh
+docker rmi users-service:v1 users-service:v2 users-service:v3-bad
+docker rmi $(docker images -q kindest/node)

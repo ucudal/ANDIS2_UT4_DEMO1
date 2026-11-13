@@ -1,5 +1,6 @@
-# El clúster de las demos de despliegue con Kubernetes, de la 32 a la 34: un
-# solo nodo, que es un contenedor de Docker. Lo crea demos/k8s-up.sh.
+# El clúster de las demos con Kubernetes: las de despliegue, de la 32 a la 34, y
+# las de eficiencia energética, de la 35 a la 37. Un solo nodo, que es un
+# contenedor de Docker. Lo crea demos/k8s-up.sh.
 #
 # kind publica en la máquina dos puertos del nodo:
 # - 8092: el Gateway, la entrada de los clientes. Es el equivalente a la entrada
